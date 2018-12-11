@@ -1,8 +1,9 @@
 
-;; TODO: don't need this
+;; TODO: don't need this after hash-map literals are properly encoded
 (def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ListType};"))
 (def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -1, IntegerType};"))
+(def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SymbolType};"))
 
 (defprotocol Constraint
   (assertion-path [x])
@@ -21,6 +22,8 @@
     (assert-result r (instance? Vector r))
     [])
 
+  (extract-inner-constraint [_])
+
   (update-path [constraint file-name line-number]
     constraint)
 
@@ -38,14 +41,19 @@
 ;; TODO: constraints to add
 ;; min count (instead of ItemsConstraint)
 ;; min value
-;; map-of
-;; inner
+;; keys required in a hash map
+;; key constraint on hash maps
 
 (defn format-path* [path desired-len]
   (either (empty? path)
-          (let [path (map path
-                          (fn [[file line]]
-                            (str file ": " line)))
+          (let [path (-> path
+                         (remove (fn [[file line]]
+                                   (either (and (instance? Symbol file)
+                                                (maybe nothing))
+                                           (or (empty? file)
+                                               (= 0 line)))))
+                         (map (fn [[file line]]
+                                (str file ": " line))))
                 max-width (reduce path 0 (fn [max s]
                                            (let [n (count s)]
                                              (either (> max n)
@@ -61,7 +69,7 @@
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
-    (list "<NoValues>"))
+    (list "<NoValues " (str constraints) ">"))
 
   Constraint
   (intersect [nv _] nv)
@@ -69,12 +77,13 @@
   (update-var [x _] x)
 
   (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [c] (count (assertion-path c)))) n
+    (let [max-len (reduce (map constraints (fn [c] (count (assertion-path c))))
+                          n
                           (fn [max-len path-len]
                             (either (> max-len path-len)
                                     path-len)))
           paths (map constraints (fn [c]
-                                   (format-path c max-len)))]
+                                   (format-path c (inc max-len))))]
       (-> paths
           (list-zipper empty-list)
           (map (fn [strs]
@@ -86,11 +95,7 @@
     (and (=* (get-type x) (get-type y))
          (or (and (< (count (.constraints x)) (count (.constraints y)))
                   (maybe y))
-             (maybe x))))
-
-  Composition
-  (comp* [nv-type _]
-    nv-type))
+             (maybe x)))))
 
 (deftype AllValues []
   Stringable
@@ -107,47 +112,10 @@
   (update-sym [x _] x)
 
   (update-var [x _] x)
-  (extract-type-map [_] nothing)
-
-  Composition
-  (comp* [av-type constraints]
-    (either (map (first constraints)
-                 (fn [constraint]
-                   (comp* constraint (rest constraints))))
-            av-type)))
+  (extract-type-map [_] nothing))
 
 (def bottom-type (NoValues []))
 (def top-type (AllValues))
-
-(deftype ResultConstraint [assertion]
-  (assert (instance? ValueConstraint assertion))
-
-  Stringable
-  (string-list [_] (list "<ResultConstraint " (str assertion) ">"))
-
-  Constraint
-  (update-var [_ new-var]
-    (ResultConstraint (update-var assertion new-var)))
-
-  (update-sym [_ new-var]
-    (ResultConstraint (update-sym assertion new-var)))
-
-  (extract-type-map [_]
-    (extract-type-map assertion))
-
-  (intersect [rc c]
-    (let [intersected (either (and (instance? ResultConstraint c)
-                                   (maybe (intersect assertion (.assertion c))))
-                              (intersect assertion c))]
-      (either (= bottom-type intersected)
-              (ResultConstraint intersected))))
-
-  Eq
-  (=* [x y]
-    (and (or (and (instance? ResultConstraint y)
-                  (=* assertion (.assertion y)))
-             (=* assertion y))
-         (maybe x))))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
   (assert (instance? HashMap type-maps))
@@ -206,26 +174,14 @@
     (list "<ItemsConstraint " (str items-constraints) " " (str sym) ">"))
 
   Constraint
+  (assertion-path [_]
+    path)
+  
   (extract-type-map [_]
     (maybe {ListType #{}
             VectorType #{}}))
 
-  (update-path [constraint file-name line-number]
-    (let [file-name (either (and (= file-name 'core)
-                                 (maybe "$TOCCATA_DIR/core.toc"))
-                            file-name)
-          new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))]
-      (ItemsConstraint (map (.items-constraints constraint)
-                            (fn [constraints]
-                              (update-path constraints file-name line-number)))
-                       new-path
-                       (.sym constraint) (.var constraint))))
-
-  (extract-items-constraints [_]
+    (extract-items-constraints [_]
     items-constraints)
 
   (format-path [x desired-len]
@@ -250,7 +206,10 @@
                     (and (some constraints (partial = c))
                          (maybe mc)))
                 (and (= top-type c)
-                     (maybe mc)))
+                     (maybe mc))
+                (and (instance? MultiConstraint c)
+                     (maybe (MultiConstraint (comp constraints
+                                                   (.constraints c))))))
             (MultiConstraint (conj constraints c))))
 
   Constraint
@@ -272,21 +231,10 @@
                   (extract-type-map c)))))
 
   (extract-items-constraints [mc]
-    (-> (.constraints mc)
-        (filter (partial instance? ItemsConstraint))
-        (map .items-constraints)
-        ((fn [ls]
-           (let [max-len (reduce ls 0 (fn [max l]
-                                        (either (> (count l) max)
-                                                max)))]
-             (either (and (= max-len 0)
-                          (maybe []))
-                     (map ls (fn [l]
-                               (either (and (< (count l) max-len)
-                                            (maybe (comp l (repeat (- max-len (count l))
-                                                                   top-type))))
-                                       l)))))))
-        (map (fn [[c & cs]] (comp* c cs)))))
+    (either (-> (.constraints mc)
+                (some (partial instance? ItemsConstraint))
+                (map .items-constraints))
+            []))
 
   (update-sym [mc sym]
     (.constraints mc (map (.constraints mc)
@@ -299,7 +247,9 @@
                             (update-var c var)))))
 
   (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [c] (count (.path c)))) n
+    (let [max-len (reduce (map constraints (fn [o]
+                                             (count (.path o))))
+                          n
                           (fn [max-len path-len]
                             (either (> max-len path-len)
                                     path-len)))
@@ -308,8 +258,10 @@
       (-> paths
           (list-zipper empty-list)
           (map (fn [strs]
-                 (str (to-str (interpose strs "    "))
-                      "\n"))))))
+                 (to-str (interpose strs "    ")))))))
+
+  (assertion-path [c]
+    (format-path c 0))
 
   (update-sym [mc sym]
     (.constraints mc (map constraints (fn [c]
@@ -343,20 +295,6 @@
                                             x))))
            (maybe (conj mc c)))))
 
-(defn intersect-resultconstraint [c rc]
-  (and (instance? ResultConstraint rc)
-       (let [result-constraint (intersect c (.assertion rc))]
-         (or (and (= bottom-type result-constraint)
-                  (maybe (NoValues [c (.assertion rc)])))
-             (maybe (ResultConstraint (intersect c (.assertion rc))))))))
-
-(defn intersect-typeconstraint [c tc]
-  (and (instance? TypeConstraint tc)
-       (flat-map (extract-type-map c)
-                 (fn [type-map]
-                   (and (empty? (select-keys (.type-maps tc) (keys type-map)))
-                        (maybe (NoValues [c tc])))))))
-
 (deftype FieldConstraint [field field-var path sym var]
   (assert (instance? Tagged field))
   (assert (instance? List path))
@@ -375,6 +313,9 @@
           ">"))
 
   Constraint
+  (assertion-path [_]
+    path)
+
   (satisfied-by [c info]
     (let [type-map (extract-type-map info)]
       (or (flat-map type-map
@@ -413,6 +354,8 @@
                             (maybe (NoValues [fc c]))))))
             (intersect (update-var c (.var fc)) fc))))
 
+(def intersect-resultconstraint)
+
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
   (assert (instance? List path))
@@ -431,7 +374,8 @@
           (to-str (interpose (seq (.path c)) "\n")) ">"))
 
   Constraint
-  (assertion-path [c] (.path c))
+  (assertion-path [c]
+    (.path c))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Length from") ""]
@@ -472,7 +416,8 @@
          (maybe x)))
 
   Constraint
-  (assertion-path [c] (.path c))
+  (assertion-path [c]
+    (.path c))
 
   (format-path [x desired-len]
     (format-path* (cons ["Integer from" ""] path)
@@ -508,7 +453,8 @@
          (maybe x)))
 
   Constraint
-  (assertion-path [c] (.path c))
+  (assertion-path [c]
+    (.path c))
 
   (intersect [slc c]
     (either (or (= slc c)
@@ -530,11 +476,20 @@
     (either (or (= tc c)
                 (intersect-multiconstraint tc c)
                 (intersect-resultconstraint tc c)
-                (intersect-typeconstraint c tc)
-                (and (instance? ItemsConstraint c)
-                     (let [types-map (select-keys (.type-maps tc) [ListType VectorType])]
-                       (and (empty? types-map)
-                            (maybe (NoValues [tc c])))))
+                (and (= top-type c)
+                     (maybe tc))
+                (and (= bottom-type c)
+                     (maybe c))
+                (flat-map (extract-type-map c)
+                          (fn [type-map]
+                            (and (empty? (select-keys (.type-maps tc) (keys type-map)))
+                                 (maybe (NoValues [c tc])))))
+                (and (instance? TypeConstraint c)
+                     (let [c-map (.type-maps c)
+                           new-map (filter-keys (.type-maps tc)
+                                                (fn [k]
+                                                  (get c-map k)))]
+                       (maybe (.type-maps tc new-map))))
                 (and (instance? FieldConstraint c)
                      (let [field (.field c)]
                        (and (empty? (filter (vals (.type-maps tc)) (fn [fields]
@@ -559,7 +514,8 @@
          (maybe x)))
 
   Constraint
-  (assertion-path [_] path)
+  (assertion-path [_]
+    path)
 
   (extract-type-map [_]
     (maybe {IntegerType #{}}))
@@ -584,8 +540,63 @@
                          (maybe c))))
             (intersect (update-var c (.var mvc)) mvc))))
 
+(deftype InnerConstraint [inner path sym var]
+  (assert (instance? List path))
+  (assert (instance? Maybe sym))
+  (assert (instance? String var))
+
+  Eq
+  (=* [x y]
+    (and (instance? InnerConstraint y)
+         (= inner (.inner y))
+         (maybe x)))
+
+  Stringable
+  (string-list [_]
+    (list "<InnerConstraint " (str inner) ", " (str sym) ", " (str (either (first path) "")) ">"))
+
+  Constraint
+  (extract-type-map [_]
+    nothing)
+
+  (assertion-path [_]
+    path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Sequence from" ""] path)
+                  desired-len))
+
+  (intersect [ic c]
+    (either (or (= ic c)
+                (intersect-multiconstraint ic (update-var c (.var ic)))
+                (and (instance? InnerConstraint c)
+                     (let [new-c (intersect inner (.inner c))]
+                       (or (= bottom-type new-c)
+                           (maybe (.inner ic new-c)))))
+                (and (instance? ItemsConstraint c)
+                     (let [constraints (map (.items-constraints c)
+                                            (fn [c2]
+                                              (intersect inner c2)))]
+                       (or (some constraints (partial = bottom-type))
+                           (maybe (MultiConstraint [ic (update-var c (.var ic))])))))
+                (and (instance? FieldConstraint c)
+                     (maybe (MultiConstraint [ic (update-var c (.var ic))])))
+                (and (instance? TypeConstraint c)
+                     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
+                       ;; TODO: incomplete. need to account for Strings
+                       ;; also account for Fn's
+                       (or (and (empty? new-type-map)
+                                (maybe (NoValues [ic c])))
+                           (maybe (MultiConstraint [ic (-> c
+                                                           (.type-maps new-type-map)
+                                                           (update-var (.var ic)))])))))
+                (and (instance? MaxValue c)
+                     (maybe (NoValues [ic c]))))
+            (intersect (update-var c (.var ic)) ic))))
+
 (def SymbolConstraints (comp TypeConstraint
                              MaxValue
+                             InnerConstraint
                              StaticConstraints
                              ItemsConstraint
                              FieldConstraint))
@@ -615,6 +626,43 @@
                            MultiConstraint
                            AllValues))
 
+(deftype ResultConstraint [assertion]
+  (assert (instance? ValueConstraint assertion))
+
+  Stringable
+  (string-list [_] (list "<ResultConstraint " (str assertion) ">"))
+
+  Constraint
+  (update-var [_ new-var]
+    (ResultConstraint (update-var assertion new-var)))
+
+  (update-sym [_ new-var]
+    (ResultConstraint (update-sym assertion new-var)))
+
+  (extract-type-map [_]
+    (extract-type-map assertion))
+
+  (intersect [rc c]
+    (let [intersected (either (and (instance? ResultConstraint c)
+                                   (maybe (intersect assertion (.assertion c))))
+                              (intersect assertion c))]
+      (either (= bottom-type intersected)
+              (ResultConstraint intersected))))
+
+  Eq
+  (=* [x y]
+    (and (or (and (instance? ResultConstraint y)
+                  (=* assertion (.assertion y)))
+             (=* assertion y))
+         (maybe x))))
+
+(defn intersect-resultconstraint [c rc]
+  (and (instance? ResultConstraint rc)
+       (let [result-constraint (intersect c (.assertion rc))]
+         (or (and (= bottom-type result-constraint)
+                  (maybe (NoValues [c (.assertion rc)])))
+             (maybe (ResultConstraint result-constraint))))))
+
 (def Constraints (comp AllValues
                        NoValues
                        MultiConstraint
@@ -622,12 +670,52 @@
                        ResultConstraint))
 
 (extend-type Constraints
-  Composition
-  (comp* [mc cs]
-    (reduce cs mc intersect)))
+  Constraint
+  (extract-inner-constraint [_]
+    top-type))
+
+(extend-type MultiConstraint
+  Constraint
+  (extract-inner-constraint [c]
+    (either (some (.constraints c) (fn [c]
+                                     (instance? InnerConstraint c)))
+            top-type)))
+
+(extend-type InnerConstraint
+  Constraint
+  (update-path [constraint file-name line-number]
+    (let [file-name (either (and (= file-name 'core)
+                                 (maybe "$TOCCATA_DIR/core.toc"))
+                            file-name)
+          new-path (either (for [[top-file top-line] (first (.path constraint))
+                                 _ (and (= top-line line-number)
+                                        (= top-file file-name))]
+                             (.path constraint))
+                           (cons [file-name line-number] (.path constraint)))]
+      (-> constraint
+          (.inner (update-path (.inner constraint) file-name line-number))
+          (.path new-path))))
+
+  (extract-inner-constraint [c]
+    c))
 
 (extend-type ItemsConstraint
   Constraint
+  (update-path [constraint file-name line-number]
+    (let [file-name (either (and (= file-name 'core)
+                                 (maybe "$TOCCATA_DIR/core.toc"))
+                            file-name)
+          new-path (either (for [[top-file top-line] (first (.path constraint))
+                                 _ (and (= top-line line-number)
+                                        (= top-file file-name))]
+                             (.path constraint))
+                           (cons [file-name line-number] (.path constraint)))]
+      (ItemsConstraint (map (.items-constraints constraint)
+                            (fn [constraints]
+                              (update-path constraints file-name line-number)))
+                       new-path
+                       (.sym constraint) (.var constraint))))
+
   (intersect [ic c]
     (either (or (= ic c)
                 (intersect-multiconstraint ic c)
@@ -644,22 +732,25 @@
                      (maybe (NoValues [ic c]))))
             (intersect (update-var c (.var ic)) ic))))
 
-(defn conflicting-assertions [constraints file-name line-number]
+(defn conflicting-assertions [failing-constraint file-name line-number]
   (apply print-err (list* "Conflicting assertions"
                            (either (= "" file-name)
                                    (str "at " file-name ": " line-number))
                            "\n"
-                           (format-path (MultiConstraint constraints) 0)))
+                           (format-path failing-constraint 0)))
   nothing)
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
   (assert (instance? Constraints y))
 
-  (let [z (comp x y)]
+  (let [z (intersect x y)
+        file-name (either (and (= file-name 'core)
+                               (maybe "$TOCCATA_DIR/core.toc"))
+                          file-name)]
     (either (and (= bottom-type z)
-                 (let [constraints (either (and (< 1 (count (.constraints z)))
-                                                (maybe (.constraints z)))
-                                           [x y])]
-                   (maybe (conflicting-assertions constraints file-name line-number))))
+                 (let [z (either (and (< 1 (count (.constraints z)))
+                                      (maybe z))
+                                 (NoValues [x y]))]
+                   (maybe (conflicting-assertions z file-name line-number))))
             (maybe z))))
