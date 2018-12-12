@@ -470,33 +470,6 @@
 
 (def empty-items-constraint (ItemsConstraint [] empty-list nothing ""))
 
-(extend-type TypeConstraint
-  Constraint
-  (intersect [tc c]
-    (either (or (= tc c)
-                (intersect-multiconstraint tc c)
-                (intersect-resultconstraint tc c)
-                (and (= top-type c)
-                     (maybe tc))
-                (and (= bottom-type c)
-                     (maybe c))
-                (flat-map (extract-type-map c)
-                          (fn [type-map]
-                            (and (empty? (select-keys (.type-maps tc) (keys type-map)))
-                                 (maybe (NoValues [c tc])))))
-                (and (instance? TypeConstraint c)
-                     (let [c-map (.type-maps c)
-                           new-map (filter-keys (.type-maps tc)
-                                                (fn [k]
-                                                  (get c-map k)))]
-                       (maybe (.type-maps tc new-map))))
-                (and (instance? FieldConstraint c)
-                     (let [field (.field c)]
-                       (and (empty? (filter (vals (.type-maps tc)) (fn [fields]
-                                                                     (fields field))))
-                            (maybe (NoValues [tc c]))))))
-            (MultiConstraint [tc (update-var c (.var tc))]))))
-
 (deftype MaxValue [max path sym var]
   (assert (instance? Integer max))
   (assert (instance? List path))
@@ -563,7 +536,7 @@
     path)
 
   (format-path [x desired-len]
-    (format-path* (cons ["Sequence from" ""] path)
+    (format-path* (cons ["Contents restriction from" ""] path)
                   desired-len))
 
   (intersect [ic c]
@@ -594,11 +567,101 @@
                      (maybe (NoValues [ic c]))))
             (intersect (update-var c (.var ic)) ic))))
 
+(deftype ContentsConstraint [constraints path sym var]
+  (assert (instance? Vector constraints))
+  (assert (instance? List path))
+  (assert (instance? Maybe sym))
+  (assert (instance? String var))
+
+  Eq
+  (=* [x y]
+    (and (instance? ContentsConstraint y)
+         (= (count constraints) (count (.constraints y)))
+         (every (.constraints y) (fn [c]
+                                   (some constraints (partial = c))))
+         (maybe x)))
+
+  Stringable
+  (string-list [_]
+    (list "<ContentsConstraint " (str constraints) ", " (str sym) ", " (str (either (first path) "")) ">"))
+
+  Constraint
+  (extract-type-map [_]
+    (let [type-map (comp* {} (map (vec constraints)
+                                  (fn [c]
+                                    (either (extract-type-map c)
+                                            {}))))]
+      (either (and (empty? type-map)
+                   (maybe nothing))
+              (maybe type-map))))
+
+  (assertion-path [_]
+    path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Contents from" ""] path)
+                  desired-len))
+
+  (intersect [cc c]
+    (either (or (= cc c)
+                (intersect-multiconstraint cc (update-var c (.var cc)))
+                (and (instance? InnerConstraint c)
+                     (or (= bottom-type (reduce (.constraints cc) (.inner c)
+                                                (fn [inner y]
+                                                  (either (= bottom-type (intersect inner y))
+                                                          inner))))
+                         (maybe (MultiConstraint [cc (update-var c (.var cc))]))))
+                (and (instance? ItemsConstraint c)
+                     (maybe (MultiConstraint [cc (update-var c (.var cc))])))
+                (and (instance? FieldConstraint c)
+                     (maybe (MultiConstraint [cc (update-var c (.var cc))])))
+                (and (instance? TypeConstraint c)
+                     (maybe (MultiConstraint [cc (update-var c (.var cc))])))
+                (and (instance? MaxValue c)
+                     (maybe (NoValues [cc c])))
+                (and (instance? ContentsConstraint c)
+                     (maybe (.constraints cc
+                                          (comp constraints
+                                                (for [x (.constraints c)
+                                                      :when-not (some constraints (partial = x))]
+                                                  x))))))
+            (intersect (update-var c (.var cc)) cc))))
+
+(extend-type TypeConstraint
+  Constraint
+  (intersect [tc c]
+    (either (or (= tc c)
+                (intersect-multiconstraint tc c)
+                (intersect-resultconstraint tc c)
+                (and (= top-type c)
+                     (maybe tc))
+                (and (= bottom-type c)
+                     (maybe c))
+                (and (instance? ContentsConstraint c)
+                     (maybe (MultiConstraint [tc (update-var c (.var tc))])))
+                (flat-map (extract-type-map c)
+                          (fn [type-map]
+                            (and (empty? (select-keys (.type-maps tc) (keys type-map)))
+                                 (maybe (NoValues [c tc])))))
+                (and (instance? TypeConstraint c)
+                     (let [c-map (.type-maps c)
+                           new-map (filter-keys (.type-maps tc)
+                                                (fn [k]
+                                                  (get c-map k)))]
+                       (maybe (.type-maps tc new-map))))
+                (and (instance? FieldConstraint c)
+                     (let [field (.field c)]
+                       (and (empty? (filter (vals (.type-maps tc)) (fn [fields]
+                                                                     (fields field))))
+                            (maybe (NoValues [tc c]))))))
+            (MultiConstraint [tc (update-var c (.var tc))]))))
+
 (def SymbolConstraints (comp TypeConstraint
                              MaxValue
                              InnerConstraint
                              StaticConstraints
                              ItemsConstraint
+                             ContentsConstraint
                              FieldConstraint))
 
 (extend-type SymbolConstraints
