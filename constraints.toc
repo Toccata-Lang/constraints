@@ -69,7 +69,7 @@
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
-    (list "<NoValues " (str constraints) ">"))
+    (list "<NoValues \n  " (to-str (interpose constraints "\n  ")) ">"))
 
   Constraint
   (intersect [nv _] nv)
@@ -320,14 +320,14 @@
     (either (or (= tc c)
                 (flat-map (extract-type-map c)
                           (fn [type-map]
-                            (or (and (empty? (select-keys (.type-maps tc) (keys type-map)))
+                            (or (and (instance? MultiConstraint c)
+                                     (maybe (intersect c tc)))
+                                (and (empty? (select-keys (.type-maps tc) (keys type-map)))
                                      (maybe (NoValues [c tc])))
                                 (and (instance? TypeConstraint c)
                                      (maybe (.type-maps tc (filter-keys (.type-maps tc)
                                                                         (fn [k]
                                                                           (get type-map k))))))
-                                (and (instance? MultiConstraint c)
-                                     (maybe (conj c tc)))
                                 (maybe (MultiConstraint [tc (update-var c (.var tc))])))))
                 (and (instance? ItemsConstraint c)
                      (maybe (MultiConstraint [tc (update-var c (.var tc))]))))
@@ -429,6 +429,47 @@
                          (instance? FieldConstraint c))
                      (maybe (NoValues [slc c]))))
             (intersect (update-var c (.var slc)) slc))))
+
+(deftype MinValue [min path sym var]
+  (assert (instance? Integer min))
+  (assert (instance? List path))
+  (assert (instance? Maybe sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "<MinValue " (str min) " " (str sym) " '" (str var) "' " (str (either (first path) "")) ">" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? MinValue y)
+         (= min (.min y))
+         (maybe x)))
+
+  Constraint
+  (assertion-path [_]
+    path)
+
+  (extract-type-map [_]
+    (maybe {IntegerType #{}}))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Min value of " min " from") ""] path)
+                  desired-len))
+
+  (intersect [mvc c]
+    (either (or (= mvc c)
+                (and (or (instance? ItemsConstraint c)
+                         (instance? FieldConstraint c))
+                     (maybe (NoValues [mvc c])))
+                (and (instance? MinValue c)
+                     (maybe (.min mvc (either (< min (.min c))
+                                              (.min c)))))
+                (and (instance? StaticIntConstraint c)
+                     (or (and (< min (.val c))
+                              (maybe (NoValues [mvc c])))
+                         (maybe c))))
+            (intersect (update-var c (.var mvc)) mvc))))
 
 (deftype MaxValue [max path sym var]
   (assert (instance? Integer max))
@@ -728,14 +769,14 @@
   Constraint
   (satisfied-by [c info]
     (let [type-map (extract-type-map c)]
-      (or (flat-map type-map
-                    (fn [type-map]
-                      (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
-                                    info)))
-          (and (= nothing type-map)
-               (every (.constraints c)
-                      (fn [inner-c]
-                        (satisfied-by inner-c info)))))))
+      (and (or (= nothing type-map)
+               (flat-map type-map
+                         (fn [type-map]
+                           (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
+                                         info))))
+           (every (.constraints c)
+                  (fn [inner-c]
+                    (satisfied-by inner-c info))))))
 
   (extract-items-constraints [mc]
     (either (-> (.constraints mc)
