@@ -539,6 +539,8 @@
                   desired-len))
 
   (intersect [ic c]
+    ;; TODO: compose InnerConstraints inside MultiConstraint
+    ;; TODO: compose InnerConstraints with each ItemsConstraint
     (either (or (= ic c)
                 (and (or (instance? StaticIntConstraint c)
                          (instance? MaxValue c))
