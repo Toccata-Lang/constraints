@@ -512,20 +512,20 @@
                          (maybe c))))
             (intersect (update-var c (.var mvc)) mvc))))
 
-(deftype InnerConstraint [inner path sym var]
+(deftype InferredInner [inner path sym var]
   (assert (instance? List path))
   (assert (instance? Maybe sym))
   (assert (instance? String var))
 
   Eq
   (=* [x y]
-    (and (instance? InnerConstraint y)
+    (and (instance? InferredInner y)
          (= inner (.inner y))
          (maybe x)))
 
   Stringable
   (string-list [_]
-    (list "<InnerConstraint " (str inner) ", " (str sym) ", " (str (either (first path) "")) ">"))
+    (list "<InferredInner " (str inner) ", " (str sym) ", " (str (either (first path) "")) ">"))
 
   Constraint
   (extract-type-map [_]
@@ -539,13 +539,13 @@
                   desired-len))
 
   (intersect [ic c]
-    ;; TODO: compose InnerConstraints inside MultiConstraint
-    ;; TODO: compose InnerConstraints with each ItemsConstraint
+    ;; TODO: compose InferredInners inside MultiConstraint
+    ;; TODO: compose InferredInners with each ItemsConstraint
     (either (or (= ic c)
                 (and (or (instance? StaticIntConstraint c)
                          (instance? MaxValue c))
                      (maybe (NoValues [ic c])))
-                (and (instance? InnerConstraint c)
+                (and (instance? InferredInner c)
                      (let [new-c (intersect inner (.inner c))]
                        (or (= bottom-type new-c)
                            (maybe (.inner ic new-c)))))
@@ -604,7 +604,7 @@
                      (or (and (< (.length slc) (count (.items-constraints c)))
                               (maybe (NoValues [slc c])))
                          (maybe (MultiConstraint [slc c]))))
-                (and (instance? InnerConstraint c)
+                (and (instance? InferredInner c)
                      (maybe (MultiConstraint [slc c])))
                 (and (or (instance? StaticIntConstraint c)
                          (instance? FieldConstraint c)
@@ -634,7 +634,7 @@
 
   (intersect [slc c]
     (either (or (= slc c)
-                (and (or (instance? InnerConstraint c)
+                (and (or (instance? InferredInner c)
                          (instance? StaticLengthConstraint c))
                      (maybe (MultiConstraint [slc c])))
                 (and (instance? ItemsConstraint c)
@@ -683,7 +683,7 @@
 
   (intersect [cc c]
     (either (or (= cc c)
-                (and (instance? InnerConstraint c)
+                (and (instance? InferredInner c)
                      (or (= bottom-type (reduce (.constraints cc) (.inner c)
                                                 (fn [inner y]
                                                   (either (= bottom-type (intersect inner y))
@@ -708,7 +708,7 @@
 
 (def SymbolConstraints (comp TypeConstraint
                              MaxValue
-                             InnerConstraint
+                             InferredInner
                              StaticConstraints
                              ItemsConstraint
                              ContentsConstraint
@@ -788,10 +788,10 @@
 
   (extract-inner-constraint [c]
     (either (some (.constraints c) (fn [c]
-                                     (instance? InnerConstraint c)))
+                                     (instance? InferredInner c)))
             top-type)))
 
-(extend-type InnerConstraint
+(extend-type InferredInner
   Constraint
   (update-path [constraint file-name line-number]
     (let [file-name (either (and (= file-name 'core)
