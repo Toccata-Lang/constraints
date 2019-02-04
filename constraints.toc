@@ -3,6 +3,8 @@
 (def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ListType};"))
 (def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -1, IntegerType};"))
+(def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -1, StringBufferType};"))
+(def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SubStringType};"))
 (def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SymbolType};"))
 
 (defprotocol Constraint
@@ -629,6 +631,14 @@
          (maybe x)))
 
   Constraint
+  (format-path [x desired-len]
+    (format-path* (cons ["String from" ""] path)
+                  desired-len))
+
+  (extract-type-map [_]
+    (maybe {StringBufferType #{}
+            SubStringType #{}}))
+
   (assertion-path [c]
     (.path c))
 
@@ -647,6 +657,16 @@
                          (instance? StaticStrConstraint c))
                      (maybe (NoValues [slc c]))))
             (intersect (update-var c (.var slc)) slc))))
+
+(extend-type Integer
+  Constraint
+  (intersect [x c]
+    (intersect c (StaticIntConstraint x empty-list nothing ""))))
+
+(extend-type String
+  Constraint
+  (intersect [x c]
+    (intersect c (StaticStrConstraint x empty-list nothing ""))))
 
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
@@ -818,9 +838,6 @@
   nothing)
 
 (defn compose-constraints [file-name line-number x y]
-  (assert (instance? Constraints x))
-  (assert (instance? Constraints y))
-
   (let [z (intersect x y)
         file-name (either (and (= file-name 'core)
                                (maybe "$TOCCATA_DIR/core.toc"))
