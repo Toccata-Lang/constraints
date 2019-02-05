@@ -1,11 +1,22 @@
 
 ;; TODO: don't need this after hash-map literals are properly encoded
-(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ListType};"))
-(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -1, IntegerType};"))
 (def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -1, StringBufferType};"))
 (def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SubStringType};"))
+(def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FnArityType};"))
+(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FunctionType};"))
+(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, MaybeType};"))
+(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ListType};"))
+(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorType};"))
+(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorNodeType};"))
 (def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SymbolType};"))
+(def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -1, BitmapIndexedType};"))
+(def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ArrayNodeType};"))
+(def HashCollisionNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, HashCollisionNodeType};"))
+(def PromiseType (inline C Integer "(Value *)&(Integer){IntegerType, -1, PromiseType};"))
+(def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FutureType};"))
+(def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -1, AgentType};"))
+(def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -1, OpaqueType};"))
 
 (defprotocol Constraint
   (assertion-path [x])
@@ -42,7 +53,6 @@
 
 ;; TODO: constraints to add
 ;; min count (instead of ItemsConstraint)
-;; min value
 ;; keys required in a hash map
 ;; key constraint on hash maps
 
@@ -432,6 +442,27 @@
                      (maybe (NoValues [slc c]))))
             (intersect (update-var c (.var slc)) slc))))
 
+(extend-type Symbol
+  Constraint
+  (assertion-path [_]
+    empty-list)
+
+  (format-path [_ desired-len]
+    (format-path* (list ["Symbol from" ""])
+                  desired-len))
+
+  (extract-type-map [_]
+    (maybe {SymbolType #{}}))
+
+  (intersect [slc c]
+    (either (or (= slc c)
+                (and (instance? Symbol c)
+                     (maybe (NoValues [slc c])))
+                (for [type-map (extract-type-map c)
+                      :when (get type-map SymbolType)]
+                  slc))
+            (NoValues [slc c]))))
+
 (deftype MinValue [min path sym var]
   (assert (instance? Integer min))
   (assert (instance? List path))
@@ -661,12 +692,12 @@
 (extend-type Integer
   Constraint
   (intersect [x c]
-    (intersect c (StaticIntConstraint x empty-list nothing ""))))
+    (intersect (StaticIntConstraint x empty-list nothing "") c)))
 
 (extend-type String
   Constraint
   (intersect [x c]
-    (intersect c (StaticStrConstraint x empty-list nothing ""))))
+    (intersect (StaticStrConstraint x empty-list nothing "") c)))
 
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
