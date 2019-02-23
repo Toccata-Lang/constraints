@@ -81,7 +81,7 @@
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
-    (list "<NoValues \n  " (to-str (interpose constraints "\n  ")) ">"))
+    (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
   (intersect [nv _] nv)
@@ -112,7 +112,7 @@
 (deftype AllValues []
   Stringable
   (string-list [_]
-    (list "<AllValues>"))
+    (list "(AllValues)"))
 
   Eq
   (=* [x y]
@@ -133,7 +133,7 @@
   (assert (instance? Vector constraints))
 
   Stringable
-  (string-list [_] (list "<MultiConstraint \n" (to-str (interpose constraints "\n-- ")) ">"))
+  (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Eq
   (=* [x y]
@@ -219,7 +219,7 @@
   (assert (instance? ValueConstraint assertion))
 
   Stringable
-  (string-list [_] (list "<ResultConstraint " (str assertion) ">"))
+  (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
 
   Constraint
   (update-var [_ new-var]
@@ -245,6 +245,11 @@
              (=* assertion y))
          (maybe x))))
 
+(defn sym-str [s]
+  (either (map s (fn [s]
+                   (str "(maybe '" s ")")))
+          "nothing"))
+
 (deftype ItemsConstraint [items-constraints path sym var]
   (assert (instance? Vector items-constraints))
   (assert (instance? List path))
@@ -263,7 +268,12 @@
 
   Stringable
   (string-list [_]
-    (list "<ItemsConstraint " (str items-constraints) " " (str sym) ">"))
+    (list "(ItemsConstraint [" (to-str (interpose items-constraints "\n"))
+          "]\n(list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" "\")"))
 
   Constraint
   (assertion-path [_]
@@ -301,8 +311,13 @@
 
   Stringable
   (string-list [_]
-    (list "<TypeConstraint " (str type-sym) " " (str type-maps)
-          " " (str sym) " '" (str var) "' " (str (either (first path) "")) ">" ))
+    (list "(TypeConstraint "  (str type-maps) " (list"
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") "
+          (str "'" type-sym) " " (sym-str sym)
+          " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -358,9 +373,12 @@
 
   Stringable
   (string-list [_]
-    (list "<FieldConstraint " (str field) " " (str sym)
-          ;; "\n" (str (interpose path "\n"))
-          ">"))
+    (list "(FieldConstraint (reader/tag \"" (str field) "\") \"" (str field-var) "\" (list"
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym)
+          " \"" (str var) "\")"))
 
   Constraint
   (assertion-path [_]
@@ -415,7 +433,11 @@
 
   Stringable
   (string-list [_]
-    (list "<StaticInt " (str val) ", " (str sym) ", " (str (either (first path) "")) ">"))
+    (list "(StaticIntConstraint " (str val) " (list"
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Eq
   (=* [x y]
@@ -442,27 +464,6 @@
                      (maybe (NoValues [slc c]))))
             (intersect (update-var c (.var slc)) slc))))
 
-(extend-type Symbol
-  Constraint
-  (assertion-path [_]
-    empty-list)
-
-  (format-path [_ desired-len]
-    (format-path* (list ["Symbol from" ""])
-                  desired-len))
-
-  (extract-type-map [_]
-    (maybe {SymbolType #{}}))
-
-  (intersect [slc c]
-    (either (or (= slc c)
-                (and (instance? Symbol c)
-                     (maybe (NoValues [slc c])))
-                (for [type-map (extract-type-map c)
-                      :when (get type-map SymbolType)]
-                  slc))
-            (NoValues [slc c]))))
-
 (deftype MinValue [min path sym var]
   (assert (instance? Integer min))
   (assert (instance? List path))
@@ -471,7 +472,11 @@
 
   Stringable
   (string-list [_]
-    (list "<MinValue " (str min) " " (str sym) " '" (str var) "' " (str (either (first path) "")) ">" ))
+    (list "(MinValue " (str min) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Eq
   (=* [x y]
@@ -489,6 +494,9 @@
   (format-path [x desired-len]
     (format-path* (cons [(str "Min value of " min " from") ""] path)
                   desired-len))
+
+  (update-var [c new-var]
+    (.var c new-var))
 
   (intersect [mvc c]
     (either (or (= mvc c)
@@ -512,7 +520,11 @@
 
   Stringable
   (string-list [_]
-    (list "<MaxValue " (str max) " " (str sym) " '" (str var) "' " (str (either (first path) "")) ">" ))
+    (list "(MaxValue " (str max) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Eq
   (=* [x y]
@@ -558,7 +570,11 @@
 
   Stringable
   (string-list [_]
-    (list "<InferredInner " (str inner) ", " (str sym) ", " (str (either (first path) "")) ">"))
+    (list "(InferredInner " (str inner) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
   (extract-type-map [_]
@@ -572,8 +588,6 @@
                   desired-len))
 
   (intersect [ic c]
-    ;; TODO: compose InferredInners inside MultiConstraint
-    ;; TODO: compose InferredInners with each ItemsConstraint
     (either (or (= ic c)
                 (and (or (instance? StaticIntConstraint c)
                          (instance? MaxValue c))
@@ -615,8 +629,11 @@
 
   Stringable
   (string-list [c]
-    (list "<StaticLengthConstraint " (str (.length c)) " " (str (.sym c)) "\n"
-          (to-str (interpose (seq (.path c)) "\n")) ">"))
+    (list "(StaticLengthConstraint " (str length) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
   (assertion-path [c]
@@ -653,7 +670,11 @@
 
   Stringable
   (string-list [_]
-    (list "<StaticString " (str val) ", " (str sym) ", " (str (either (first path) "")) ">"))
+    (list "(StaticStrConstraint " val " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Eq
   (=* [x y]
@@ -689,6 +710,27 @@
                      (maybe (NoValues [slc c]))))
             (intersect (update-var c (.var slc)) slc))))
 
+(extend-type Symbol
+  Constraint
+  (assertion-path [_]
+    empty-list)
+
+  (format-path [_ desired-len]
+    (format-path* (list ["Symbol from" ""])
+                  desired-len))
+
+  (extract-type-map [_]
+    (maybe {SymbolType #{}}))
+
+  (intersect [slc c]
+    (either (or (= slc c)
+                (and (instance? Symbol c)
+                     (maybe (NoValues [slc c])))
+                (for [type-map (extract-type-map c)
+                      :when (get type-map SymbolType)]
+                  slc))
+            (NoValues [slc c]))))
+
 (extend-type Integer
   Constraint
   (intersect [x c]
@@ -698,6 +740,11 @@
   Constraint
   (intersect [x c]
     (intersect (StaticStrConstraint x empty-list nothing "") c)))
+
+(extend-type Vector
+  Constraint
+  (intersect [v c]
+    (intersect (ItemsConstraint v empty-list nothing "") c)))
 
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
@@ -719,7 +766,11 @@
 
   Stringable
   (string-list [_]
-    (list "<ContentsConstraint " (str constraints) ", " (str sym) ", " (str (either (first path) "")) ">"))
+    (list "(ContentsConstraint [" (to-str (interpose constraints "\n")) "] (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
   (extract-type-map [_]
