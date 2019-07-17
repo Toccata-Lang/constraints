@@ -43,6 +43,8 @@
   (update-sym [tc new-sym]
     (assert (instance? Tagged new-sym)))
 
+  (clear-sym [tc])
+
   (update-var [tc new-var]
     (assert (instance? String new-var)))
 
@@ -85,6 +87,7 @@
 
   Constraint
   (intersect [nv _] nv)
+  (clear-sym [x] x)
   (update-sym [x _] x)
   (update-var [x _] x)
 
@@ -119,6 +122,7 @@
 
   Constraint
   (intersect [_ c] c)
+  (clear-sym [x] x)
   (update-sym [x _] x)
 
   (update-var [x _] x)
@@ -139,6 +143,11 @@
             (fn [type-map c]
               (or (map type-map (partial restrict-types c))
                   (extract-type-map c)))))
+
+  (clear-sym [mc]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (clear-sym c)))))
 
   (update-sym [mc sym]
     (.constraints mc (map (.constraints mc)
@@ -167,14 +176,6 @@
   (assertion-path [c]
     (format-path c 0))
 
-  (update-sym [mc sym]
-    (.constraints mc (map constraints (fn [c]
-                                        (update-sym c sym)))))
-
-  (update-var [mc var]
-    (.constraints mc (map constraints (fn [c]
-                                        (update-var c var)))))
-
   (update-path [mc file-name line-number]
     (.constraints mc (map (.constraints mc)
                           (fn [c]
@@ -189,6 +190,9 @@
   Constraint
   (update-var [_ new-var]
     (ResultConstraint (update-var assertion new-var)))
+
+  (clear-sym [_]
+    (ResultConstraint (clear-sym assertion)))
 
   (update-sym [_ new-var]
     (ResultConstraint (update-sym assertion new-var)))
@@ -694,6 +698,9 @@
                    (maybe constraint))
               (.path constraint new-path))))
 
+  (clear-sym [tc]
+    (.sym tc nothing))
+
   (update-sym [tc new-sym]
     (.sym tc (maybe new-sym)))
 
@@ -748,9 +755,9 @@
     (let [constraints (map (zip-lists (.items-constraints ic) (.items-constraints c))
                            (fn [[c1 c2]]
                              (intersect c1 c2)))]
-      (or (some constraints (fn [c]
-                              (= c bottom-type)))
-          (maybe (.items-constraints ic (vec constraints))))))
+      (either (some constraints (fn [c]
+                                  (= c bottom-type)))
+              (.items-constraints ic (vec constraints)))))
 
   (intersect-fieldc [c fc]
     (NoValues [fc c]))
@@ -819,20 +826,6 @@
                      (either (= mc bottom-type)
                              (intersect mc new-c))))))
 
-  (intersect-typec [c tc]
-    (assert (instance? TypeConstraint tc))
-
-    (maybe (intersect c tc)))
-
-  (conj-multi [c mc]
-    (reduce (.constraints c) mc conj))
-
-  (intersect-multi [c mc]
-    (maybe (reduce (.constraints c) mc
-                   (fn [mc new-c]
-                     (either (= mc bottom-type)
-                             (intersect mc new-c))))))
-
   Constraint
   (intersect [mc c]
     (either (or (intersect-multi c mc)
@@ -843,7 +836,9 @@
                    bottom-type)
                 (and (some (.constraints mc) (partial = c))
                      (maybe mc)))
-            (MultiConstraint (conj (.constraints mc) c))))
+            (do
+              ;; TODO: this blindly adds 'c', which is fine but a little inefficient
+              (MultiConstraint (conj (.constraints mc) c)))))
 
 
   (satisfied-by [c info]
