@@ -205,7 +205,7 @@
                    (str "(maybe '" s ")")))
           "nothing"))
 
-(deftype ItemsConstraint [items-constraints path sym var]
+(deftype ItemsConstraint [items-constraints tail-constraint path sym var]
   (assert (instance? Vector items-constraints))
   (assert (instance? List path))
   (assert (instance? Maybe sym))
@@ -239,7 +239,7 @@
     (format-path* (cons ["Sequence from" ""] path)
                   desired-len)))
 
-(def empty-items-constraint (ItemsConstraint [] empty-list nothing ""))
+(def empty-items-constraint (ItemsConstraint [] top-type empty-list nothing ""))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
   (assert (instance? HashMap type-maps))
@@ -508,7 +508,7 @@
 (extend-type Vector
   Constraint
   (intersect [v c]
-    (intersect (ItemsConstraint v empty-list nothing "") c)))
+    (intersect (ItemsConstraint v top-type empty-list nothing "") c)))
 
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
@@ -782,6 +782,7 @@
       (ItemsConstraint (map (.items-constraints constraint)
                             (fn [constraints]
                               (update-path constraints file-name line-number)))
+                       (update-path (.tail-constraint constraint) file-name line-number)
                        new-path
                        (.sym constraint) (.var constraint)))))
 
