@@ -131,56 +131,6 @@
 (def bottom-type (NoValues []))
 (def top-type (AllValues))
 
-(deftype MultiConstraint [constraints]
-  (assert (instance? Vector constraints))
-
-  Stringable
-  (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
-
-  Constraint
-  (extract-type-map [mc]
-    (reduce (.constraints mc) nothing
-            (fn [type-map c]
-              (or (map type-map (partial restrict-types c))
-                  (extract-type-map c)))))
-
-  (clear-sym [mc]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (clear-sym c)))))
-
-  (update-sym [mc sym]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-sym c sym)))))
-
-  (update-var [mc var]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-var c var)))))
-
-  (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [o]
-                                             (count (.path o))))
-                          n
-                          (fn [max-len path-len]
-                            (either (> max-len path-len)
-                                    path-len)))
-          paths (map constraints (fn [c]
-                                   (format-path c (inc max-len))))]
-      (-> paths
-          (list-zipper empty-list)
-          (map (fn [strs]
-                 (to-str (interpose strs "    ")))))))
-
-  (assertion-path [c]
-    (format-path c 0))
-
-  (update-path [mc file-name line-number]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-path c file-name line-number))))))
-
 (deftype ResultConstraint [assertion]
   (assert (instance? ValueConstraint assertion))
 
@@ -515,7 +465,6 @@
                              StaticIntConstraint))
 
 (deftype CollectionOf [constraints path sym var]
-  (assert (instance? Vector constraints))
   (assert (instance? List path))
   (assert (instance? Maybe sym))
   (assert (instance? String var))
@@ -540,12 +489,63 @@
                   desired-len)))
 
 (def SymbolConstraints (comp TypeConstraint
+                             MinValue
                              MaxValue
                              InferredInner
                              StaticConstraints
                              ItemsConstraint
                              CollectionOf
                              FieldConstraint))
+
+(deftype MultiConstraint [constraints]
+  (assert (instance? Vector constraints))
+
+  Stringable
+  (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
+
+  Constraint
+  (extract-type-map [mc]
+    (reduce (.constraints mc) nothing
+            (fn [type-map c]
+              (or (map type-map (partial restrict-types c))
+                  (extract-type-map c)))))
+
+  (clear-sym [mc]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (clear-sym c)))))
+
+  (update-sym [mc sym]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (update-sym c sym)))))
+
+  (update-var [mc var]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (update-var c var)))))
+
+  (format-path [_ n]
+    (let [max-len (reduce (map constraints (fn [o]
+                                             (count (.path o))))
+                          n
+                          (fn [max-len path-len]
+                            (either (> max-len path-len)
+                                    path-len)))
+          paths (map constraints (fn [c]
+                                   (format-path c (inc max-len))))]
+      (-> paths
+          (list-zipper empty-list)
+          (map (fn [strs]
+                 (to-str (interpose strs "    ")))))))
+
+  (assertion-path [c]
+    (format-path c 0))
+
+  (update-path [mc file-name line-number]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (update-path c file-name line-number))))))
 
 (def ValueConstraint (comp SymbolConstraints
                            MultiConstraint
@@ -574,20 +574,22 @@
 
   (intersect-typec [c tc]
     (assert (instance? TypeConstraint tc))
-    (assert-result r (instance? Maybe r))
+    (assert-result r (instance? Constraints r))
 
-    (flat-map (extract-type-map c)
-              (fn [type-map]
-                (or (and (empty? (select-keys (.type-maps tc) (keys type-map)))
-                         (maybe (NoValues [tc c])))
-                    (maybe (MultiConstraint [tc (update-var c (.var tc))]))))))
+    (either (flat-map (extract-type-map c)
+                      (fn [type-map]
+                        (or (and (empty? (select-keys (.type-maps tc) (keys type-map)))
+                                 (maybe (NoValues [tc c])))
+                            (maybe (MultiConstraint [tc (update-var c (.var tc))])))))
+            (intersect (update-var c (.var tc)) tc)))
 
   (=-contentsc [x y]
     nothing)
 
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (assert (instance? CollectionOf cc))
     (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var cc)) cc))
 
   (=-static-str [y x]
@@ -596,6 +598,7 @@
   (intersect-static-str [c slc]
     (assert (instance? StaticStrConstraint slc))
     (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var slc)) slc))
 
   (=-static-len [y x]
@@ -612,6 +615,8 @@
 
   (intersect-inner [c ic]
     (assert (instance? InferredInner ic))
+    (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var ic)) ic))
 
   (=-max-value [y x]
@@ -620,14 +625,19 @@
 
   (intersect-max-value [c mvc]
     (assert (instance? MaxValue mvc))
+    (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var mvc)) mvc))
 
   (=-min-value [y x]
     (assert (instance? MinValue x))
     nothing)
 
-  (intersect-min [c mvc]
-    (assert (instance? MinValue mvc)))
+  (intersect-min-value [c mvc]
+    (assert (instance? MinValue mvc))
+    (assert-result r (instance? Constraints r))
+
+    (intersect c mvc))
 
   (=-static-int [y x]
     (assert (instance? StaticIntConstraint x))
@@ -649,6 +659,8 @@
 
   (intersect-fieldc [c fc]
     (assert (instance? FieldConstraint fc))
+    (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var fc)) fc))
 
   (=-items-constraint [y x]
@@ -657,11 +669,24 @@
 
   (intersect-itemsc [c ic] 
     (assert (instance? ItemsConstraint ic))
+    (assert-result r (instance? Constraints r))
+
     (intersect (update-var c (.var ic)) ic))
 
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
-    nothing)
+    (assert-result r (instance? Constraints r))
+
+    (either (or (= (reduce (.constraints mc) c
+                           (fn [x y]
+                             (either (= (intersect x y) bottom-type)
+                                     x)))
+                   bottom-type)
+                (and (some (.constraints mc) (partial = c))
+                     (maybe mc)))
+            (do
+              ;; TODO: this blindly adds 'c', which is fine but a little inefficient
+              (MultiConstraint (conj (.constraints mc) c)))))
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))
@@ -677,11 +702,44 @@
 
 (extend-type AllValues
   ConstraintOps
+  (intersect-result [c rc]
+    rc)
+
+  (intersect-typec [c tc]
+    tc)
+
+  (intersect-coll-of [c cc]
+    cc)
+
+  (intersect-static-str [c slc]
+    slc)
+
+  (intersect-static-len [c slc]
+    slc)
+
+  (intersect-inner [c ic]
+    ic)
+
+  (intersect-max-value [c mvc]
+    mvc)
+
+  (intersect-min-value [c mvc]
+    mvc)
+
   (intersect-static-int [c slc]
     slc)
 
+  (intersect-fieldc [c fc]
+    fc)
+
+  (intersect-itemsc [c ic] 
+    ic)
+
+  (intersect-multi [c mc]
+    mc)
+
   (conj-multi [c mc]
-    (maybe c)))
+    (maybe mc)))
 
 (extend-type SymbolConstraints
   Constraint
@@ -713,8 +771,17 @@
     (=-items-constraint y x))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
-    (MultiConstraint [cc (update-var c (.var cc))]))
+  (intersect-coll-of [c cc]
+    (let [coll-c (.constraints cc)]
+      (either (or (= (reduce (.items-constraints c)
+                             top-type
+                             (fn [r c]
+                               (either (= r bottom-type)
+                                       (intersect coll-c c))))
+                     bottom-type)
+                  (= (intersect coll-c (.tail-constraint c))
+                     bottom-type))
+              (MultiConstraint [cc (update-var c (.var cc))]))))
 
   (intersect-static-str [c slc]
     (either (and (< (count slc) (count (.items-constraints c)))
@@ -727,19 +794,19 @@
             (MultiConstraint [slc c])))
 
   (intersect-inner [c ic]
-    (let [constraints (map (.items-constraints c)
-                           (fn [c2]
-                             (intersect (.inner ic) c2)))
-          tail (intersect (.tail-constraint c) ic)]
-      (either (or (some constraints (fn [c]
-                                      (= c bottom-type)))
-                  (= tail bottom-type))
-              (MultiConstraint [ic (update-var c (.var ic))]))))
+    (either (or (-> (.items-constraints c)
+                    (map (fn [c2]
+                           (intersect (.inner ic) c2)))
+                    (some (fn [c]
+                            (= c bottom-type))))
+                (= (intersect (.tail-constraint c) ic)
+                   bottom-type))
+            (MultiConstraint [ic (update-var c (.var ic))])))
 
-    (intersect-typec [c tc]
+  (intersect-typec [c tc]
     (assert (instance? TypeConstraint tc))
 
-    (maybe (MultiConstraint [tc (update-var c (.var tc))])))
+    (MultiConstraint [tc (update-var c (.var tc))]))
 
   (intersect-max-value [c mvc]
     (NoValues [mvc c]))
@@ -784,7 +851,7 @@
   (intersect-fieldc [c fc]
     (NoValues [fc c]))
 
-  (intersect-min [c mvc]
+  (intersect-min-value [c mvc]
     (NoValues [mvc c]))
 
   Constraint
@@ -836,32 +903,20 @@
             (conj c ic)))
 
   (intersect-typec [c tc]
-    (assert (instance? TypeConstraint tc))
-
-    (maybe (intersect c tc)))
+    (intersect c tc))
 
   (conj-multi [c mc]
     (reduce (.constraints c) mc conj))
 
   (intersect-multi [c mc]
-    (maybe (reduce (.constraints c) mc
-                   (fn [mc new-c]
-                     (either (= mc bottom-type)
-                             (intersect mc new-c))))))
+    (reduce (.constraints c) mc
+            (fn [mc new-c]
+              (either (= mc bottom-type)
+                      (intersect mc new-c)))))
 
   Constraint
   (intersect [mc c]
-    (either (or (intersect-multi c mc)
-                (= (reduce (.constraints mc) c
-                           (fn [x y]
-                             (either (= (intersect x y) bottom-type)
-                                     x)))
-                   bottom-type)
-                (and (some (.constraints mc) (partial = c))
-                     (maybe mc)))
-            (do
-              ;; TODO: this blindly adds 'c', which is fine but a little inefficient
-              (MultiConstraint (conj (.constraints mc) c)))))
+    (intersect-multi c mc))
 
 
   (satisfied-by [c info]
@@ -910,11 +965,10 @@
 (extend-type TypeConstraint
   Constraint
   (intersect [tc c]
-    (either (intersect-typec c tc)
-            (intersect (update-var c (.var tc)) tc))) 
+    (intersect-typec c tc)) 
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (.var cc))]))
 
   (intersect-inner [c ic]
@@ -928,19 +982,26 @@
                                        (update-var (.var ic)))]))))
 
   (intersect-fieldc [c fc]
-    (let [field (.field fc)]
-      (either (and (empty? (filter (vals (.type-maps c)) (fn [fields]
-                                                           (fields field))))
+    (let [field (.field fc)
+          new-map (reduce (seq (.type-maps c))
+                          {}
+                          (fn [type-map [type-num fields]]
+                            (either (map (fields field) (fn [_]
+                                                          (assoc type-map type-num fields)))
+                                    type-map)))]
+      (either (and (empty? new-map)
                    (maybe (NoValues [fc c])))
-              (MultiConstraint [fc (update-var c (.var fc))]))))
+              (MultiConstraint [fc (-> c
+                                       (.type-maps new-map)
+                                       (update-var (.var fc)))]))))
 
   (intersect-typec [c tc]
-    (or (= tc c)
-        (and (empty? (select-keys (.type-maps tc) (keys (.type-maps c))))
-             (maybe (NoValues [tc c])))
-        (maybe (.type-maps tc (filter-keys (.type-maps tc)
-                                           (fn [k]
-                                             (get (.type-maps c) k))))))))
+    (either (or (= tc c)
+                (and (empty? (select-keys (.type-maps tc) (keys (.type-maps c))))
+                     (maybe (NoValues [tc c]))))
+            (.type-maps tc (filter-keys (.type-maps tc)
+                                        (fn [k]
+                                          (get (.type-maps c) k)))))))
 
 (extend-type FieldConstraint
   Eq
@@ -955,7 +1016,7 @@
     (intersect-fieldc c fc))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (.var cc))]))
 
   (intersect-static-str [c slc]
@@ -983,7 +1044,7 @@
   (intersect-static-int [c slc]
     (NoValues [slc c]))
 
-  (intersect-min [c mvc]
+  (intersect-min-value [c mvc]
     (NoValues [mvc c])))
 
 (extend-type StaticIntConstraint
@@ -996,7 +1057,7 @@
     (intersect-static-int c slc))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (NoValues [cc c]))
 
   (intersect-static-str [c slc]
@@ -1013,15 +1074,15 @@
          (maybe x)))
 
   (intersect-max-value [c mvc]
-    (and (< (.max mvc) (.val c))
-         (maybe (NoValues [mvc c]))))
+    (either (<= (.val c) (.max mvc))
+            (NoValues [mvc c])))
 
   (intersect-static-int [c slc]
     (either (= slc c)
             (NoValues [slc c])))
 
-  (intersect-min [c mvc]
-    (either (and (< (.min mvc) (.val c))
+  (intersect-min-value [c mvc]
+    (either (and (< (.val c) (.min mvc))
                  (maybe (NoValues [mvc c])))
             c)))
 
@@ -1030,12 +1091,31 @@
   (=* [x y]
     (=-min-value y x))
 
+  Constraint
+  (intersect [mvc c]
+    (print-err 'intersect-min mvc c)
+    (intersect-min-value c mvc))
+
   ConstraintOps
+  (intersect-static-len [c ic]
+    (NoValues [ic c]))
+
+  (intersect-static-str [c ic]
+    (NoValues [ic c]))
+
+  (intersect-inner [c ic]
+    (NoValues [ic c]))
+
+  (intersect-max-value [c mvc]
+    (either (and (<= (.min c) (.max mvc))
+                 (maybe (MultiConstraint [c mvc])))
+            (NoValues [mvc c])))
+
   (=-min-value [y x]
     (and (= (.min y) (.min x))
          (maybe x)))
 
-  (intersect-min [c mvc]
+  (intersect-min-value [c mvc]
     (either (=* c mvc)
             (.min mvc (either (< (.min mvc) (.min c))
                               (.min c))))))
@@ -1066,7 +1146,7 @@
     c)
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (either (= (reduce (.constraints cc) (.inner c)
                        (fn [inner y]
                          (either (= (intersect inner y) bottom-type)
@@ -1075,7 +1155,10 @@
             (MultiConstraint [cc (update-var c (.var cc))])))
 
   (intersect-static-str [c slc]
-    (MultiConstraint [slc c]))
+    (either (= (intersect (.inner c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
+                                                     (.path slc) 'String (.sym slc) (.var slc)))
+               bottom-type)
+            slc))
 
   (intersect-static-len [c slc]
     (MultiConstraint [slc c]))
@@ -1085,10 +1168,9 @@
          (maybe x)))
 
   (intersect-inner [c ic]
-    (either (= ic c)
-            (let [new-c (intersect (.inner ic) (.inner c))]
-              (either (= new-c bottom-type)
-                      (.inner ic new-c))))))
+    (let [new-c (intersect (.inner ic) (.inner c))]
+      (either (= new-c bottom-type)
+              (.inner ic new-c)))))
 
 (extend-type MaxValue
   Eq
@@ -1096,7 +1178,7 @@
     (=-max-value y x))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (NoValues [cc c]))
 
   (intersect-static-str [c slc]
@@ -1113,9 +1195,8 @@
          (maybe x)))
 
   (intersect-max-value [c mvc]
-    (either (= mvc c)
-            (.max mvc (either (< (.max mvc) (.max c))
-                              (.max c)))))
+    (.max mvc (either (< (.max mvc) (.max c))
+                      (.max c))))
 
   Constraint
   (intersect [mvc c]
@@ -1131,7 +1212,7 @@
     (intersect-static-len c slc))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (.var cc))]))
 
   (intersect-static-str [c slc]
@@ -1155,7 +1236,7 @@
     (intersect-static-str c slc)) 
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (NoValues [cc c]))
 
   (=-static-str [y x]
@@ -1173,10 +1254,10 @@
 
   Constraint
   (intersect [cc c]
-    (intersect-contentsc c cc))
+    (intersect-coll-of c cc))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (either (= cc c)
             (.constraints cc
                           (comp (.constraints cc)
@@ -1191,7 +1272,7 @@
          (maybe x)))
 
   ConstraintOps
-  (intersect-contentsc [c cc]
+  (intersect-coll-of [c cc]
     (either (= cc c)
             (.constraints cc
                           (comp (.constraints cc)
