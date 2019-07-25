@@ -218,7 +218,7 @@
   Stringable
   (string-list [_]
     (list "(ItemsConstraint [" (to-str (interpose items-constraints "\n"))
-          "]\n(list "
+          "]\n" (str tail-constraint) "\n(list "
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
@@ -514,7 +514,7 @@
                              StaticStrConstraint
                              StaticIntConstraint))
 
-(deftype ContentsConstraint [constraints path sym var]
+(deftype CollectionOf [constraints path sym var]
   (assert (instance? Vector constraints))
   (assert (instance? List path))
   (assert (instance? Maybe sym))
@@ -522,7 +522,7 @@
 
   Stringable
   (string-list [_]
-    (list "(ContentsConstraint [" (to-str (interpose constraints "\n")) "] (list "
+    (list "(CollectionOf [" (to-str (interpose constraints "\n")) "] (list "
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
@@ -544,7 +544,7 @@
                              InferredInner
                              StaticConstraints
                              ItemsConstraint
-                             ContentsConstraint
+                             CollectionOf
                              FieldConstraint))
 
 (def ValueConstraint (comp SymbolConstraints
@@ -586,7 +586,7 @@
     nothing)
 
   (intersect-contentsc [c cc]
-    (assert (instance? ContentsConstraint cc))
+    (assert (instance? CollectionOf cc))
     (assert-result r (instance? Constraints r))
     (intersect (update-var c (.var cc)) cc))
 
@@ -729,9 +729,11 @@
   (intersect-inner [c ic]
     (let [constraints (map (.items-constraints c)
                            (fn [c2]
-                             (intersect (.inner ic) c2)))]
-      (either (some constraints (fn [c]
-                                  (= c bottom-type)))
+                             (intersect (.inner ic) c2)))
+          tail (intersect (.tail-constraint c) ic)]
+      (either (or (some constraints (fn [c]
+                                      (= c bottom-type)))
+                  (= tail bottom-type))
               (MultiConstraint [ic (update-var c (.var ic))]))))
 
     (intersect-typec [c tc]
@@ -752,12 +754,32 @@
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
-    (let [constraints (map (zip-lists (.items-constraints ic) (.items-constraints c))
+    (let [items-ic (comp (.items-constraints ic)
+                         (extract-items-constraints (.tail-constraint ic)))
+          items-c (comp (.items-constraints c)
+                        (extract-items-constraints (.tail-constraint c)))
+          cnt-ic (count items-ic)
+          cnt-c (count items-c)
+          max-cnt (either (> cnt-ic cnt-c)
+                          cnt-c)
+          inner-tail-ic (extract-inner-constraint (.tail-constraint ic))
+          inner-tail-ic (either (= top-type inner-tail-ic)
+                                (.inner inner-tail-ic))
+          inner-tail-c (extract-inner-constraint (.tail-constraint c))
+          inner-tail-c (either (= top-type inner-tail-c)
+                               (.inner inner-tail-c))
+          items-ic (comp items-ic (repeat (- max-cnt cnt-ic) inner-tail-ic))
+          items-c (comp items-c (repeat (- max-cnt cnt-c) inner-tail-c))
+          constraints (map (zip-lists items-ic items-c)
                            (fn [[c1 c2]]
-                             (intersect c1 c2)))]
-      (either (some constraints (fn [c]
-                                  (= c bottom-type)))
-              (.items-constraints ic (vec constraints)))))
+                             (intersect c1 c2)))
+          new-tail (intersect inner-tail-ic inner-tail-c)]
+      (either (or (some constraints (fn [c]
+                                      (= c bottom-type)))
+                  (= new-tail bottom-type))
+              (-> ic
+                  (.tail-constraint new-tail)
+                  (.items-constraints (vec constraints))))))
 
   (intersect-fieldc [c fc]
     (NoValues [fc c]))
@@ -1144,7 +1166,7 @@
     (either (= slc c)
             (NoValues [slc c]))))
 
-(extend-type ContentsConstraint
+(extend-type CollectionOf
   Eq
   (=* [x y]
     (=-contentsc y x))
