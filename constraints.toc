@@ -17,6 +17,7 @@
 (def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FutureType};"))
 (def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -1, AgentType};"))
 (def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -1, OpaqueType};"))
+(def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -1, HashSetType};"))
 
 (defprotocol Constraint
   (assertion-path [x])
@@ -183,7 +184,8 @@
             VectorType #{}}))
 
   (extract-items-constraints [_]
-    items-constraints)
+    (comp items-constraints
+          (extract-items-constraints tail-constraint)))
 
   (format-path [x desired-len]
     (format-path* (cons ["Sequence from" ""] path)
@@ -418,8 +420,7 @@
                   desired-len))
 
   (extract-type-map [_]
-    (maybe {StringBufferType #{}
-            SubStringType #{}}))
+    (maybe {StringBufferType #{}}))
 
   (assertion-path [c]
     (.path c)))
@@ -471,13 +472,19 @@
 
   Stringable
   (string-list [_]
-    (list "(CollectionOf [" (to-str (interpose constraints "\n")) "] (list "
+    (list "(CollectionOf " (str constraints) " (list "
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (update-var [c new-var]
+    (.var c new-var))
+
+  (update-sym [c new-sym]
+    (.sym c new-sym))
+
   (extract-type-map [_]
     nothing)
 
@@ -968,8 +975,11 @@
     (intersect-typec c tc)) 
 
   ConstraintOps
-  (intersect-coll-of [c cc]
-    (MultiConstraint [cc (update-var c (.var cc))]))
+  (intersect-coll-of [tc c]
+    (either (for [type-map (extract-type-map c)
+                  _ (empty? (select-keys (.type-maps tc) (keys type-map)))]
+              (maybe (NoValues [tc c])))
+            (MultiConstraint [c (update-var tc (.var c))])))
 
   (intersect-inner [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
@@ -1017,7 +1027,9 @@
 
   ConstraintOps
   (intersect-coll-of [c cc]
-    (MultiConstraint [cc (update-var c (.var cc))]))
+    (either (and (= (.field c) '.set-map)
+                 (maybe (MultiConstraint [cc (update-var c (.var cc))])))
+            (NoValues [cc c])))
 
   (intersect-static-str [c slc]
     (NoValues [slc c]))
@@ -1147,10 +1159,7 @@
 
   ConstraintOps
   (intersect-coll-of [c cc]
-    (either (= (reduce (.constraints cc) (.inner c)
-                       (fn [inner y]
-                         (either (= (intersect inner y) bottom-type)
-                                 inner)))
+    (either (= (intersect (.constraints cc) (.inner c))
                bottom-type)
             (MultiConstraint [cc (update-var c (.var cc))])))
 
@@ -1253,32 +1262,45 @@
     (=-contentsc y x))
 
   Constraint
+  (update-path [constraint file-name line-number]
+    (let [file-name (either (and (= file-name 'core)
+                                 (maybe "$TOCCATA_DIR/core.toc"))
+                            file-name)
+          new-path (either (for [[top-file top-line] (first (.path constraint))
+                                 _ (and (= top-line line-number)
+                                        (= top-file file-name))]
+                             (.path constraint))
+                           (cons [file-name line-number] (.path constraint)))]
+      (CollectionOf (update-path (.constraints constraint) file-name line-number)
+                    new-path
+                    (.sym constraint) (.var constraint))))
+
+  
+  (extract-type-map [c]
+    (maybe {ListType #{}
+            MaybeType #{}
+            BitmapIndexedType #{}
+            ArrayNodeType #{}
+            HashCollisionNodeType #{}
+            PromiseType #{}
+            HashSetType #{'set-map}
+            FutureType #{}
+            AgentType #{}
+            VectorType #{}}))
+
   (intersect [cc c]
     (intersect-coll-of c cc))
 
   ConstraintOps
   (intersect-coll-of [c cc]
     (either (= cc c)
-            (.constraints cc
-                          (comp (.constraints cc)
-                                (for [x (.constraints c)
-                                      :when-not (some (.constraints cc) (partial = x))]
-                                  x)))))
+            (let [contents (intersect (.constraints cc) (.constraints c))]
+              (either (= contents bottom-type)
+                      (.constraints cc contents)))))
 
   (=-contentsc [x y]
-    (and (= (count (.constraints x)) (count (.constraints y)))
-         (every (.constraints y) (fn [c]
-                                   (some (.constraints x) (partial = c))))
-         (maybe x)))
-
-  ConstraintOps
-  (intersect-coll-of [c cc]
-    (either (= cc c)
-            (.constraints cc
-                          (comp (.constraints cc)
-                                (for [x (.constraints c)
-                                      :when-not (some (.constraints cc) (partial = x))]
-                                  x))))))
+    (and (= (.constraints x) (.constraints y))
+         (maybe x))))
 
 (defn conflicting-assertions [failing-constraint file-name line-number]
   (apply print-err (list* "Conflicting assertions"
