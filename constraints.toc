@@ -822,15 +822,14 @@
 
   (=-items-constraint [y x]
     (and (= (.items-constraints y) (.items-constraints x))
+         (= (.tail-constraint y) (.tail-constraint x))
          (maybe x)))
 
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
-    (let [items-ic (comp (.items-constraints ic)
-                         (extract-items-constraints (.tail-constraint ic)))
-          items-c (comp (.items-constraints c)
-                        (extract-items-constraints (.tail-constraint c)))
+    (let [items-ic (extract-items-constraints ic)
+          items-c (extract-items-constraints c)
           cnt-ic (count items-ic)
           cnt-c (count items-c)
           max-cnt (either (> cnt-ic cnt-c)
@@ -942,7 +941,7 @@
   (extract-items-constraints [mc]
     (either (-> (.constraints mc)
                 (some (partial instance? ItemsConstraint))
-                (map .items-constraints))
+                (map extract-items-constraints))
             []))
 
   (extract-inner-constraint [c]
