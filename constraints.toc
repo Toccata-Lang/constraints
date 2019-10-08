@@ -1,23 +1,42 @@
 
-;; TODO: don't need this after hash-map literals are properly encoded
-(def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -1, IntegerType};"))
-(def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -1, StringBufferType};"))
-(def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SubStringType};"))
-(def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FnArityType};"))
-(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FunctionType};"))
-(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, MaybeType};"))
-(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ListType};"))
-(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorType};"))
-(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, VectorNodeType};"))
-(def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -1, SymbolType};"))
-(def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -1, BitmapIndexedType};"))
-(def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, ArrayNodeType};"))
-(def HashCollisionNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -1, HashCollisionNodeType};"))
-(def PromiseType (inline C Integer "(Value *)&(Integer){IntegerType, -1, PromiseType};"))
-(def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -1, FutureType};"))
-(def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -1, AgentType};"))
-(def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -1, OpaqueType};"))
-(def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -1, HashSetType};"))
+(def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
+(def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
+(def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
+(def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
+(def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
+(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
+(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaybeType};"))
+(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
+(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
+(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
+(def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SymbolType};"))
+(def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -2, BitmapIndexedType};"))
+(def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ArrayNodeType};"))
+(def HashCollisionNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashCollisionNodeType};"))
+(def PromiseType (inline C Integer "(Value *)&(Integer){IntegerType, -2, PromiseType};"))
+(def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FutureType};"))
+(def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AgentType};"))
+(def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, OpaqueType};"))
+(def TypeConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeConstraintType};"))
+(def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
+(def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
+(def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
+(def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
+(def ItemsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ItemsConstraintType};"))
+(def FieldConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FieldConstraintType};"))
+(def StaticIntConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticIntConstraintType};"))
+(def MinValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MinValueType};"))
+(def MaxValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaxValueType};"))
+(def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
+(def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
+    StaticLengthConstraintType};"))
+(def StaticStrConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticStrConstraintType};"))
+(def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
+(def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
+(def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
+(def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
+
+(def default-extract-items-constraints)
 
 (defprotocol Constraint
   (assertion-path [x])
@@ -35,6 +54,12 @@
   (extract-items-constraints [_]
     (assert-result r (instance? Vector r))
     [])
+
+  (extract-items-constraints [c n]
+    (assert (instance? Integer n))
+    (assert-result r (instance? Vector r))
+
+    (default-extract-items-constraints c n))
 
   (extract-coll-type [_])
 
@@ -133,7 +158,16 @@
   (extract-type-map [_] nothing))
 
 (def bottom-type (NoValues []))
+
 (def top-type (AllValues))
+
+(defn default-extract-items-constraints [c n]
+  (assert (instance? Integer n))
+  (assert-result r (instance? Vector r))
+
+  (take (comp (extract-items-constraints c)
+              (repeat n top-type))
+        n))
 
 (deftype ResultConstraint [assertion]
   (assert (instance? ValueConstraint assertion))
@@ -175,6 +209,14 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
+  (extract-items-constraints [c n]
+    (either (and (<= n 0)
+                 (maybe []))
+            (take (comp items-constraints
+                        (extract-items-constraints tail-constraint (- n (count items-constraints)))
+                        (repeat n top-type))
+                  n)))
+
   (assertion-path [_]
     path)
   
@@ -203,7 +245,12 @@
   (string-list [_]
     (list "(TypeConstraint "  (str type-maps) " (list"
           (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
+                                      (let [f (str f)]
+                                        (str "[\"" (either (map (> (count f) 15)
+                                                                (fn [len]
+                                                                  (subs f (- len 15))))
+                                                           f)
+                                             "\" " l "]"))))
                   "")
           ") "
           (str "'" type-sym) " " (sym-str sym)
@@ -211,7 +258,8 @@
 
   Eq
   (=* [x y]
-    (for [y-maps (get y .type-maps)
+    (for [_ (instance? TypeConstraint y)
+          y-maps (get y .type-maps)
           _ (= type-maps y-maps)]
       x))
 
@@ -240,7 +288,7 @@
 
   Stringable
   (string-list [_]
-    (list "(FieldConstraint (reader/tag \"" (str field) "\") \"" (str field-var) "\" (list"
+    (list "(FieldConstraint (symbol \"" (str field) "\") \"" (str field-var) "\" (list"
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
@@ -362,6 +410,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (extract-items-constraints [c n]
+    (vec (repeat n inner)))
+
   (extract-type-map [_]
     nothing)
 
@@ -419,7 +470,8 @@
                   desired-len))
 
   (extract-type-map [_]
-    (maybe {StringBufferType #{}}))
+    (maybe {StringBufferType #{}
+            SubStringType #{}}))
 
   (assertion-path [c]
     (.path c)))
@@ -1318,10 +1370,7 @@
   (assert (instance? Constraints x))
   (assert (instance? Constraints y))
 
-  (let [z (intersect x y)
-        file-name (either (and (= file-name 'core)
-                               (maybe "$TOCCATA_DIR/core.toc"))
-                          file-name)]
+  (let [z (intersect x y)]
     (either (and (= bottom-type z)
                  (let [z (either 
                           (and (flat-map (get z .constraints)
