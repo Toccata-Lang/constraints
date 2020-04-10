@@ -34,6 +34,7 @@
 (def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
 (def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
+(def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 (def default-extract-items-constraints)
@@ -67,6 +68,10 @@
 
   (update-path [constraint file-name line-number]
     constraint)
+
+  (extract-sym [tc]
+    (assert-result r (instance? Maybe r))
+    nothing)
 
   (update-sym [tc new-sym]
     (assert (instance? Tagged new-sym)))
@@ -219,7 +224,7 @@
 
   (assertion-path [_]
     path)
-  
+
   (extract-type-map [_]
     (maybe {ListType #{}
             VectorType #{}}))
@@ -562,6 +567,9 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (extract-sym [c]
+    (some constraints extract-sym))
+
   (extract-type-map [mc]
     (reduce (.constraints mc) nothing
             (fn [type-map c]
@@ -725,7 +733,7 @@
     (assert (instance? ItemsConstraint x))
     nothing)
 
-  (intersect-itemsc [c ic] 
+  (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
     (assert-result r (instance? Constraints r))
 
@@ -790,7 +798,7 @@
   (intersect-fieldc [c fc]
     fc)
 
-  (intersect-itemsc [c ic] 
+  (intersect-itemsc [c ic]
     ic)
 
   (intersect-multi [c mc]
@@ -801,9 +809,12 @@
 
 (extend-type SymbolConstraints
   Constraint
+  (extract-sym [c]
+    (.sym c))
+
   (extract-coll-type [_]
     top-type)
-  
+
   (update-path [constraint file-name line-number]
     (let [new-path (either (for [[top-file top-line] (first (.path constraint))
                                  _ (and (= top-line line-number)
@@ -978,7 +989,7 @@
   (extract-coll-type [mc]
     (either (some (.constraints mc) (partial instance? CollectionOf))
             top-type))
-  
+
   (satisfied-by [c info]
     (let [type-map (extract-type-map c)]
       (and (or (= nothing type-map)
@@ -1025,7 +1036,7 @@
 (extend-type TypeConstraint
   Constraint
   (intersect [tc c]
-    (intersect-typec c tc)) 
+    (intersect-typec c tc))
 
   ConstraintOps
   (intersect-coll-of [tc c]
@@ -1070,7 +1081,7 @@
   Eq
   (=* [x y]
     (=-field-constraint y x))
-  
+
   Constraint
   (satisfied-by [c info]
     (fieldc-satisfied info c))
@@ -1295,7 +1306,7 @@
 
   Constraint
   (intersect [slc c]
-    (intersect-static-str c slc)) 
+    (intersect-static-str c slc))
 
   ConstraintOps
   (intersect-coll-of [c cc]
@@ -1331,7 +1342,7 @@
                     new-path
                     (.sym constraint) (.var constraint))))
 
-  
+
   (extract-type-map [c]
     (maybe {ListType #{}
             MaybeType #{}
@@ -1372,11 +1383,11 @@
 
   (let [z (intersect x y)]
     (either (and (= bottom-type z)
-                 (let [z (either 
+                 (let [z (either
                           (and (flat-map (get z .constraints)
                                          (fn [constraints]
                                            (< 1 (count constraints))))
                                (maybe z))
                           (NoValues [x y]))]
                    (maybe (conflicting-assertions z file-name line-number))))
-            (maybe z)))) 
+            (maybe z))))
