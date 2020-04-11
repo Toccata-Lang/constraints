@@ -78,8 +78,9 @@
 
   (clear-sym [tc])
 
-  (update-var [tc new-var]
-    (assert (instance? String new-var)))
+  (extract-var [c])
+
+  (update-var [c new-var])
 
   (satisfied-by [c info]
     (assert-result r (instance? Maybe r))
@@ -144,10 +145,10 @@
     (and (=* (get-type x) (get-type y))
          (maybe x))))
 
-(deftype AllValues []
+(deftype AllValues [var]
   Stringable
   (string-list [_]
-    (list "(AllValues)"))
+    (list "(AllValues " (str var) ")"))
 
   Eq
   (=* [x y]
@@ -158,13 +159,14 @@
   (intersect [_ c] c)
   (clear-sym [x] x)
   (update-sym [x _] x)
-  (update-var [x _] x)
+  (extract-var [_] var)
+  (update-var [x v] (AllValues v))
   (extract-coll-type [x] x)
   (extract-type-map [_] nothing))
 
 (def bottom-type (NoValues []))
 
-(def top-type (AllValues))
+(def top-type (AllValues ""))
 
 (defn default-extract-items-constraints [c n]
   (assert (instance? Integer n))
@@ -567,6 +569,14 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (extract-var [_]
+    (either (some constraints (fn [c]
+                                (let [var (extract-var c)]
+                                  (or (and (= "" var)
+                                           nothing)
+                                      (maybe var)))))
+            ""))
+
   (extract-sym [c]
     (some constraints extract-sym))
 
@@ -812,6 +822,9 @@
   (extract-sym [c]
     (.sym c))
 
+  (extract-var [c]
+    (.var c))
+
   (extract-coll-type [_]
     top-type)
 
@@ -846,7 +859,9 @@
                              top-type
                              (fn [r c]
                                (either (= r bottom-type)
-                                       (intersect coll-c c))))
+                                       (-> coll-c
+                                           (intersect c)
+                                           (update-var (extract-var c))))))
                      bottom-type)
                   (= (intersect coll-c (.tail-constraint c))
                      bottom-type))
@@ -1002,10 +1017,23 @@
                     (satisfied-by inner-c info))))))
 
   (extract-items-constraints [mc]
-    (either (-> (.constraints mc)
-                (some (partial instance? ItemsConstraint))
-                (map extract-items-constraints))
-            []))
+    (let [coll-c (either (-> (.constraints mc)
+                             (some (partial instance? CollectionOf))
+                             (map .constraints))
+                         top-type)]
+      (either (-> (.constraints mc)
+                  (some (partial instance? ItemsConstraint))
+                  (map (fn [ic]
+                         (-> (extract-items-constraints ic)
+                             (map (fn [c]
+                                    (-> c
+                                        (intersect (extract-inner-constraint mc))
+                                        (update-var (extract-var c)))))
+                             (map (fn [c]
+                                    (-> c
+                                        (intersect coll-c)
+                                        (update-var (extract-var c)))))))))
+              [])))
 
   (extract-inner-constraint [c]
     (either (some (.constraints c) (fn [c]
@@ -1043,7 +1071,7 @@
     (either (for [type-map (extract-type-map c)
                   _ (empty? (select-keys (.type-maps tc) (keys type-map)))]
               (maybe (NoValues [tc c])))
-            (MultiConstraint [c (update-var tc (.var c))])))
+            (MultiConstraint [c (update-var tc (extract-var c))])))
 
   (intersect-inner [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
@@ -1223,9 +1251,12 @@
 
   ConstraintOps
   (intersect-coll-of [c cc]
-    (either (= (intersect (.constraints cc) (.inner c))
-               bottom-type)
-            (MultiConstraint [cc (update-var c (.var cc))])))
+    (let [new-inner (intersect (.constraints cc) (.inner c))]
+      (either (= new-inner bottom-type)
+              (MultiConstraint [(.constraints cc new-inner)
+                                (-> c
+                                    (.inner new-inner)
+                                    (update-var (.var cc)))]))))
 
   (intersect-static-str [c slc]
     (either (= (intersect (.inner c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
