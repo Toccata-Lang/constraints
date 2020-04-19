@@ -753,11 +753,15 @@
     (assert (instance? MultiConstraint mc))
     (assert-result r (instance? Constraints r))
 
-    (either (or (= (reduce (.constraints mc) c
-                           (fn [x y]
-                             (either (= (intersect x y) bottom-type)
-                                     x)))
-                   bottom-type)
+    (either (or (for [c-map (extract-type-map c)
+                      mc-map (extract-type-map mc)
+                      _ (empty? (select-keys c-map (keys mc-map)))]
+                  (NoValues [mc c]))
+                (= (reduce (.constraints mc) c
+                              (fn [x y]
+                                (either (= (intersect x y) bottom-type)
+                                        x)))
+                      bottom-type)
                 (and (some (.constraints mc) (partial = c))
                      (maybe mc)))
             (do
@@ -1068,10 +1072,7 @@
 
   ConstraintOps
   (intersect-coll-of [tc c]
-    (either (for [type-map (extract-type-map c)
-                  _ (empty? (select-keys (.type-maps tc) (keys type-map)))]
-              (maybe (NoValues [tc c])))
-            (MultiConstraint [c (update-var tc (extract-var c))])))
+    (MultiConstraint [c (update-var tc (extract-var c))]))
 
   (intersect-inner [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
