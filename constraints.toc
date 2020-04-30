@@ -100,57 +100,33 @@
   (assert (instance? List path))
   (assert (instance? Integer desired-len))
 
-  (either (empty? path)
-          (let [path (-> path
-                         (remove (fn [[file line]]
-                                   (either (and (instance? Symbol file)
-                                                (maybe nothing))
-                                           (or (empty? file)
-                                               (= 0 line)))))
-                         (map (fn [[file line]]
-                                (str file ": " line))))
-                max-width (reduce path 0 (fn [max s]
-                                           (let [n (count s)]
-                                             (either (> max n)
-                                                     n))))
-                path (either (and (< (count path) desired-len)
-                                  (maybe (comp path (repeat (- desired-len (count path))
-                                                            (spaces max-width)))))
-                             path)]
-            (map path
-                 (fn [x]
-                   (str x (spaces (- max-width (count x)))))))))
-
-(deftype NoValues [constraints]
-  Stringable
-  (string-list [_]
-    (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
-
-  Constraint
-  (intersect [nv _] nv)
-  (clear-sym [x] x)
-  (update-sym [x _] x)
-  (update-var [x _] x)
-  (extract-coll-type [x] x)
-
-  (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [c] (count (assertion-path c))))
-                          n
-                          (fn [max-len path-len]
-                            (either (> max-len path-len)
-                                    path-len)))
-          paths (map constraints (fn [c]
-                                   (format-path c (inc max-len))))]
-      (-> paths
-          (list-zipper empty-list)
-          (map (fn [strs]
-                 (str (to-str (interpose strs "    "))
-                      "\n"))))))
-
-  Eq
-  (=* [x y]
-    (and (=* (get-type x) (get-type y))
-         (maybe x))))
+  (either (map (first path)
+               (fn [[header]]
+                 (let [path (-> (rest path)
+                                (remove (fn [[file line]]
+                                          (either (and (instance? Symbol file)
+                                                       (maybe nothing))
+                                                  (or (empty? file)
+                                                      (= 0 line)))))
+                                (map (fn [[file line]]
+                                       (let [file (str file)]
+                                         (str (either (map (> (count file) 30)
+                                                           (fn [len]
+                                                             (subs file (- len 15))))
+                                                      file)
+                                              ": " line)))))
+                       max-width (reduce path 0 (fn [max s]
+                                                  (let [n (count s)]
+                                                    (either (> max n)
+                                                            n))))
+                       path (either (and (< (count path) desired-len)
+                                         (maybe (comp path (repeat (- desired-len (count path))
+                                                                   (spaces max-width)))))
+                                    path)]
+                   (map (cons header path)
+                        (fn [x]
+                          (str x (spaces (- max-width (count x)))))))))
+          path))
 
 (deftype AllValues [var]
   Stringable
@@ -170,8 +146,6 @@
   (update-var [x v] (AllValues v))
   (extract-coll-type [x] x)
   (extract-type-map [_] nothing))
-
-(def bottom-type (NoValues []))
 
 (def top-type (AllValues ""))
 
@@ -207,8 +181,73 @@
                    (str "(maybe '" s ")")))
           "nothing"))
 
+;; InferredInner is a weaker version of CollectionOf
+(deftype InferredInner [inner path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? (maybe-of Symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(InferredInner " (str inner) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Constraint
+  (extract-items-constraints [c n]
+    (vec (repeat n inner)))
+
+  (extract-type-map [_]
+    nothing)
+
+  (assertion-path [_]
+    path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Contents restriction from" ""] path)
+                  desired-len)))
+
+;; CollectionOf is a stronger version of InferredInner
+(deftype CollectionOf [constraints path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? (maybe-of Symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(CollectionOf " (str constraints) " (list "
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Constraint
+  (update-var [c new-var]
+    (.var c new-var))
+
+  (update-sym [c new-sym]
+    (.sym c new-sym))
+
+  (extract-type-map [_]
+    nothing)
+
+  (assertion-path [_]
+    path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Contents from" ""] path)
+                  desired-len)))
+
+(def coll-of-any (CollectionOf top-type empty-list nothing ""))
+
 (deftype ItemsConstraint [items-constraints tail-constraint path sym var]
   (assert (instance? Vector items-constraints))
+  (assert (instance? (any-of ItemsConstraint
+                             CollectionOf
+                             InferredInner)
+                     tail-constraint))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
@@ -245,8 +284,6 @@
   (format-path [x desired-len]
     (format-path* (cons ["Sequence from" ""] path)
                   desired-len)))
-
-(def empty-items-constraint (ItemsConstraint [] top-type empty-list nothing ""))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
   (assert (instance? HashMap type-maps))
@@ -304,7 +341,12 @@
   (string-list [_]
     (list "(FieldConstraint (symbol \"" (str field) "\") \"" (str field-var) "\" (list"
           (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
+                                      (let [f (str f)]
+                                        (str "[\"" (either (map (> (count f) 15)
+                                                                (fn [len]
+                                                                  (subs f (- len 15))))
+                                                           f)
+                                             "\" " l "]"))))
                   "")
           ") " (sym-str sym)
           " \"" (str var) "\")"))
@@ -410,34 +452,6 @@
     (format-path* (cons [(str "Max value of " max " from") ""] path)
                   desired-len)))
 
-;; InferredInner is a weaker version of CollectionOf
-(deftype InferredInner [inner path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(InferredInner " (str inner) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (extract-items-constraints [c n]
-    (vec (repeat n inner)))
-
-  (extract-type-map [_]
-    nothing)
-
-  (assertion-path [_]
-    path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Contents restriction from" ""] path)
-                  desired-len)))
-
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
   (assert (instance? (list-of Vector) path))
@@ -491,27 +505,6 @@
   (assertion-path [c]
     path))
 
-(extend-type Symbol
-  Constraint
-  (assertion-path [_]
-    empty-list)
-
-  (format-path [_ desired-len]
-    (format-path* (list ["Symbol from" ""])
-                  desired-len))
-
-  (extract-type-map [_]
-    (maybe {SymbolType #{}}))
-
-  (intersect [slc c]
-    (either (or (= slc c)
-                (and (instance? Symbol c)
-                     (maybe (NoValues [slc c])))
-                (for [type-map (extract-type-map c)
-                      :when (get type-map SymbolType)]
-                  slc))
-            (NoValues [slc c]))))
-
 (extend-type Integer
   Constraint
   (intersect [x c]
@@ -525,42 +518,11 @@
 (extend-type Vector
   Constraint
   (intersect [v c]
-    (intersect (ItemsConstraint v top-type empty-list nothing "") c)))
+    (intersect (ItemsConstraint v coll-of-any empty-list nothing "") c)))
 
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
                              StaticIntConstraint))
-
-;; CollectionOf is a stronger version of InferredInner
-(deftype CollectionOf [constraints path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(CollectionOf " (str constraints) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (update-var [c new-var]
-    (.var c new-var))
-
-  (update-sym [c new-sym]
-    (.sym c new-sym))
-
-  (extract-type-map [_]
-    nothing)
-
-  (assertion-path [_]
-    path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Contents from" ""] path)
-                  desired-len)))
 
 ;; TODO: implement =*
 (deftype SumConstraint [alts path sym var]
@@ -633,6 +595,67 @@
                              CollectionOf
                              FieldConstraint
                              SumConstraint))
+
+(deftype NoValues [constraints]
+  (assert (instance? (vector-of (any-of SymbolConstraints
+                                        Symbol))
+                     constraints))
+
+  Stringable
+  (string-list [_]
+    (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
+
+  Constraint
+  (intersect [nv _] nv)
+  (clear-sym [x] x)
+  (update-sym [x _] x)
+  (update-var [x _] x)
+  (extract-coll-type [x] x)
+
+  (format-path [_ n]
+    (let [max-len (reduce (map constraints (fn [c] (count (assertion-path c))))
+                          n
+                          (fn [max-len path-len]
+                            (either (> max-len path-len)
+                                    path-len)))
+          paths (map constraints (fn [c]
+                                   (format-path c (inc max-len))))]
+      (-> paths
+          (list-zipper empty-list)
+          (map (fn [strs]
+                 (str (to-str (interpose strs "    "))
+                      "\n"))))))
+
+  Eq
+  (=* [x y]
+    (and (=* (get-type x) (get-type y))
+         (or (and (empty? constraints)
+                  (maybe y))
+             (maybe x)))))
+
+;; TODO: this should throw an assertion error because of the empty vector
+(def bottom-type (NoValues []))
+
+(extend-type Symbol
+  Constraint
+  (assertion-path [_]
+    empty-list)
+
+  (format-path [_ desired-len]
+    (format-path* (list ["Symbol from" ""])
+                  desired-len))
+
+  (extract-type-map [_]
+    (maybe {SymbolType #{}}))
+
+  (intersect [slc c]
+    (either (or (= slc c)
+                (and (instance? Symbol c)
+                     (maybe (NoValues [slc c])))
+                (for [type-map (extract-type-map c)
+                      :when (get type-map SymbolType)]
+                  slc))
+            (NoValues [slc c]))))
 
 (deftype MultiConstraint [constraints]
   (assert (instance? (vector-of SymbolConstraints) constraints))
@@ -833,7 +856,7 @@
 (extend-type NoValues
   ConstraintOps
   (conj-multi [c mc]
-    (maybe mc)))
+    (maybe c)))
 
 (extend-type AllValues
   ConstraintOps
@@ -914,20 +937,12 @@
     (assert (instance? MultiConstraint mc))
     (assert-result r (instance? Constraints r))
 
-    (either (or (for [c-map (extract-type-map c)
-                      mc-map (extract-type-map mc)
-                      _ (empty? (select-keys c-map (keys mc-map)))]
-                  (NoValues [mc c]))
-                (= (reduce (.constraints mc) c
-                           (fn [x y]
-                             (either (= (intersect x y) bottom-type)
-                                     x)))
-                   bottom-type)
+    (either (or (-> (.constraints mc)
+                    (map (partial intersect c))
+                    (some (partial instance? NoValues)))
                 (and (some (.constraints mc) (partial = c))
                      (maybe mc)))
-            (do
-              ;; TODO: this blindly adds 'c', which is fine but a little inefficient
-              (MultiConstraint (conj (.constraints mc) c)))))
+            (conj mc c)))
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))
@@ -1005,24 +1020,16 @@
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
-    (let [items-ic (extract-items-constraints ic)
-          items-c (extract-items-constraints c)
-          cnt-ic (count items-ic)
-          cnt-c (count items-c)
+    (let [cnt-ic (count (.items-constraints ic))
+          cnt-c (count (.items-constraints c))
           max-cnt (either (> cnt-ic cnt-c)
                           cnt-c)
-          inner-tail-ic (-> (.tail-constraint ic)
-                            extract-inner-constraint
-                            extract-contents-constraint)
-          inner-tail-c (-> (.tail-constraint c)
-                            extract-inner-constraint
-                            extract-contents-constraint)
-          items-ic (comp items-ic (repeat (- max-cnt cnt-ic) inner-tail-ic))
-          items-c (comp items-c (repeat (- max-cnt cnt-c) inner-tail-c))
-          constraints (map (zip-lists items-ic items-c)
+          constraints (map (zip-lists (extract-items-constraints ic max-cnt)
+                                      (extract-items-constraints c max-cnt))
                            (fn [[c1 c2]]
                              (intersect c1 c2)))
-          new-tail (intersect inner-tail-ic inner-tail-c)]
+          new-tail (intersect (.tail-constraint ic)
+                              (.tail-constraint c))]
       (either (or (some constraints (fn [c]
                                       (= c bottom-type)))
                   (= new-tail bottom-type))
@@ -1081,6 +1088,14 @@
     ;; TODO: this is just wrong. Order doesn't matter
     (and (= (.constraints x) (.constraints y))
          (maybe x)))
+
+  (intersect-sum [c sc]
+    (either (= (reduce (.constraints c) sc
+                       (fn [x y]
+                         (either (= (intersect x y) bottom-type)
+                                 x)))
+               bottom-type)
+            (conj c sc)))
 
   (intersect-inner [c ic]
     (either (= (reduce (.constraints c) ic
@@ -1172,15 +1187,17 @@
     (intersect-typec c tc))
 
   ConstraintOps
+  (conj-multi [c mc]
+    (intersect-multi c mc))
+
   (intersect-multi [c mc]
     (let [new-c (-> (.constraints mc)
                     (filter (partial instance? TypeConstraint))
                     (reduce c intersect))]
       (either (= new-c bottom-type)
-              (-> mc
-                  (.constraints (remove (.constraints mc)
-                                        (partial instance? TypeConstraint)))
-                  (conj new-c)))))
+              (.constraints mc (conj (remove (.constraints mc)
+                                             (partial instance? TypeConstraint))
+                                     new-c)))))
 
   (intersect-coll-of [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
@@ -1374,12 +1391,14 @@
 
   ConstraintOps
   (intersect-multi [c mc]
-    (-> mc
-        (.constraints (remove (.constraints mc)
-                              (partial instance? InferredInner)))
-        (conj (-> (.constraints mc)
+    (let [new-c (-> (.constraints mc)
                   (filter (partial instance? InferredInner))
-                  (reduce c intersect)))))
+                  (reduce c intersect))]
+      (either (= new-c bottom-type)
+              (-> mc
+                  (.constraints (remove (.constraints mc)
+                                        (partial instance? InferredInner)))
+                  (conj new-c)))))
 
   (intersect-coll-of [c cc]
     (let [new-inner (intersect (.constraints cc) (.inner c))]
@@ -1485,6 +1504,9 @@
     (=-contentsc y x))
 
   Constraint
+  (extract-inner-constraint [c]
+    c)
+
   (extract-contents-constraint [c]
     (.constraints c))
 
@@ -1522,12 +1544,14 @@
 
   ConstraintOps
   (intersect-multi [c mc]
-    (-> mc
-        (.constraints (remove (.constraints mc)
-                              (partial instance? CollectionOf)))
-        (conj (-> (.constraints mc)
-                  (filter (partial instance? CollectionOf))
-                  (reduce c intersect)))))
+    (let [inters (map (.constraints mc) (partial intersect c))]
+      (either (some inters (partial instance? NoValues))
+              (-> mc
+                  (.constraints (remove (.constraints mc)
+                                        (partial instance? CollectionOf)))
+                  (conj (-> (.constraints mc)
+                            (filter (partial instance? CollectionOf))
+                            (reduce c intersect)))))))
 
   (intersect-static-str [c slc]
     (either (= (intersect (.constraints c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
@@ -1730,3 +1754,5 @@
                           (NoValues [x y]))]
                    (maybe (conflicting-assertions z file-name line-number))))
             (maybe z))))
+
+(def empty-items-constraint (ItemsConstraint [] coll-of-any empty-list nothing ""))
