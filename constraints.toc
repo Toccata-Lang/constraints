@@ -1,45 +1,7 @@
 
-(def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
-(def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
-(def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
-(def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
-(def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
-(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
-(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaybeType};"))
-(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
-(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
-(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
-(def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SymbolType};"))
-(def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -2, BitmapIndexedType};"))
-(def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ArrayNodeType};"))
-(def HashCollisionNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashCollisionNodeType};"))
-(def PromiseType (inline C Integer "(Value *)&(Integer){IntegerType, -2, PromiseType};"))
-(def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FutureType};"))
-(def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AgentType};"))
-(def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, OpaqueType};"))
-(def TypeConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeConstraintType};"))
-(def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
-(def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
-(def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
-(def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
-(def ItemsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ItemsConstraintType};"))
-(def FieldConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FieldConstraintType};"))
-(def StaticIntConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticIntConstraintType};"))
-(def MinValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MinValueType};"))
-(def MaxValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaxValueType};"))
-(def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
-(def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
-    StaticLengthConstraintType};"))
-(def StaticStrConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticStrConstraintType};"))
-(def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
-(def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
-(def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
-(def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
-(def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
-(def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
-
 (def default-extract-items-constraints)
 
+;; Public interface for Constraints
 (defprotocol Constraint
   (assertion-path [x])
 
@@ -90,6 +52,45 @@
     (assert-result r (instance? Maybe r))
     ;; TODO: the whole idea behind this function is suspect
     nothing))
+
+(def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
+(def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
+(def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
+(def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
+(def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
+(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
+(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaybeType};"))
+(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
+(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
+(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
+(def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SymbolType};"))
+(def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -2, BitmapIndexedType};"))
+(def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ArrayNodeType};"))
+(def HashCollisionNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashCollisionNodeType};"))
+(def PromiseType (inline C Integer "(Value *)&(Integer){IntegerType, -2, PromiseType};"))
+(def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FutureType};"))
+(def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AgentType};"))
+(def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, OpaqueType};"))
+(def TypeConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeConstraintType};"))
+(def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
+(def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
+(def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
+(def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
+(def ItemsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ItemsConstraintType};"))
+(def FieldConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FieldConstraintType};"))
+(def StaticIntConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticIntConstraintType};"))
+(def MinValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MinValueType};"))
+(def MaxValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaxValueType};"))
+(def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
+(def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
+    StaticLengthConstraintType};"))
+(def StaticStrConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticStrConstraintType};"))
+(def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
+(def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
+(def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
+(def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
+(def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
+(def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: constraints to add
 ;; min count (instead of ItemsConstraint)
@@ -157,31 +158,13 @@
               (repeat n top-type))
         n))
 
-(deftype ResultConstraint [assertion]
-  (assert (instance? ValueConstraint assertion))
-
-  Stringable
-  (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
-
-  Constraint
-  (update-var [_ new-var]
-    (ResultConstraint (update-var assertion new-var)))
-
-  (clear-sym [_]
-    (ResultConstraint (clear-sym assertion)))
-
-  (update-sym [_ new-var]
-    (ResultConstraint (update-sym assertion new-var)))
-
-  (extract-type-map [_]
-    (extract-type-map assertion)))
-
 (defn sym-str [s]
   (either (map s (fn [s]
                    (str "(maybe '" s ")")))
           "nothing"))
 
 ;; InferredInner is a weaker version of CollectionOf
+;; TODO: change 'inner' to 'contents'
 (deftype InferredInner [inner path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
@@ -210,6 +193,7 @@
                   desired-len)))
 
 ;; CollectionOf is a stronger version of InferredInner
+;; TODO: change 'constraints' to 'contents'
 (deftype CollectionOf [constraints path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
@@ -286,7 +270,7 @@
                   desired-len)))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
-  (assert (instance? HashMap type-maps))
+  (assert (instance? (map-of Integer HashSet) type-maps))
   (assert (instance? (list-of Vector) path))
   (assert (instance? Tagged type-sym))
   (assert (instance? (maybe-of Symbol) sym))
@@ -329,6 +313,7 @@
   (assert (instance? Tagged field))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
+  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -498,21 +483,6 @@
   (assertion-path [c]
     path))
 
-(extend-type Integer
-  Constraint
-  (intersect [x c]
-    (intersect (StaticIntConstraint x empty-list nothing "") c)))
-
-(extend-type String
-  Constraint
-  (intersect [x c]
-    (intersect (StaticStrConstraint x empty-list nothing "") c)))
-
-(extend-type Vector
-  Constraint
-  (intersect [v c]
-    (intersect (ItemsConstraint v coll-of-any empty-list nothing "") c)))
-
 (def StaticConstraints (comp StaticLengthConstraint
                              StaticStrConstraint
                              StaticIntConstraint))
@@ -581,12 +551,12 @@
 
 (defn sum-type [cs]
   (either (or (and (empty? cs)
-                   (maybe c/top-type))
-              (some cs (partial = c/top-type)))
+                   (maybe top-type))
+              (some cs (partial = top-type)))
           (let [new-cs (reduce cs []
                                (fn [new-cs curr]
                                  (either (and (some new-cs (fn [c]
-                                                             (= c (c/intersect c curr))))
+                                                             (= c (intersect c curr))))
                                               (maybe new-cs))
                                          (conj new-cs curr))))]
             (either (and (= 1 (count new-cs))
@@ -642,6 +612,21 @@
 
 ;; TODO: this should throw an assertion error because of the empty vector
 (def bottom-type (NoValues []))
+
+(extend-type Integer
+  Constraint
+  (intersect [x c]
+    (intersect (StaticIntConstraint x empty-list nothing "") c)))
+
+(extend-type String
+  Constraint
+  (intersect [x c]
+    (intersect (StaticStrConstraint x empty-list nothing "") c)))
+
+(extend-type Vector
+  Constraint
+  (intersect [v c]
+    (intersect (ItemsConstraint v coll-of-any empty-list nothing "") c)))
 
 (extend-type Symbol
   Constraint
@@ -729,12 +714,32 @@
                            MultiConstraint
                            AllValues))
 
+(deftype ResultConstraint [assertion]
+  (assert (instance? ValueConstraint assertion))
+
+  Stringable
+  (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
+
+  Constraint
+  (update-var [_ new-var]
+    (ResultConstraint (update-var assertion new-var)))
+
+  (clear-sym [_]
+    (ResultConstraint (clear-sym assertion)))
+
+  (update-sym [_ new-var]
+    (ResultConstraint (update-sym assertion new-var)))
+
+  (extract-type-map [_]
+    (extract-type-map assertion)))
+
 (def Constraints (comp AllValues
                        NoValues
                        MultiConstraint
                        SymbolConstraints
                        ResultConstraint))
 
+;; private operations on Constraints
 (defprotocol ConstraintOps
   (sum-satisfies [info c]
     (assert (instance? ValueConstraint info))
@@ -873,45 +878,19 @@
 
 (extend-type AllValues
   ConstraintOps
-  (intersect-sum [c sc]
-    sc)
-
-  (intersect-result [c rc]
-    rc)
-
-  (intersect-typec [c tc]
-    tc)
-
-  (intersect-coll-of [c cc]
-    cc)
-
-  (intersect-static-str [c slc]
-    slc)
-
-  (intersect-static-len [c slc]
-    slc)
-
-  (intersect-inner [c ic]
-    ic)
-
-  (intersect-max-value [c mvc]
-    mvc)
-
-  (intersect-min-value [c mvc]
-    mvc)
-
-  (intersect-static-int [c slc]
-    slc)
-
-  (intersect-fieldc [c fc]
-    fc)
-
-  (intersect-itemsc [c ic]
-    ic)
-
-  (intersect-multi [c mc]
-    mc)
-
+  (intersect-sum [c sc] sc) 
+  (intersect-result [c rc] rc) 
+  (intersect-typec [c tc] tc) 
+  (intersect-coll-of [c cc] cc) 
+  (intersect-static-str [c slc] slc) 
+  (intersect-static-len [c slc] slc) 
+  (intersect-inner [c ic] ic) 
+  (intersect-max-value [c mvc] mvc) 
+  (intersect-min-value [c mvc] mvc) 
+  (intersect-static-int [c slc] slc) 
+  (intersect-fieldc [c fc] fc) 
+  (intersect-itemsc [c ic] ic) 
+  (intersect-multi [c mc] mc) 
   (conj-multi [c mc]
     (maybe mc)))
 
@@ -974,6 +953,14 @@
                                  (maybe (NoValues [tc c])))
                             (maybe (MultiConstraint [tc (update-var c (.var tc))])))))
             (intersect (update-var c (.var tc)) tc))))
+
+(extend-type Constraints
+  Constraint
+  (extract-contents-constraint [_]
+    top-type)
+
+  (extract-inner-constraint [_]
+    top-type))
 
 (extend-type ItemsConstraint
   Eq
@@ -1077,14 +1064,6 @@
                        new-path
                        (.sym constraint) (.var constraint)))))
 
-(extend-type Constraints
-  Constraint
-  (extract-contents-constraint [_]
-    top-type)
-
-  (extract-inner-constraint [_]
-    top-type))
-
 (extend-type MultiConstraint
   Eq
   (=* [x y]
@@ -1098,8 +1077,11 @@
 
   ConstraintOps
   (=-multi [y x]
-    ;; TODO: this is just wrong. Order doesn't matter
-    (and (= (.constraints x) (.constraints y))
+    (and (every (.constraints x)
+                (fn [x]
+                  (some (.constraints y)
+                        (fn [y]
+                          (= x y)))))
          (maybe x)))
 
   (intersect-sum [c sc]
