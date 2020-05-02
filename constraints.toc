@@ -317,13 +317,6 @@
   Constraint
   (assertion-path [_] path)
 
-  (satisfied-by [c info]
-    (flat-map (extract-type-map info)
-              (fn [value-type-map]
-                (and (< 0 (count value-type-map))
-                     (every (keys value-type-map)
-                            (partial get type-maps))))))
-
   (extract-type-map [_]
     (maybe type-maps))
 
@@ -586,6 +579,20 @@
     (some alts (fn [c]
                  (satisfied-by c info)))))
 
+(defn sum-type [cs]
+  (either (or (and (empty? cs)
+                   (maybe c/top-type))
+              (some cs (partial = c/top-type)))
+          (let [new-cs (reduce cs []
+                               (fn [new-cs curr]
+                                 (either (and (some new-cs (fn [c]
+                                                             (= c (c/intersect c curr))))
+                                              (maybe new-cs))
+                                         (conj new-cs curr))))]
+            (either (and (= 1 (count new-cs))
+                         (first new-cs))
+                    (SumConstraint new-cs empty-list nothing "")))))
+
 (def SymbolConstraints (comp TypeConstraint
                              MinValue
                              MaxValue
@@ -729,6 +736,12 @@
                        ResultConstraint))
 
 (defprotocol ConstraintOps
+  (sum-satisfies [info c]
+    (assert (instance? ValueConstraint info))
+    (assert (instance? ValueConstraint c))
+
+    nothing)
+
   (=-multi [y x]
     (assert (instance? MultiConstraint x))
     (assert-result r (instance? Maybe r))
@@ -1121,21 +1134,30 @@
   (intersect [mc c]
     (intersect-multi c mc))
 
+  (extract-contents-constraint [mc]
+    (-> (.constraints mc)
+        (filter (fn [c]
+                  (or (instance? CollectionOf c)
+                      (instance? InferredInner c))))
+        (map extract-contents-constraint)
+        (reduce top-type intersect)))
+
   (extract-coll-type [mc]
     (-> (.constraints mc)
         (filter (partial instance? CollectionOf))
         (reduce top-type intersect)))
 
   (satisfied-by [c info]
-    (let [type-map (extract-type-map c)]
-      (and (or (= nothing type-map)
-               (flat-map type-map
-                         (fn [type-map]
-                           (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
-                                         info))))
-           (every (.constraints c)
-                  (fn [inner-c]
-                    (satisfied-by inner-c info))))))
+    (or (sum-satisfies info c)
+        (let [type-map (extract-type-map c)]
+          (and (or (= nothing type-map)
+                   (flat-map type-map
+                             (fn [type-map]
+                               (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
+                                             info))))
+               (every (.constraints c)
+                      (fn [inner-c]
+                        (satisfied-by inner-c info)))))))
 
   (extract-items-constraints [mc]
     (let [coll-c (-> mc
@@ -1186,6 +1208,13 @@
   (intersect [tc c]
     (intersect-typec c tc))
 
+  (satisfied-by [c info]
+    (or (sum-satisfies info c)
+        (flat-map (extract-type-map info)
+                  (fn [value-type-map]
+                    (and (< 0 (count value-type-map))
+                         (every (keys value-type-map)
+                                (partial get (.type-maps c))))))))
   ConstraintOps
   (conj-multi [c mc]
     (intersect-multi c mc))
@@ -1248,7 +1277,8 @@
 
   Constraint
   (satisfied-by [c info]
-    (fieldc-satisfied info c))
+    (or (sum-satisfies info c)
+        (fieldc-satisfied info c)))
 
   (intersect [fc c]
     (intersect-fieldc c fc))
@@ -1577,6 +1607,17 @@
     (intersect-sum c sc))
 
   ConstraintOps
+  (sum-satisfies [info c]
+    (and (instance? SumConstraint c)
+         (do
+           ;; TODO: need to implement this
+           (print-err 'sum-satisfies-sum)
+           (abort)))
+
+    (every (.alts info)
+           (fn [part-c]
+             (satisfied-by c part-c))))
+
   (intersect-sum [c1 c2]
     (let [new-alts (for [a1 (.alts c1)
                          a2 (.alts c2)
