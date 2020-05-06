@@ -14,13 +14,18 @@
     type-map)
 
   (extract-type-map [_]
-    (assert-result r (instance? Maybe r)))
+    (assert-result r (instance? (maybe-of HashMap) r))
+    ;; TODO: put back in eventually
+    ;; (assert-result r (instance? (maybe-of (map-of Integer HashSet)) r))
+    )
 
   (extract-items-constraints [_]
     (assert-result r (instance? Vector r))
     [])
 
   (extract-contents-constraint [_])
+
+  (extract-key-constraint [_])
 
   (extract-items-constraints [c n]
     (assert (instance? Integer n))
@@ -483,9 +488,9 @@
   (assertion-path [c]
     path))
 
-(def StaticConstraints (comp StaticLengthConstraint
-                             StaticStrConstraint
-                             StaticIntConstraint))
+(def StaticConstraints (any-of StaticLengthConstraint
+                               StaticStrConstraint
+                               StaticIntConstraint))
 
 ;; TODO: implement =*
 (deftype SumConstraint [alts path sym var]
@@ -502,7 +507,6 @@
     path)
 
   (format-path [_ n]
-    (print-err 'sum-format-path)
     (format-path* (cons ["Sum Type from" ""] path)
                   n))
 
@@ -510,7 +514,8 @@
     (reduce alts nothing (fn [m c]
                            (let [c-m (extract-type-map c)]
                              (or (apply (maybe comp) [m c-m])
-                                 c-m)))))
+                                 c-m
+                                 m)))))
 
   (extract-items-constraints [_]
     [])
@@ -523,7 +528,6 @@
     (abort))
 
   (update-path [constraint file-name line-number]
-    (print-err 'sum-update-path file-name line-number)
     (-> constraint
         (.path (cons [file-name line-number] path))
         (.alts (map alts
@@ -563,15 +567,60 @@
                          (first new-cs))
                     (SumConstraint new-cs empty-list nothing "")))))
 
-(def SymbolConstraints (comp TypeConstraint
-                             MinValue
-                             MaxValue
-                             InferredInner
-                             StaticConstraints
-                             ItemsConstraint
-                             CollectionOf
-                             FieldConstraint
-                             SumConstraint))
+(deftype KeysConstraint [constraint path sym var]
+  Stringable
+  (string-list [_]
+    (list (str "(SumConstraint " (str constraint) " "
+               (str path) " " (either (map sym str) 'nothing) ")")))
+
+  Constraint
+  (extract-key-constraint [c]
+    c)
+
+  (assertion-path [x]
+    path)
+
+  (format-path [x n]
+    (format-path* (cons ["Key Type from" ""] path)
+                  n))
+
+  (extract-type-map [_]
+    (maybe {BitmapIndexedType #{}
+            ArrayNodeType #{}
+            HashCollisionNodeType #{}}))
+
+  (update-path [c file-name line-number]
+    (.path c (cons [file-name line-number] path)))
+
+  (extract-sym [tc]
+    (maybe sym))
+
+  (update-sym [tc new-sym]
+    (.sym tc (maybe new-sym)))
+
+  (clear-sym [tc]
+    (.sym tc nothing))
+
+  (extract-var [c]
+    var)
+
+  (update-var [c new-var]
+    (.var c new-var))
+
+  (satisfied-by [c info]
+    (and (instance? KeysConstraint info)
+         (satisfied-by (.constraint c) (.constraint info)))))
+
+(def SymbolConstraints (any-of TypeConstraint
+                               MinValue
+                               MaxValue
+                               InferredInner
+                               StaticConstraints
+                               ItemsConstraint
+                               CollectionOf
+                               FieldConstraint
+                               SumConstraint
+                               KeysConstraint))
 
 (deftype NoValues [constraints]
   (assert (instance? (vector-of (any-of SymbolConstraints
@@ -710,9 +759,9 @@
                           (fn [c]
                             (update-path c file-name line-number))))))
 
-(def ValueConstraint (comp SymbolConstraints
-                           MultiConstraint
-                           AllValues))
+(def ValueConstraint (any-of SymbolConstraints
+                             MultiConstraint
+                             AllValues))
 
 (deftype ResultConstraint [assertion]
   (assert (instance? ValueConstraint assertion))
@@ -733,14 +782,18 @@
   (extract-type-map [_]
     (extract-type-map assertion)))
 
-(def Constraints (comp AllValues
-                       NoValues
-                       MultiConstraint
-                       SymbolConstraints
-                       ResultConstraint))
+(def Constraints (any-of AllValues
+                         NoValues
+                         MultiConstraint
+                         SymbolConstraints
+                         ResultConstraint))
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
+  (intersect-keyc [c kc]
+    (assert (instance? KeysConstraint kc))
+    (intersect (update-var c (.var kc)) kc))
+
   (sum-satisfies [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? ValueConstraint c))
@@ -866,7 +919,17 @@
 
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r)))
+    (assert-result r (instance? Constraints r))
+
+    ;; TODO: possible model for default impl
+    ;; (let [new-c (-> (.constraints mc)
+    ;;                  (filter (partial instance? KeysConstraint))
+    ;;                  (reduce c intersect))]
+    ;;    (either (= new-c bottom-type)
+    ;;            (.constraints mc (conj (remove (.constraints mc)
+    ;;                                           (partial instance? KeysConstraint))
+    ;;                                   new-c))))
+    )
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
@@ -874,7 +937,10 @@
 (extend-type NoValues
   ConstraintOps
   (conj-multi [c mc]
-    (maybe c)))
+    (maybe c))
+
+  (intersect-typec [c _]
+    c))
 
 (extend-type AllValues
   ConstraintOps
@@ -956,6 +1022,9 @@
 
 (extend-type Constraints
   Constraint
+  (extract-key-constraint [_]
+    top-type)
+
   (extract-contents-constraint [_]
     top-type)
 
@@ -1115,6 +1184,11 @@
   Constraint
   (intersect [mc c]
     (intersect-multi c mc))
+
+  (extract-key-constraint [mc]
+    (-> (.constraints mc)
+        (filter (partial instance? KeysConstraint))
+        (reduce top-type intersect)))
 
   (extract-contents-constraint [mc]
     (-> (.constraints mc)
@@ -1614,146 +1688,97 @@
                    (maybe (NoValues [c1 c2])))
               (.alts c1 new-alts)))))
 
-  ;; (intersect-typec [c tc]
-  ;;   (assert (instance? TypeConstraint tc))
-  ;;   (assert-result r (instance? Constraints r))
+(extend-type KeysConstraint
+  Constraint
+  (intersect [sc c]
+    (intersect-keyc c sc))
 
-  ;;   (either (flat-map (extract-type-map c)
-  ;;                     (fn [type-map]
-  ;;                       (or (and (empty? (select-keys (.type-maps tc) (keys type-map)))
-  ;;                                (maybe (NoValues [tc c])))
-  ;;                           (maybe (MultiConstraint [tc (update-var c (.var tc))])))))
-  ;;           (intersect (update-var c (.var tc)) tc)))
+  ConstraintOps
+  (intersect-keyc [c1 c2]
+    (let [new-c (intersect (.constraint c1) (.constraint c2))]
+      (either (= new-c bottom-type)
+              (.constraint c1 new-c))))
 
- ;; (=-multi [y x]
- ;;   (assert (instance? MultiConstraint x))
- ;;   (assert-result r (instance? Maybe r))
+  (intersect-coll-of [c cc]
+    (assert (instance? CollectionOf cc))
+    (assert-result r (instance? Constraints r))
 
- ;;   nothing)
+    (MultiConstraint [(update-var c (.var cc)) cc]))
 
- ;; (intersect-result [c rc]
- ;;   (assert (instance? ResultConstraint rc))
- ;;   nothing)
+  (intersect-static-str [c slc]
+    (assert (instance? StaticStrConstraint slc))
+    (assert-result r (instance? Constraints r))
 
- ;; (=-result-constraint [y x]
- ;;   (assert (instance? ResultConstraint x))
- ;;   nothing)
+    (NoValues [(update-var c (.var slc)) slc]))
 
- ;; (=-contentsc [x y]
- ;;   nothing)
+  (intersect-static-len [c slc]
+    (assert (instance? StaticLengthConstraint slc))
+    (assert-result r (instance? Constraints r))
 
- ;; (intersect-coll-of [c cc]
- ;;   (assert (instance? CollectionOf cc))
- ;;   (assert-result r (instance? Constraints r))
+    (MultiConstraint [(update-var c (.var slc)) slc]))
 
- ;;   (intersect (update-var c (.var cc)) cc))
+  (intersect-sum [c cs]
+    (assert (instance? SumConstraint cs))
 
- ;; (=-static-str [y x]
- ;;   nothing)
+    (let [inters (map (.alts cs) (partial intersect c))
+          goods (remove inters (partial instance? NoValues))]
+      (either (and (empty? goods)
+                   (maybe (NoValues [c cs])))
+              (.alts cs goods))))
 
- ;; (intersect-static-str [c slc]
- ;;   (assert (instance? StaticStrConstraint slc))
- ;;   (assert-result r (instance? Constraints r))
+  (intersect-inner [c ic]
+    (assert (instance? InferredInner ic))
+    (assert-result r (instance? Constraints r))
 
- ;;   (intersect (update-var c (.var slc)) slc))
+    (MultiConstraint [(update-var c (.var ic)) ic]))
 
- ;; (=-static-len [y x]
- ;;   nothing)
+  (intersect-max-value [c mvc]
+    (assert (instance? MaxValue mvc))
+    (assert-result r (instance? Constraints r))
 
- ;; (intersect-static-len [c slc]
- ;;   (assert (instance? StaticLengthConstraint slc))
- ;;   (assert-result r (instance? Constraints r))
+    (NoValues [(update-var c (.var mvc)) mvc]))
 
- ;;   (intersect (update-var c (.var slc)) slc))
+  (intersect-min-value [c mvc]
+    (assert (instance? MinValue mvc))
+    (assert-result r (instance? Constraints r))
 
- ;; (=-inferred-inner [y x]
- ;;   nothing)
+    (NoValues [(update-var c (.var mvc)) mvc]))
 
- ;; (intersect-inner [c ic]
- ;;   (assert (instance? InferredInner ic))
- ;;   (assert-result r (instance? Constraints r))
+  (intersect-static-int [c slc]
+    (assert (instance? StaticIntConstraint slc))
 
- ;;   (intersect (update-var c (.var ic)) ic))
+    (NoValues [(update-var c (.var slc)) slc]))
 
- ;; (=-max-value [y x]
- ;;   (assert (instance? MaxValue x))
- ;;   nothing)
+  (fieldc-satisfied [info c]
+    (assert (instance? FieldConstraint c))
+    nothing)
 
- ;; (intersect-max-value [c mvc]
- ;;   (assert (instance? MaxValue mvc))
- ;;   (assert-result r (instance? Constraints r))
+  (intersect-fieldc [c fc]
+    (assert (instance? FieldConstraint fc))
+    (assert-result r (instance? Constraints r))
 
- ;;   (intersect (update-var c (.var mvc)) mvc))
+    (NoValues [(update-var c (.var fc)) fc]))
 
- ;; (=-min-value [y x]
- ;;   (assert (instance? MinValue x))
- ;;   nothing)
+  (intersect-itemsc [c ic]
+    (assert (instance? ItemsConstraint ic))
+    (assert-result r (instance? Constraints r))
 
- ;; (intersect-min-value [c mvc]
- ;;   (assert (instance? MinValue mvc))
- ;;   (assert-result r (instance? Constraints r))
+    (NoValues [(update-var c (.var ic)) ic]))
 
- ;;   (intersect c mvc))
+  (intersect-multi [c mc]
+    (assert (instance? MultiConstraint mc))
+    (assert-result r (instance? Constraints r))
 
- ;; (=-static-int [y x]
- ;;   (assert (instance? StaticIntConstraint x))
- ;;   nothing)
+    (let [new-c (-> (.constraints mc)
+                    (filter (partial instance? KeysConstraint))
+                    (reduce c intersect))]
+      (either (= new-c bottom-type)
+              (.constraints mc (conj (remove (.constraints mc)
+                                             (partial instance? KeysConstraint))
+                                     new-c)))))
 
- ;; (intersect-static-int [c slc]
- ;;   (assert (instance? StaticIntConstraint slc))
- ;;   (intersect (update-var c (.var slc)) slc))
-
- ;; (=-field-constraint [y x]
- ;;   (assert (instance? FieldConstraint x))
- ;;   nothing)
-
- ;; (fieldc-satisfied [info c]
- ;;   (assert (instance? FieldConstraint c))
- ;;   (flat-map (extract-type-map info)
- ;;             (fn [type-map]
- ;;               (first (seq (restrict-types c type-map))))))
-
- ;; (intersect-fieldc [c fc]
- ;;   (assert (instance? FieldConstraint fc))
- ;;   (assert-result r (instance? Constraints r))
-
- ;;   (intersect (update-var c (.var fc)) fc))
-
- ;; (=-items-constraint [y x]
- ;;   (assert (instance? ItemsConstraint x))
- ;;   nothing)
-
- ;; (intersect-itemsc [c ic]
- ;;   (assert (instance? ItemsConstraint ic))
- ;;   (assert-result r (instance? Constraints r))
-
- ;;   (intersect (update-var c (.var ic)) ic))
-
- ;; (intersect-multi [c mc]
- ;;   (assert (instance? MultiConstraint mc))
- ;;   (assert-result r (instance? Constraints r))
-
- ;;   (either (or (for [c-map (extract-type-map c)
- ;;                     mc-map (extract-type-map mc)
- ;;                     _ (empty? (select-keys c-map (keys mc-map)))]
- ;;                 (NoValues [mc c]))
- ;;               (= (reduce (.constraints mc) c
- ;;                          (fn [x y]
- ;;                            (either (= (intersect x y) bottom-type)
- ;;                                    x)))
- ;;                  bottom-type)
- ;;               (and (some (.constraints mc) (partial = c))
- ;;                    (maybe mc)))
- ;;           (do
- ;;             ;; TODO: this blindly adds 'c', which is fine but a little inefficient
- ;;             (MultiConstraint (conj (.constraints mc) c)))))
-
- ;;  (conj-multi [c mc]
- ;;   (assert (instance? MultiConstraint mc))
-
- ;;   (either (and (some (.constraints mc) (partial = c))
- ;;                (maybe c))
- ;;           (MultiConstraint (conj (.constraints mc) c))))
+  (conj-multi [c mc]
+    (intersect-multi c mc)))
 
 (defn conflicting-assertions [failing-constraint file-name line-number]
   (apply print-err (list* "Conflicting assertions"
