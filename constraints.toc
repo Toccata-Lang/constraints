@@ -42,10 +42,11 @@
 
   (extract-sym [tc]
     (assert-result r (instance? Maybe r))
+
     nothing)
 
   (update-sym [tc new-sym]
-    (assert (instance? Tagged new-sym)))
+    (assert (instance? Symbol new-sym)))
 
   (clear-sym [tc])
 
@@ -135,6 +136,8 @@
           path))
 
 (deftype AllValues [var]
+  (assert (instance? String var))
+
   Stringable
   (string-list [_]
     (list "(AllValues " (str var) ")"))
@@ -217,7 +220,8 @@
     (.var c new-var))
 
   (update-sym [c new-sym]
-    (.sym c new-sym))
+    ;; TODO: redundant
+    (.sym c (maybe new-sym)))
 
   (extract-type-map [_]
     nothing)
@@ -277,7 +281,7 @@
 (deftype TypeConstraint [type-maps path type-sym sym var]
   (assert (instance? (map-of Integer HashSet) type-maps))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? Tagged type-sym))
+  (assert (instance? Symbol type-sym))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
 
@@ -315,7 +319,7 @@
                   desired-len)))
 
 (deftype FieldConstraint [field field-var path sym var]
-  (assert (instance? Tagged field))
+  (assert (instance? Symbol field))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
@@ -497,6 +501,7 @@
   (assert (min-count alts 1))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? (list-of Vector) path))
+  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -568,6 +573,10 @@
                     (SumConstraint new-cs empty-list nothing "")))))
 
 (deftype KeysConstraint [constraint path sym var]
+  (assert (instance? List path))
+  (assert (instance? (maybe-of Symbol) sym))
+  (assert (instance? String var))
+
   Stringable
   (string-list [_]
     (list (str "(SumConstraint " (str constraint) " "
@@ -593,7 +602,7 @@
     (.path c (cons [file-name line-number] path)))
 
   (extract-sym [tc]
-    (maybe sym))
+    sym)
 
   (update-sym [tc new-sym]
     (.sym tc (maybe new-sym)))
