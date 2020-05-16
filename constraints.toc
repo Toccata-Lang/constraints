@@ -108,7 +108,6 @@
 ;; TODO: constraints to add
 ;; min count (instead of ItemsConstraint)
 ;; keys required in a hash map
-;; key constraint on hash maps
 
 (defn format-path* [path desired-len]
   (assert (instance? List path))
@@ -179,15 +178,14 @@
           "nothing"))
 
 ;; InferredInner is a weaker version of CollectionOf
-;; TODO: change 'inner' to 'contents'
-(deftype InferredInner [inner path sym var]
+(deftype InferredInner [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(InferredInner " (str inner) " (list "
+    (list "(InferredInner " (str contents) " (list "
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
@@ -195,7 +193,7 @@
 
   Constraint
   (extract-items-constraints [c n]
-    (vec (repeat n inner)))
+    (vec (repeat n contents)))
 
   (extract-type-map [_]
     nothing)
@@ -209,14 +207,14 @@
 
 ;; CollectionOf is a stronger version of InferredInner
 ;; TODO: change 'constraints' to 'contents'
-(deftype CollectionOf [constraints path sym var]
+(deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(CollectionOf " (str constraints) " (list "
+    (list "(CollectionOf " (str contents) " (list "
           (either (map (first path) (fn [[f l]]
                                       (str "[\"" f "\" " l "]")))
                   "")
@@ -1081,7 +1079,7 @@
                            top-type
                            (fn [r c]
                              (either (= r bottom-type)
-                                     (-> (.constraints cc)
+                                     (-> (.contents cc)
                                          (intersect c)
                                          (update-var (extract-var c))))))
                    bottom-type)
@@ -1102,7 +1100,7 @@
   (intersect-inner [c ic]
     (either (or (-> (.items-constraints c)
                     (map (fn [c2]
-                           (intersect (.inner ic) c2)))
+                           (intersect (.contents ic) c2)))
                     (some (fn [c]
                             (= c bottom-type))))
                 (= (intersect (.tail-constraint c) ic)
@@ -1491,7 +1489,7 @@
 
   Constraint
   (extract-contents-constraint [c]
-    (.inner c))
+    (.contents c))
 
   (intersect [ic c]
     (intersect-inner c ic))
@@ -1506,15 +1504,15 @@
                              (.path constraint))
                            (cons [file-name line-number] (.path constraint)))]
       (-> constraint
-          (.inner (update-path (.inner constraint) file-name line-number))
+          (.contents (update-path (.contents constraint) file-name line-number))
           (.path new-path))))
 
   (extract-coll-constraint [c]
-    (CollectionOf (.inner c) (.path c) (.sym c) (.var c)))
+    (CollectionOf (.contents c) (.path c) (.sym c) (.var c)))
 
   ConstraintOps
   (intersect-multi [c mc]
-    (let [new-c (intersect (.inner c)
+    (let [new-c (intersect (.contents c)
                            (extract-contents-constraint mc))]
       (either (or (= new-c bottom-type)
                   (and (= new-c top-type)
@@ -1522,15 +1520,18 @@
               (-> mc
                   (.constraints (remove (.constraints mc)
                                         (partial instance? InferredInner)))
-                  (conj (.inner c new-c))))))
+                  (conj (.contents c new-c))))))
 
   (intersect-coll-of [c cc]
-    (let [new-inner (intersect (.constraints cc) (.inner c))]
+    (let [new-inner (intersect (.contents cc) (.contents c))]
+      ;; TODO: this should throw an assertion
+      ;; (either (= new-inner bottom-type)
+      ;;         (.constraints cc new-inner))
       (either (= new-inner bottom-type)
-              (.constraints cc new-inner))))
+              (.contents cc new-inner))))
 
   (intersect-static-str [c slc]
-    (either (= (intersect (.inner c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
+    (either (= (intersect (.contents c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
                                                      (.path slc) 'String (.sym slc) (.var slc)))
                bottom-type)
             slc))
@@ -1539,13 +1540,13 @@
     (MultiConstraint [slc c]))
 
   (=-inferred-inner [y x]
-    (and (= (.inner x) (.inner y))
+    (and (= (.contents x) (.contents y))
          (maybe x)))
 
   (intersect-inner [c ic]
-    (let [new-c (intersect (.inner ic) (.inner c))]
+    (let [new-c (intersect (.contents ic) (.contents c))]
       (either (= new-c bottom-type)
-              (.inner ic new-c)))))
+              (.contents ic new-c)))))
 
 (extend-type MaxValue
   Eq
@@ -1629,7 +1630,7 @@
     c)
 
   (extract-contents-constraint [c]
-    (.constraints c))
+    (.contents c))
 
   (extract-collection-of [x]
     x)
@@ -1643,7 +1644,7 @@
                                         (= top-file file-name))]
                              (.path constraint))
                            (cons [file-name line-number] (.path constraint)))]
-      (CollectionOf (update-path (.constraints constraint) file-name line-number)
+      (CollectionOf (update-path (.contents constraint) file-name line-number)
                     new-path
                     (.sym constraint) (.var constraint))))
 
@@ -1675,12 +1676,12 @@
                             (reduce c intersect)))))))
 
   (intersect-inner [c ic]
-    (let [new-c (intersect (.constraints c) (.inner ic))]
+    (let [new-c (intersect (.contents c) (.contents ic))]
       (either (= new-c bottom-type)
-              (.constraints c new-c))))
+              (.contents c new-c))))
 
   (intersect-static-str [c slc]
-    (either (= (intersect (.constraints c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
+    (either (= (intersect (.contents c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
                                                            (.path slc) 'String (.sym slc) (.var slc)))
                bottom-type)
             slc))
@@ -1689,13 +1690,13 @@
     (MultiConstraint [slc c]))
 
   (intersect-coll-of [c cc]
-    (let [new-cs (intersect (.constraints cc) (.constraints c))]
+    (let [new-cs (intersect (.contents cc) (.contents c))]
       (either (or (= new-cs bottom-type)
                   (= cc c))
-              (.constraints cc new-cs))))
+              (.contents cc new-cs))))
 
   (=-contentsc [x y]
-    (and (= (.constraints x) (.constraints y))
+    (and (= (.contents x) (.contents y))
          (maybe x))))
 
 (extend-type SumConstraint
