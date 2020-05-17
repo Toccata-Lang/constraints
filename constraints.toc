@@ -611,7 +611,7 @@
   Stringable
   (string-list [_]
     (list (str "(KeysConstraint " (str constraint) " "
-               (str path) " " (either (map sym str) 'nothing) ")")))
+               (str path) " " (str sym) " " var ")")))
 
   Constraint
   (assertion-path [x]
@@ -1306,18 +1306,27 @@
                     (and (< 0 (count value-type-map))
                          (every (keys value-type-map)
                                 (partial get (.type-maps c))))))))
+
   ConstraintOps
   (conj-multi [c mc]
     (intersect-multi c mc))
 
   (intersect-multi [c mc]
-    (let [new-c (-> (.constraints mc)
-                    (filter (partial instance? TypeConstraint))
-                    (reduce c intersect))]
-      (either (= new-c bottom-type)
-              (.constraints mc (conj (remove (.constraints mc)
-                                             (partial instance? TypeConstraint))
-                                     new-c)))))
+    (assert (instance? MultiConstraint mc))
+    (assert-result r (instance? Constraints r))
+
+    (either (or (= (reduce (.constraints mc) c
+                           (fn [x y]
+                             (either (= (intersect x y) bottom-type)
+                                     x)))
+                   bottom-type)
+                (flat-map (extract-type-map mc)
+                          (fn [new-map]
+                            (= (intersect-typec c (.type-maps c new-map))
+                               bottom-type)))
+                (and (some (.constraints mc) (partial = c))
+                     (maybe mc)))
+            (MultiConstraint (conj (.constraints mc) c))))
 
   (intersect-coll-of [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
@@ -1402,7 +1411,8 @@
     (= (.field info) (.field c)))
 
   (intersect-fieldc [c fc]
-    (MultiConstraint [fc (update-var c (.var fc))]))
+    (either (= c fc)
+            (MultiConstraint [fc (update-var c (.var fc))])))
 
   (intersect-static-int [c slc]
     (NoValues [slc c]))
