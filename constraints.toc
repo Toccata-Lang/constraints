@@ -1,6 +1,8 @@
 
 (def default-extract-items-constraints)
 
+(def TypeMap (map-of Integer (set-of Symbol)))
+
 ;; Public interface for Constraints
 (defprotocol Constraint
   (assertion-path [x])
@@ -14,9 +16,8 @@
     type-map)
 
   (extract-type-map [_]
-    (assert-result r (instance? (maybe-of HashMap) r))
-    ;; TODO: put back in eventually
-    ;; (assert-result r (instance? (maybe-of (map-of Integer HashSet)) r))
+    ;; TODO: put back in
+    ;; (assert-result r (instance? (maybe-of TypeMap r)))
     )
 
   (extract-items-constraints [_]
@@ -206,7 +207,6 @@
                   desired-len)))
 
 ;; CollectionOf is a stronger version of InferredInner
-;; TODO: change 'constraints' to 'contents'
 (deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
@@ -223,10 +223,6 @@
   Constraint
   (update-var [c new-var]
     (.var c new-var))
-
-  (update-sym [c new-sym]
-    ;; TODO: redundant
-    (.sym c (maybe new-sym)))
 
   (extract-type-map [_]
     nothing)
@@ -279,7 +275,6 @@
     (format-path* (cons ["Sequence from" ""] path)
                   desired-len)))
 
-;; TODO: look at removing 'type-sym'
 (deftype TypeConstraint [type-maps path type-sym sym var]
   (assert (instance? (map-of Integer HashSet) type-maps))
   (assert (instance? (list-of Vector) path))
@@ -315,6 +310,12 @@
 
   (extract-type-map [_]
     (maybe type-maps))
+
+  (extract-contents-constraint [c]
+    (either (and (or (get type-maps StringBufferType)
+                     (get type-maps SubStringType))
+                 (maybe c))
+            top-type))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Type '" type-sym "' from") ""]
@@ -499,7 +500,6 @@
                                StaticStrConstraint
                                StaticIntConstraint))
 
-;; TODO: implement =*
 (deftype SumConstraint [alts path sym var]
   (assert (min-count alts 1))
   (assert (instance? (maybe-of Symbol) sym))
@@ -509,6 +509,14 @@
   Stringable
   (string-list [_]
     (list (str "(SumConstraint " (str alts) " " (str path) " " (either (map sym str) 'nothing) ")")))
+
+  Eq
+  (=* [x y]
+    (and (instance? SumConstraint y)
+         (= (count alts) (count (.alts y)))
+         (every (.alts y) (fn [c]
+                            (some alts (partial =* c))))
+         (maybe x)))
 
   Constraint
   (assertion-path [x]
@@ -524,44 +532,6 @@
                              (or (apply (maybe comp) [m c-m])
                                  c-m
                                  m)))))
-
-  (extract-key-constraint [c]
-    ;; TODO: this needs to be tested
-    (let [new-alts (map (.alts c) extract-key-constraint)]
-      (either (some new-alts (partial = top-type))
-              (.alts c new-alts))))
-
-  (extract-items-constraints [c]
-    ;; TODO: this needs to be tested
-    (extract-items-constraints c (-> (.alts c)
-                                     (map extract-items-constraints)
-                                     (reduce 0 (fn [max cs]
-                                                 (let [n (count cs)]
-                                                   (either (< max n)
-                                                           n)))))))
-
-  (extract-items-constraints [c n]
-    (-> (apply zip-lists (map (.alts c) (fn [alt]
-                                          (extract-items-constraints alt n))))
-        (map (fn [new-alts]
-               (either (some new-alts (partial = top-type))
-                       (.alts c new-alts))))
-        vec))
-
-  (extract-contents-constraint [_]
-    ;; TODO: needs to be implemented
-    (print-err 'sum-extract-contents-constraint)
-    (abort))
-
-  (extract-collection-of [_]
-    ;; TODO: needs to be implemented
-    (print-err 'sum-extract-collection-of)
-    (abort))
-
-  (extract-coll-constraint [_]
-    ;; TODO: needs to be implemented
-    (print-err 'sum-extract-coll-constraint)
-    (abort))
 
   (update-path [constraint file-name line-number]
     (-> constraint
@@ -696,7 +666,6 @@
                   (maybe y))
              (maybe x)))))
 
-;; TODO: this should throw an assertion error because of the empty vector
 (def bottom-type (NoValues []))
 
 (extend-type Integer
@@ -956,17 +925,7 @@
 
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r))
-
-    ;; TODO: possible model for default impl
-    ;; (let [new-c (-> (.constraints mc)
-    ;;                  (filter (partial instance? KeysConstraint))
-    ;;                  (reduce c intersect))]
-    ;;    (either (= new-c bottom-type)
-    ;;            (.constraints mc (conj (remove (.constraints mc)
-    ;;                                           (partial instance? KeysConstraint))
-    ;;                                   new-c))))
-    )
+    (assert-result r (instance? Constraints r)))
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
@@ -1215,10 +1174,8 @@
   (intersect-multi [c mc]
     (reduce (.constraints c) mc
             (fn [mc new-c]
-              ;; TODO this form needed because 'either' type checks both clauses 
-              (either (or (= bottom-type mc)
-                          (maybe (intersect-multi new-c mc)))
-                      mc))))
+              (either (= mc bottom-type)
+                      (intersect mc new-c)))))
 
   Constraint
   (intersect [mc c]
@@ -1330,20 +1287,20 @@
 
   (intersect-coll-of [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
-      ;; TODO: incomplete. need to account for Strings
-      ;; also account for Fn's
-      (either (and (empty? new-type-map)
-                   (maybe (NoValues [ic c])))
+      (either (or (and (empty? new-type-map)
+                       (maybe (NoValues [ic c])))
+                  (= bottom-type (intersect (extract-contents-constraint c)
+                                            (.contents ic))))
               (MultiConstraint [ic (-> c
                                        (.type-maps new-type-map)
                                        (update-var (.var ic)))]))))
 
   (intersect-inner [c ic]
     (let [new-type-map (dissoc (.type-maps c) IntegerType SymbolType)]
-      ;; TODO: incomplete. need to account for Strings
-      ;; also account for Fn's
-      (either (and (empty? new-type-map)
-                   (maybe (NoValues [ic c])))
+      (either (or (and (empty? new-type-map)
+                       (maybe (NoValues [ic c])))
+                  (= bottom-type (intersect (extract-contents-constraint c)
+                                            (.contents ic))))
               (MultiConstraint [ic (-> c
                                        (.type-maps new-type-map)
                                        (update-var (.var ic)))]))))
@@ -1534,9 +1491,6 @@
 
   (intersect-coll-of [c cc]
     (let [new-inner (intersect (.contents cc) (.contents c))]
-      ;; TODO: this should throw an assertion
-      ;; (either (= new-inner bottom-type)
-      ;;         (.constraints cc new-inner))
       (either (= new-inner bottom-type)
               (.contents cc new-inner))))
 
@@ -1645,6 +1599,9 @@
   (extract-collection-of [x]
     x)
 
+  (extract-items-constraints [c n]
+    (repeat n (.contents c)))
+
   (update-path [constraint file-name line-number]
     (let [file-name (either (and (= file-name 'core)
                                  (maybe "$TOCCATA_DIR/core.toc"))
@@ -1714,14 +1671,44 @@
   (intersect [sc c]
     (intersect-sum c sc))
 
+  (extract-key-constraint [c]
+    (let [new-alts (map (.alts c) extract-key-constraint)]
+      (either (some new-alts (partial = top-type))
+              (.alts c new-alts))))
+
+  (extract-items-constraints [c]
+    (extract-items-constraints c (-> (.alts c)
+                                     (map extract-items-constraints)
+                                     (reduce 0 (fn [max cs]
+                                                 (let [n (count cs)]
+                                                   (either (> max n)
+                                                           n)))))))
+
+  (extract-items-constraints [c n]
+    (-> (apply zip-lists (map (.alts c) (fn [alt]
+                                          (extract-items-constraints alt n))))
+        (map (fn [new-alts]
+               (either (some new-alts (partial = top-type))
+                       (.alts c new-alts))))
+        vec))
+
+  (extract-contents-constraint [c]
+    (let [new-alts (map (.alts c) extract-contents-constraint)]
+      (either (some new-alts (partial = top-type))
+              (.alts c new-alts))))
+
+  (extract-collection-of [c]
+    (let [new-alts (map (.alts c) extract-collection-of)]
+      (either (some new-alts (partial = top-type))
+              (.alts c new-alts))))
+
+  (extract-coll-constraint [c]
+    (let [new-alts (map (.alts c) extract-coll-constraint)]
+      (either (some new-alts (partial = top-type))
+              (.alts c new-alts))))
+
   ConstraintOps
   (sum-satisfies [info c]
-    (and (instance? SumConstraint c)
-         (do
-           ;; TODO: need to implement this
-           (print-err 'sum-satisfies-sum)
-           (abort)))
-
     (every (.alts info)
            (fn [part-c]
              (satisfied-by c part-c))))
@@ -1855,6 +1842,9 @@
                                            (< 1 (count constraints))))
                                (maybe z))
                           (NoValues [x y]))]
+                   (print-err 'x x)
+                   (print-err 'y y)
+                   (print-err 'z z)
                    (maybe (conflicting-assertions z file-name line-number))))
             (maybe z))))
 
