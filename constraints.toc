@@ -16,9 +16,7 @@
     type-map)
 
   (extract-type-map [_]
-    ;; TODO: put back in
-    ;; (assert-result r (instance? (maybe-of TypeMap r)))
-    )
+    (assert-result r (instance? (maybe-of TypeMap) r)))
 
   (extract-items-constraints [_]
     (assert-result r (instance? Vector r))
@@ -147,7 +145,7 @@
 
   Stringable
   (string-list [_]
-    (list "(AllValues " (str var) ")"))
+    (list "(AllValues " (str "'" var "'") ")"))
 
   Eq
   (=* [x y]
@@ -276,7 +274,7 @@
                   desired-len)))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
-  (assert (instance? (map-of Integer HashSet) type-maps))
+  (assert (instance? TypeMap type-maps))
   (assert (instance? (list-of Vector) path))
   ;; 'type-sym' has to be more relaxed so it can accept an ast/tagged-symbol
   ;; (assert (instance? Symbol type-sym))
@@ -501,7 +499,7 @@
                                StaticIntConstraint))
 
 (deftype SumConstraint [alts path sym var]
-  (assert (min-count alts 1))
+  (assert (instance? (min-count 1) alts))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? (list-of Vector) path))
   (assert (instance? String var))
@@ -1342,9 +1340,7 @@
 
   ConstraintOps
   (intersect-coll-of [c cc]
-    (either (and (= (.field c) '.set-map)
-                 (maybe (MultiConstraint [cc (update-var c (.var cc))])))
-            (NoValues [cc c])))
+    (MultiConstraint [cc (update-var c (.var cc))]))
 
   (intersect-static-str [c slc]
     (NoValues [slc c]))
@@ -1353,9 +1349,7 @@
     (NoValues [slc c]))
 
   (intersect-inner [c ic]
-    (either (and (= (.field c) '.set-map)
-                 (maybe (MultiConstraint [ic (update-var c (.var ic))])))
-            (NoValues [ic c])))
+    (MultiConstraint [ic (update-var c (.var ic))]))
 
   (intersect-max-value [c mvc]
     (NoValues [mvc c]))
@@ -1404,7 +1398,8 @@
          (maybe x)))
 
   (intersect-max-value [c mvc]
-    (either (<= (.val c) (.max mvc))
+    (either (and (<= (.val c) (.max mvc))
+                 (maybe c))
             (NoValues [mvc c])))
 
   (intersect-static-int [c slc]
@@ -1842,9 +1837,6 @@
                                            (< 1 (count constraints))))
                                (maybe z))
                           (NoValues [x y]))]
-                   (print-err 'x x)
-                   (print-err 'y y)
-                   (print-err 'z z)
                    (maybe (conflicting-assertions z file-name line-number))))
             (maybe z))))
 
