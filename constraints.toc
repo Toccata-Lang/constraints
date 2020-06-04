@@ -10,6 +10,9 @@
   (format-path [x n]
     (assert-result r (instance? (list-of String) r)))
 
+  (replace-path [c new-path]
+    (assert (instance? (list-of Vector) new-path)))
+
   (intersect [c1 c2])
 
   (restrict-types [c type-map]
@@ -956,6 +959,9 @@
 
 (extend-type SymbolConstraints
   Constraint
+  (replace-path [c new-path]
+    (.path c new-path))
+
   (extract-sym [c]
     (.sym c))
 
@@ -1176,6 +1182,11 @@
                       (intersect mc new-c)))))
 
   Constraint
+  (replace-path [mc new-path]
+    (.constraints mc (map (.constraints mc)
+                          (fn [c]
+                            (replace-path c new-path)))))
+
   (intersect [mc c]
     (intersect-multi c mc))
 
