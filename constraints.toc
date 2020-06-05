@@ -563,7 +563,8 @@
 (defn sum-type [cs]
   (either (or (and (empty? cs)
                    (maybe top-type))
-              (some cs (partial = top-type)))
+              (some cs (partial = top-type))
+              (apply = cs))
           (let [new-cs (reduce cs []
                                (fn [new-cs curr]
                                  (either (and (some new-cs (fn [c]
@@ -1694,7 +1695,8 @@
     (-> (apply zip-lists (map (.alts c) (fn [alt]
                                           (extract-items-constraints alt n))))
         (map (fn [new-alts]
-               (either (some new-alts (partial = top-type))
+               (either (or (some new-alts (partial = top-type))
+                           (apply = new-alts))
                        (.alts c new-alts))))
         vec))
 
