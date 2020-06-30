@@ -105,6 +105,7 @@
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
 (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
+(def KeysConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, KeysConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: constraints to add
