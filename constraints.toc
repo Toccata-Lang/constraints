@@ -16,7 +16,10 @@
   (intersect [c1 c2])
 
   (restrict-types [c type-map]
-    type-map)
+    (either (map (extract-type-map c)
+                 (fn [c-type-map]
+                   (select-keys type-map (keys c-type-map))))
+            type-map))
 
   (extract-type-map [_]
     (assert-result r (instance? (maybe-of TypeMap) r)))
@@ -62,6 +65,9 @@
   (extract-var [c])
 
   (update-var [c new-var])
+
+  (set-type [c tc]
+    (intersect c tc))
 
   (satisfied-by [c info]
     (assert-result r (instance? Maybe r))
@@ -718,6 +724,10 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (set-type [c tc]
+    (MultiConstraint (map constraints (fn [inner-c]
+                                        (set-type inner-c tc)))))
+
   (extract-var [_]
     (either (some constraints (fn [c]
                                 (let [var (extract-var c)]
@@ -1268,6 +1278,16 @@
 
 (extend-type TypeConstraint
   Constraint
+  (set-type [c tc]
+    (either (for [c-map (extract-type-map c)
+                  tc-map (extract-type-map tc)
+                  new-c (or (and (= {ListType #{}} tc-map)
+                                 (= {VectorType #{}} c-map))
+                            (and (= {VectorType #{}} tc-map)
+                                 (= {ListType #{}} c-map)))]
+              (.type-maps c tc-map))
+            top-type))
+
   (intersect [tc c]
     (intersect-typec c tc))
 
@@ -1680,6 +1700,12 @@
 
 (extend-type SumConstraint
   Constraint
+  (set-type [c tc]
+    (.alts c (-> (.alts c) 
+                 (map (fn [inner-c]
+                        (set-type inner-c tc)))
+                 (remove (partial = bottom-type)))))
+
   (intersect [sc c]
     (intersect-sum c sc))
 
