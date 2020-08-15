@@ -62,9 +62,11 @@
 
   (clear-sym [tc])
 
-  (extract-var [c])
+  (extract-var [c]
+    (assert-result var (instance? String var)))
 
-  (update-var [c new-var])
+  (update-var [c new-var]
+    (assert (instance? String new-var)))
 
   (set-type [c tc]
     (intersect c tc))
