@@ -68,6 +68,9 @@
   (update-var [c new-var]
     (assert (instance? String new-var)))
 
+  (update-type-name [c new-name]
+    c)
+
   (set-type [c tc]
     (intersect c tc))
 
@@ -262,6 +265,11 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
+  (set-type [c tc]
+    (-> c
+        (.tail-constraint (set-type (.tail-constraint c) tc))
+        (intersect tc)))
+
   (extract-items-constraints [_]
     (comp items-constraints
           (extract-items-constraints tail-constraint)))
@@ -316,6 +324,9 @@
       x))
 
   Constraint
+  (update-type-name [c new-name]
+    (.type-sym c new-name))
+
   (assertion-path [_] path)
 
   (extract-type-map [_]
@@ -510,6 +521,7 @@
                                StaticStrConstraint
                                StaticIntConstraint))
 
+;; TODO: add 'typ-sym' and make it a be optional for all constraints
 (deftype SumConstraint [alts path sym var]
   (assert (instance? (min-count 1) alts))
   (assert (instance? (maybe-of Symbol) sym))
@@ -530,6 +542,10 @@
          (maybe x)))
 
   Constraint
+  (update-type-name [c new-name]
+    (.alts c (map (.alts c) (fn [alt]
+                              (update-type-name alt new-name)))))
+
   (assertion-path [x]
     path)
 
@@ -578,7 +594,11 @@
                    (maybe top-type))
               (some cs (partial = top-type))
               (apply = cs))
-          (let [new-cs (reduce cs []
+          (let [type-constraints (vec (filter cs (partial instance? TypeConstraint)))
+                tc (either (empty? type-constraints)
+                           [(TypeConstraint (comp* {} (map type-constraints .type-maps))
+                                             empty-list (symbol "<unknown>") nothing "")])
+                new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
                                (fn [new-cs curr]
                                  (either (and (some new-cs (fn [c]
                                                              (= c (intersect c curr))))
@@ -726,6 +746,10 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (update-type-name [c new-name]
+    (.constraints c (map (.constraints c) (fn [inner-c]
+                                            (update-type-name inner-c new-name)))))
+
   (set-type [c tc]
     (MultiConstraint (map constraints (fn [inner-c]
                                         (set-type inner-c tc)))))
@@ -1750,9 +1774,7 @@
 
   ConstraintOps
   (sum-satisfies [info c]
-    (every (.alts info)
-           (fn [part-c]
-             (satisfied-by c part-c))))
+    (every (.alts info) (partial satisfied-by c)))
 
   (intersect-sum [c1 c2]
     (let [new-alts (for [a1 (.alts c1)
