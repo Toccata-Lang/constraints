@@ -76,7 +76,7 @@
 
   (satisfied-by [c info]
     (assert-result r (instance? Maybe r))
-    ;; TODO: the whole idea behind this function is suspect
+
     nothing))
 
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
@@ -168,6 +168,7 @@
          (maybe x)))
 
   Constraint
+  (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
   (clear-sym [x] x)
   (update-sym [x _] x)
@@ -265,10 +266,6 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
-  (satisfied-by [c info]
-    ;; TODO: complete
-    nothing)
-
   (set-type [c tc]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
@@ -590,8 +587,14 @@
         (.var new-var)))
 
   (satisfied-by [c info]
-    (some alts (fn [c]
-                 (satisfied-by c info)))))
+    (or (and (instance? SumConstraint info)
+             (every (.alts info)
+                    (fn [info-c]
+                      (some (.alts c)
+                            (fn [c-c]
+                              (satisfied-by c-c info-c))))))
+        (some alts (fn [c]
+                     (satisfied-by c info))))))
 
 (defn sum-type [cs]
   (either (or (and (empty? cs)
@@ -855,6 +858,13 @@
 
     nothing)
 
+  (items-satisfied [info c]
+    (assert (instance? ValueConstraint info))
+    (assert (instance? ItemsConstraint c))
+    (assert-result r (instance? (maybe-of ValueConstraint) r))
+
+    nothing)
+
   (mult-satisfied [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? MultiConstraint c))
@@ -999,7 +1009,12 @@
 
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r)))
+    (assert-result r (instance? Constraints r))
+
+    ;; TODO: make sure that intersecting each type of constraint results
+    ;; in the smallest set of .constraints in the MultiConstraint
+    ;; applies to conj-multi as well.
+    )
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
@@ -1110,11 +1125,22 @@
     (=-items-constraint y x))
 
   ConstraintOps
+  (items-satisfied [info c]
+    (let [c-items (.items-constraints c)
+          info-items (extract-items-constraints info (count c-items))]
+      (and (<= (count c-items) (count (.items-constraints info)))
+           (every (zip-lists c-items info-items)
+                  (fn [[c info]]
+                    (satisfied-by c info)))
+           (satisfied-by (.tail-constraint c) (.tail-constraint info))
+           (maybe info))))
+
   (coll-satisfies [coll-info c]
     (let [contents-c (extract-contents-constraint c)]
       (and (every (extract-items-constraints coll-info)
                   (partial satisfied-by contents-c))
-           (satisfied-by c (.tail-constraint coll-info)))))
+           (satisfied-by c (.tail-constraint coll-info))
+           (maybe coll-info))))
 
   (intersect-coll-of [c cc]
     (either (or (= (reduce (.items-constraints c)
@@ -1160,11 +1186,6 @@
   (intersect-static-int [c slc]
     (NoValues [slc c]))
 
-  (=-items-constraint [y x]
-    (and (= (.items-constraints y) (.items-constraints x))
-         (= (.tail-constraint y) (.tail-constraint x))
-         (maybe x)))
-
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
@@ -1191,7 +1212,15 @@
   (intersect-min-value [c mvc]
     (NoValues [mvc c]))
 
+  (=-items-constraint [y x]
+    (and (= (.items-constraints y) (.items-constraints x))
+         (= (.tail-constraint y) (.tail-constraint x))
+         (maybe x)))
+
   Constraint
+  (satisfied-by [c info]
+    (items-satisfied info c))
+
   (intersect [ic c]
     (either (=-items-constraint c ic)
             (intersect-itemsc c ic)))
@@ -1224,6 +1253,11 @@
     (conj-multi c mc))
 
   ConstraintOps
+  (items-satisfied [info c]
+    (flat-map (some (.constraints info) (partial instance? ItemsConstraint))
+              (fn [info-itemsc]
+                (items-satisfied info-itemsc c))))
+
   (=-multi [y x]
     (and (every (.constraints x)
                 (fn [x]
@@ -1270,8 +1304,8 @@
            (every (.constraints mult-c)
                   (fn [inner-c]
                     (some (.constraints mult-info)
-                          (fn [inner-info]
-                            (satisfied-by inner-c inner-info)))))
+                          (partial satisfied-by inner-c))))
+
            (maybe mult-info))))
 
   Constraint
@@ -1657,10 +1691,22 @@
     (=-static-len y x))
 
   Constraint
+  (satisfied-by [c info]
+    (and (or (and (instance? StaticLengthConstraint info)
+                  (<= (.length c) (.length info)))
+             (and (instance? ItemsConstraint info)
+                  (<= (.length c) (count (.items-constraints info)))))
+         (maybe info)))
+
   (intersect [slc c]
     (intersect-static-len c slc))
 
   ConstraintOps
+  (items-satisfied [info c]
+    (and (every (extract-items-constraints c (.length info))
+                (partial = top-type))
+         (maybe info)))
+
   (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (extract-var cc))]))
 
@@ -1862,6 +1908,10 @@
 
   (extract-key-constraint [c]
     (.constraint c))
+
+  (satisfied-by [c info]
+    (and (instance? KeysConstraint info)
+         (satisfied-by (.constraint c) (.constraint info))))
 
   ConstraintOps
   (intersect-keyc [c1 c2]
