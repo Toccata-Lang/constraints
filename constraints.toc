@@ -120,6 +120,7 @@
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: constraints to add
+;; number of args the target of a call takes
 ;; min count (instead of ItemsConstraint)
 ;; keys required in a hash map
 
@@ -398,6 +399,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (satisfied-by [c info]
+    (= c info))
+
   (assertion-path [c]
     path)
 
@@ -507,6 +511,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (satisfied-by [c info]
+    (= c info))
+
   (format-path [x desired-len]
     (format-path* (cons ["String from" ""] path)
                   desired-len))
@@ -850,14 +857,6 @@
     (assert (instance? KeysConstraint kc))
     (intersect (update-var c (extract-var kc)) kc))
 
-  (coll-satisfies [coll-info c]
-    (assert (instance? ValueConstraint coll-info))
-    (assert (instance? (any-of CollectionOf
-                               InferredInner) c))
-    (assert-result r (instance? (maybe-of ValueConstraint) r))
-
-    nothing)
-
   (items-satisfied [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? ItemsConstraint c))
@@ -1135,13 +1134,6 @@
            (satisfied-by (.tail-constraint c) (.tail-constraint info))
            (maybe info))))
 
-  (coll-satisfies [coll-info c]
-    (let [contents-c (extract-contents-constraint c)]
-      (and (every (extract-items-constraints coll-info)
-                  (partial satisfied-by contents-c))
-           (satisfied-by c (.tail-constraint coll-info))
-           (maybe coll-info))))
-
   (intersect-coll-of [c cc]
     (either (or (= (reduce (.items-constraints c)
                            top-type
@@ -1218,6 +1210,11 @@
          (maybe x)))
 
   Constraint
+  (extract-contents-constraint [c]
+    (-> (.items-constraints c)
+        (conj (extract-contents-constraint (.tail-constraint c)))
+        sum-type))
+
   (satisfied-by [c info]
     (items-satisfied info c))
 
@@ -1326,7 +1323,8 @@
     (-> (.constraints mc)
         (filter (fn [c]
                   (or (instance? CollectionOf c)
-                      (instance? InferredInner c))))
+                      (instance? InferredInner c)
+                      (instance? ItemsConstraint c))))
         (map extract-contents-constraint)
         (reduce top-type intersect)))
 
@@ -1585,6 +1583,15 @@
             (.min mvc (either (< (.min mvc) (.min c))
                               (.min c))))))
 
+(defn core-containers [c]
+  (TypeConstraint {VectorType #{}
+                   MaybeType #{}
+                   ListType #{}
+                   BitmapIndexedType #{}
+                   ArrayNodeType #{}
+                   HashCollisionNodeType #{}}
+                  (.path c) 'CoreContainers (.sym c) (extract-var c)))
+
 (extend-type InferredInner
   Eq
   (=* [x y]
@@ -1593,7 +1600,11 @@
   Constraint
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
-    (coll-satisfies coll-info c))
+
+    (and (or (and (= (.contents c) top-type)
+                  (satisfied-by (core-containers c) coll-info))
+             (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
+         (maybe coll-info)))
 
   (extract-contents-constraint [c]
     (.contents c))
@@ -1618,9 +1629,6 @@
     (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c)))
 
   ConstraintOps
-  (coll-satisfies [coll-info c]
-    (satisfied-by (extract-contents-constraint c) (.contents coll-info)))
-
   (intersect-multi [c mc]
     (let [new-c (intersect (.contents c)
                            (extract-contents-constraint mc))]
@@ -1746,7 +1754,12 @@
 
   Constraint
   (satisfied-by [c coll-info]
-    (coll-satisfies coll-info c))
+    (assert-result r (instance? (maybe-of ValueConstraint) r))
+
+    (and (or (and (= (.contents c) top-type)
+                  (satisfied-by (core-containers c) coll-info))
+             (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
+         (maybe coll-info)))
 
   (extract-coll-constraint [c]
     c)
@@ -1790,9 +1803,6 @@
     (intersect-coll-of c cc))
 
   ConstraintOps
-  (coll-satisfies [coll-info c]
-    (satisfied-by (extract-contents-constraint c) (.contents coll-info)))
-
   (intersect-multi [c mc]
     (let [inters (map (.constraints mc) (partial intersect c))]
       (either (some inters (partial instance? NoValues))
