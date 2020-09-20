@@ -1805,6 +1805,7 @@
             HashSetType #{'set-map}
             FutureType #{}
             AgentType #{}
+            FunctionType #{}
             VectorType #{}}))
 
   (intersect [cc c]
