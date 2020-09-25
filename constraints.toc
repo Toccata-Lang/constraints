@@ -667,6 +667,49 @@
     (and (instance? KeysConstraint info)
          (satisfied-by (.constraint c) (.constraint info)))))
 
+(deftype DynamicParamConstraint [param-index path sym var]
+  Stringable
+  (string-list [_]
+    (list "(DynamicParamConstraint " (str param-index)
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ")")))
+
+(deftype DynamicClosureConstraint [closure-index path sym var]
+  Stringable
+  (string-list [_]
+    (list "(DynamicClosureConstraint " (str closure-index)
+          (either (map (first path) (fn [[f l]]
+                                      (str "[\"" f "\" " l "]")))
+                  "")
+          ")")))
+
+(def DynamicConstraint (any-of DynamicParamConstraint
+                               DynamicClosureConstraint))
+
+;; Minimum Constraint Implementations
+;; (deftype DynamicParamConstraint [param-index]
+;;   Stringable
+;;   (string-list [_]
+;;     (list "(DynamicParamConstraint " (str param-index ")")))
+
+;;   c/Constraint
+;;   (c/intersect [c1 c2] c2)
+;;   (c/satisfied-by [_ c] (maybe c))
+;;   (c/intersect [_ c] c)
+;;   (c/clear-sym [x] x)
+;;   (c/update-sym [x _] x)
+;;   (c/update-var [x v] x)
+;;   (c/extract-collection-of [x] c/top-type)
+;;   (c/extract-type-map [_] nothing)
+;;   (c/extract-contents-constraint [_] c/top-type)
+;;   (c/extract-coll-constraint [_] c/top-type)
+
+;;   c/ConstraintOps
+;;   (c/intersect-typec [c tc] tc)
+;;   (c/intersect-multi [c mc] mc))
+
 (def SymbolConstraints (any-of TypeConstraint
                                MinValue
                                MaxValue
@@ -676,7 +719,8 @@
                                CollectionOf
                                FieldConstraint
                                SumConstraint
-                               KeysConstraint))
+                               KeysConstraint
+                               DynamicConstraint))
 
 (deftype NoValues [constraints]
   (assert (instance? (vector-of (any-of SymbolConstraints
@@ -1015,28 +1059,6 @@
 
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
-
-;; Minimum Constraint Implementations
-;; (deftype DynamicParamConstraint [param-index]
-;;   Stringable
-;;   (string-list [_]
-;;     (list "(DynamicParamConstraint " (str param-index ")")))
-
-;;   c/Constraint
-;;   (c/intersect [c1 c2] c2)
-;;   (c/satisfied-by [_ c] (maybe c))
-;;   (c/intersect [_ c] c)
-;;   (c/clear-sym [x] x)
-;;   (c/update-sym [x _] x)
-;;   (c/update-var [x v] x)
-;;   (c/extract-collection-of [x] c/top-type)
-;;   (c/extract-type-map [_] nothing)
-;;   (c/extract-contents-constraint [_] c/top-type)
-;;   (c/extract-coll-constraint [_] c/top-type)
-
-;;   c/ConstraintOps
-;;   (c/intersect-typec [c tc] tc)
-;;   (c/intersect-multi [c mc] mc))
 
 (extend-type NoValues
   ConstraintOps
@@ -1941,6 +1963,23 @@
               (-> c1
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
+
+(extend-type DynamicConstraint
+  Constraint
+  (intersect [c1 c2] c2)
+  (satisfied-by [_ c] (maybe c))
+  (intersect [_ c] c)
+  (clear-sym [x] x)
+  (update-sym [x _] x)
+  (update-var [x v] x)
+  (extract-collection-of [x] top-type)
+  (extract-type-map [_] nothing)
+  (extract-contents-constraint [_] top-type)
+  (extract-coll-constraint [_] top-type)
+
+  ConstraintOps
+  (intersect-typec [c tc] tc)
+  (intersect-multi [c mc] mc))
 
 (extend-type KeysConstraint
   Constraint
