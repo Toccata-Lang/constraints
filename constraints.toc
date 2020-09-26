@@ -611,7 +611,10 @@
           (let [type-constraints (vec (filter cs (partial instance? TypeConstraint)))
                 tc (either (empty? type-constraints)
                            [(TypeConstraint (comp* {} (map type-constraints .type-maps))
-                                             empty-list (symbol "<unknown>") nothing "")])
+                                             empty-list
+                                             (either (apply = (map type-constraints .type-sym))
+                                                     (symbol "<unknown>"))
+                                             nothing "")])
                 new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
                                (fn [new-cs curr]
                                  (either (and (some new-cs (fn [c]
@@ -672,7 +675,7 @@
   (string-list [_]
     (list "(DynamicParamConstraint " (str param-index)
           (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
+                                      (str " [\"" f "\" " l "]")))
                   "")
           ")")))
 
@@ -681,7 +684,7 @@
   (string-list [_]
     (list "(DynamicClosureConstraint " (str closure-index)
           (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
+                                      (str " [\"" f "\" " l "]")))
                   "")
           ")")))
 
@@ -2099,6 +2102,9 @@
                                                   (< 1 (count constraints))))
                                       (maybe z))
                                  (NoValues [x y]))]
+                   ;; (print-err 'x x)
+                   ;; (print-err 'y y)
+                   ;; (print-err 'z z)
                    (maybe (conflicting-assertions z file-name line-number))))
             (maybe z))))
 
