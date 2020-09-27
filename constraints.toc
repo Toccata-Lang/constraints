@@ -603,28 +603,6 @@
         (some alts (fn [c]
                      (satisfied-by c info))))))
 
-(defn sum-type [cs]
-  (either (or (and (empty? cs)
-                   (maybe top-type))
-              (some cs (partial = top-type))
-              (apply = cs))
-          (let [type-constraints (vec (filter cs (partial instance? TypeConstraint)))
-                tc (either (empty? type-constraints)
-                           [(TypeConstraint (comp* {} (map type-constraints .type-maps))
-                                             empty-list
-                                             (either (apply = (map type-constraints .type-sym))
-                                                     (symbol "<unknown>"))
-                                             nothing "")])
-                new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
-                               (fn [new-cs curr]
-                                 (either (and (some new-cs (fn [c]
-                                                             (= c (intersect c curr))))
-                                              (maybe new-cs))
-                                         (conj new-cs curr))))]
-            (either (and (= 1 (count new-cs))
-                         (first new-cs))
-                    (SumConstraint new-cs empty-list nothing "")))))
-
 (deftype KeysConstraint [constraint path sym var]
   (assert (instance? List path))
   (assert (instance? (maybe-of Symbol) sym))
@@ -1162,6 +1140,30 @@
 
   (extract-coll-constraint [_]
     top-type))
+
+(defn sum-type [cs]
+  (either (or (and (empty? cs)
+                   (maybe top-type))
+              (some cs (fn [c]
+                         (or (= top-type c)
+                             (instance? DynamicConstraint c))))
+              (apply = cs))
+          (let [type-constraints (vec (filter cs (partial instance? TypeConstraint)))
+                tc (either (empty? type-constraints)
+                           [(TypeConstraint (comp* {} (map type-constraints .type-maps))
+                                             empty-list
+                                             (either (apply = (map type-constraints .type-sym))
+                                                     (symbol "<unknown>"))
+                                             nothing "")])
+                new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
+                               (fn [new-cs curr]
+                                 (either (and (some new-cs (fn [c]
+                                                             (= c (intersect c curr))))
+                                              (maybe new-cs))
+                                         (conj new-cs curr))))]
+            (either (and (= 1 (count new-cs))
+                         (first new-cs))
+                    (SumConstraint new-cs empty-list nothing "")))))
 
 (extend-type ItemsConstraint
   Eq
