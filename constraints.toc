@@ -905,7 +905,7 @@
 
   (sum-c-satisfies [info c]
     (assert (instance? ValueConstraint c))
-    (assert-result r (instance? (maybe-of ValueConstraint) r))
+    (assert-result r (instance? (maybe-of (maybe-of ValueConstraint)) r))
 
     nothing)
 
@@ -1144,11 +1144,9 @@
 (defn sum-type [cs]
   (either (or (and (empty? cs)
                    (maybe top-type))
-              (some cs (fn [c]
-                         (or (= top-type c)
-                             (instance? DynamicConstraint c))))
+              (some cs (partial = top-type))
               (apply = cs))
-          (let [type-constraints (vec (filter cs (partial instance? TypeConstraint)))
+          (let [type-constraints (filter cs (partial instance? TypeConstraint))
                 tc (either (empty? type-constraints)
                            [(TypeConstraint (comp* {} (map type-constraints .type-maps))
                                              empty-list
@@ -1449,13 +1447,13 @@
     (intersect-typec c tc))
 
   (satisfied-by [c info]
-    (or (sum-c-satisfies info c)
-        (flat-map (extract-type-map info)
-                  (fn [value-type-map]
-                    (and (< 0 (count value-type-map))
-                         (every (keys value-type-map)
-                                (partial get (.type-maps c)))
-                         (maybe info))))))
+    (either (sum-c-satisfies info c)
+            (flat-map (extract-type-map info)
+                      (fn [value-type-map]
+                        (and (< 0 (count value-type-map))
+                             (every (keys value-type-map)
+                                    (partial get (.type-maps c)))
+                             (maybe info))))))
 
   ConstraintOps
   (conj-multi [c mc]
@@ -1527,8 +1525,8 @@
 
   Constraint
   (satisfied-by [c info]
-    (or (sum-c-satisfies info c)
-        (fieldc-satisfied info c)))
+    (either (sum-c-satisfies info c)
+            (fieldc-satisfied info c)))
 
   (intersect [fc c]
     (intersect-fieldc c fc))
@@ -1945,11 +1943,12 @@
 
   ConstraintOps
   (mult-satisfied [c mult-c]
-    (sum-c-satisfies c mult-c))
+    (either (sum-c-satisfies c mult-c)
+            nothing))
 
   (sum-c-satisfies [info c]
-    (and (every (.alts info) (partial satisfied-by c))
-         (maybe c)))
+    (maybe (and (every (.alts info) (partial satisfied-by c))
+                (maybe c))))
 
   (intersect-sum [c1 c2]
     (let [new-alts (for [a1 (.alts c1)
