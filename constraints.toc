@@ -7,6 +7,9 @@
 (defprotocol Constraint
   (assertion-path [x])
 
+  (reify-constraint [c param-cs]
+    c)
+
   (format-path [x n]
     (assert-result r (instance? (list-of String) r)))
 
@@ -208,6 +211,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (reify-constraint [c param-cs]
+    (.contents c (reify-constraint contents param-cs)))
+
   (extract-items-constraints [c n]
     (vec (repeat n contents)))
 
@@ -236,6 +242,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (reify-constraint [c param-cs]
+    (.contents c (reify-constraint contents param-cs)))
+
   (update-var [c new-var]
     (.var c new-var))
 
@@ -267,6 +276,12 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
+  (reify-constraint [ast param-cs]
+    (ItemsConstraint (map items-constraints (fn [c]
+                                              (reify-constraint c param-cs)))
+                     (reify-constraint tail-constraint param-cs)
+                     path sym var))
+
   (set-type [c tc]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
@@ -550,6 +565,9 @@
          (maybe x)))
 
   Constraint
+  (reify-constraint [ast param-cs]
+    (.alts ast (reify-constraint alts param-cs)))
+
   (update-type-name [c new-name]
     (.alts c (map (.alts c) (fn [alt]
                               (update-type-name alt new-name)))))
@@ -614,6 +632,9 @@
                (str path) " " (str sym) " " (str "\"" var "\"") ")")))
 
   Constraint
+  (reify-constraint [c param-cs]
+    (.constraint c (reify-constraint constraint param-cs)))
+
   (assertion-path [x]
     path)
 
@@ -655,7 +676,16 @@
           (either (map (first path) (fn [[f l]]
                                       (str " [\"" f "\" " l "]")))
                   "")
-          ")")))
+          ")"))
+
+  Constraint
+  (reify-constraint [c param-cs]
+    (either (map (get param-cs (.param-index c))
+                 (fn [param-c]
+                   (reduce (reverse (.path c)) param-c
+                           (fn [c [file line]]
+                             (update-path c file line)))))
+            top-type)))
 
 (deftype DynamicClosureConstraint [closure-index path sym var]
   Stringable
@@ -754,6 +784,10 @@
 
 (extend-type Vector
   Constraint
+  (reify-constraint [v subs]
+    (map v (fn [x]
+             (reify-constraint x subs))))
+
   (intersect [v c]
     (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
 
@@ -785,6 +819,10 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (reify-constraint [constraint param-cs]
+    (MultiConstraint (map constraints (fn [c]
+                                        (reify-constraint c param-cs)))))
+
   (update-type-name [c new-name]
     (.constraints c (map (.constraints c) (fn [inner-c]
                                             (update-type-name inner-c new-name)))))
@@ -858,6 +896,9 @@
   (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
 
   Constraint
+  (reify-constraint [c param-cs]
+    (.assertion c (reify-constraint assertion param-cs)))
+
   (update-var [_ new-var]
     (ResultConstraint (update-var assertion new-var)))
 
@@ -1156,6 +1197,7 @@
                 new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
                                (fn [new-cs curr]
                                  (either (and (some new-cs (fn [c]
+                                                             ;; TODO: add check for dynamic constraint
                                                              (= c (intersect c curr))))
                                               (maybe new-cs))
                                          (conj new-cs curr))))]
