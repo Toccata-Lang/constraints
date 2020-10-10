@@ -1,4 +1,6 @@
 
+;; TODO: make constraints a recursive type when possible
+
 (def default-extract-items-constraints)
 
 (def TypeMap (map-of Integer (set-of Symbol)))
@@ -6,9 +8,6 @@
 ;; Public interface for Constraints
 (defprotocol Constraint
   (assertion-path [x])
-
-  (reify-constraint [c param-cs]
-    c)
 
   (format-path [x n]
     (assert-result r (instance? (list-of String) r)))
@@ -176,6 +175,8 @@
   (intersect [_ c] c)
   (clear-sym [x] x)
   (update-sym [x _] x)
+  (replace-path [x _] x)
+  (update-path [x _ _] x)
   (extract-var [_] var)
   (update-var [x v] (AllValues v))
   (extract-collection-of [x] x)
@@ -211,9 +212,6 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (reify-constraint [c param-cs]
-    (.contents c (reify-constraint contents param-cs)))
-
   (extract-items-constraints [c n]
     (vec (repeat n contents)))
 
@@ -242,9 +240,6 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (reify-constraint [c param-cs]
-    (.contents c (reify-constraint contents param-cs)))
-
   (update-var [c new-var]
     (.var c new-var))
 
@@ -276,12 +271,6 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
-  (reify-constraint [ast param-cs]
-    (ItemsConstraint (map items-constraints (fn [c]
-                                              (reify-constraint c param-cs)))
-                     (reify-constraint tail-constraint param-cs)
-                     path sym var))
-
   (set-type [c tc]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
@@ -304,7 +293,10 @@
 
   (extract-type-map [_]
     (maybe {ListType #{}
-            VectorType #{}}))
+            VectorType #{}
+            BitmapIndexedType #{}
+            ArrayNodeType #{}
+            HashCollisionNodeType #{}}))
 
   (format-path [x desired-len]
     (format-path* (cons ["Sequence from" ""] path)
@@ -320,17 +312,9 @@
 
   Stringable
   (string-list [_]
-    (list "(TypeConstraint "  (str type-maps) " (list"
-          (either (map (first path) (fn [[f l]]
-                                      (let [f (str f)]
-                                        (str "[\"" (either (map (> (count f) 15)
-                                                                (fn [len]
-                                                                  (subs f (- len 15))))
-                                                           f)
-                                             "\" " l "]"))))
-                  "")
-          ") "
-          (str "'" type-sym) " " (sym-str sym)
+    (list "(TypeConstraint "  (str type-maps) " "
+          (str (cons 'list path))
+          (str " '" type-sym) " " (sym-str sym)
           " \"" (str var) "\")" ))
 
   Eq
@@ -421,7 +405,7 @@
     path)
 
   (format-path [x desired-len]
-    (format-path* (cons ["Integer from" ""] path)
+    (format-path* (cons [(str "Integer value '" val "' from") ""] path)
                   desired-len))
 
   (extract-type-map [_]
@@ -565,9 +549,6 @@
          (maybe x)))
 
   Constraint
-  (reify-constraint [ast param-cs]
-    (.alts ast (reify-constraint alts param-cs)))
-
   (update-type-name [c new-name]
     (.alts c (map (.alts c) (fn [alt]
                               (update-type-name alt new-name)))))
@@ -632,9 +613,6 @@
                (str path) " " (str sym) " " (str "\"" var "\"") ")")))
 
   Constraint
-  (reify-constraint [c param-cs]
-    (.constraint c (reify-constraint constraint param-cs)))
-
   (assertion-path [x]
     path)
 
@@ -669,23 +647,65 @@
     (and (instance? KeysConstraint info)
          (satisfied-by (.constraint c) (.constraint info)))))
 
+(deftype DynamicFieldsConstraint [field-cs path sym var]
+  (assert (instance? Vector field-cs))
+
+  Stringable
+  (string-list [_]
+    (list "(DynamicFieldsConstraint " (str field-cs)
+          (str " " (cons 'list path)) " " (either (map sym (fn [s]
+                                                          (str "(maybe '" s ")")))
+                                               "nothing")
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? DynamicFieldsConstraint y)
+         (= field-cs (.field-cs y))
+         (maybe x))))
+
 (deftype DynamicParamConstraint [param-index path sym var]
   Stringable
   (string-list [_]
     (list "(DynamicParamConstraint " (str param-index)
-          (either (map (first path) (fn [[f l]]
-                                      (str " [\"" f "\" " l "]")))
-                  "")
+          (str " " (cons 'list path)) " " (either (map sym (fn [s]
+                                                          (str "(maybe '" s ")")))
+                                               "nothing")
+          " " (str "\"" var "\"")
           ")"))
 
-  Constraint
-  (reify-constraint [c param-cs]
-    (either (map (get param-cs (.param-index c))
-                 (fn [param-c]
-                   (reduce (reverse (.path c)) param-c
-                           (fn [c [file line]]
-                             (update-path c file line)))))
-            top-type)))
+  Eq
+  (=* [x y]
+    (and (instance? DynamicParamConstraint y)
+         (= param-index (.param-index y))
+         (maybe x))))
+
+(deftype DynamicItemConstraint [param-index item-index path sym var]
+  Stringable
+  (string-list [_]
+    (list "(DynamicItemConstraint " (str param-index) " " (str item-index)
+          (str " " (cons 'list path)) " " (either (map sym (fn [s]
+                                                             (str "(maybe '" s ")")))
+                                               "nothing")
+          " " (str "\"" var "\"")
+          ")"))
+
+    Eq
+    (=* [x y]
+        (and (instance? DynamicItemConstraint y)
+             (= param-index (.param-index y))
+             (= item-index (.item-index y))
+             (maybe x))))
+
+(deftype DynamicMappedConstraint [inner-c mapping-f path sym var]
+  Stringable
+  (string-list [_]
+    (list "(DynamicMappedConstraint " (str inner-c) ")"))
+
+    Eq
+    (=* [x y]
+        nothing))
 
 (deftype DynamicClosureConstraint [closure-index path sym var]
   Stringable
@@ -694,10 +714,19 @@
           (either (map (first path) (fn [[f l]]
                                       (str " [\"" f "\" " l "]")))
                   "")
-          ")")))
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? DynamicClosureConstraint y)
+         (= closure-index (.closure-index y))
+         (maybe x))))
 
 (def DynamicConstraint (any-of DynamicParamConstraint
-                               DynamicClosureConstraint))
+                               DynamicFieldsConstraint
+                               DynamicItemConstraint
+                               DynamicClosureConstraint
+                               DynamicMappedConstraint))
 
 ;; Minimum Constraint Implementations
 ;; (deftype DynamicParamConstraint [param-index]
@@ -782,15 +811,6 @@
   (intersect [x c]
     (intersect (StaticStrConstraint x empty-list nothing (extract-var c)) c)))
 
-(extend-type Vector
-  Constraint
-  (reify-constraint [v subs]
-    (map v (fn [x]
-             (reify-constraint x subs))))
-
-  (intersect [v c]
-    (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
-
 (extend-type Symbol
   Constraint
   (assertion-path [_]
@@ -819,10 +839,6 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
-  (reify-constraint [constraint param-cs]
-    (MultiConstraint (map constraints (fn [c]
-                                        (reify-constraint c param-cs)))))
-
   (update-type-name [c new-name]
     (.constraints c (map (.constraints c) (fn [inner-c]
                                             (update-type-name inner-c new-name)))))
@@ -896,9 +912,6 @@
   (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
 
   Constraint
-  (reify-constraint [c param-cs]
-    (.assertion c (reify-constraint assertion param-cs)))
-
   (update-var [_ new-var]
     (ResultConstraint (update-var assertion new-var)))
 
@@ -917,6 +930,12 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    c)
+
+  (extract-dynamic-fields [c]
+    [])
+
   (intersect-keyc [c kc]
     (assert (instance? KeysConstraint kc))
     (intersect (update-var c (extract-var kc)) kc))
@@ -1082,6 +1101,35 @@
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
 
+(defn conflicting-assertions [failing-constraint file-name line-number]
+  (apply print-err (list* "Conflicting assertions"
+                           (either (= "" file-name)
+                                   (str "at " file-name ": " line-number))
+                           "\n"
+                           (format-path failing-constraint 0)))
+  nothing)
+
+(defn reify-constraint [c cs file-name line-number]
+  (let [new-c (reify-c c cs file-name line-number)]
+    (either (map (= bottom-type new-c)
+                 (fn [_]
+                   ;; (print-err 'c c)
+                   ;; (print-err 'cs cs)
+                   ;; (print-err 'new-c new-c)
+                   (conflicting-assertions new-c file-name line-number)
+                   (abort)))
+            new-c)))
+
+(extend-type Vector
+  ConstraintOps
+  (reify-c [v subs file-name line-number]
+    (map v (fn [x]
+             (reify-constraint x subs file-name line-number))))
+
+  Constraint
+  (intersect [v c]
+    (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
+
 (extend-type NoValues
   ConstraintOps
   (conj-multi [c mc]
@@ -1211,6 +1259,12 @@
     (=-items-constraint y x))
 
   ConstraintOps
+  (reify-c [ast param-cs file-name line-number]
+    (ItemsConstraint (map (.items-constraints ast) (fn [c]
+                                                     (reify-constraint c param-cs file-name line-number)))
+                     (reify-constraint (.tail-constraint ast) param-cs file-name line-number)
+                     (.path ast) (.sym ast) (.var ast)))
+
   (items-satisfied [info c]
     (let [c-items (.items-constraints c)
           info-items (extract-items-constraints info (count c-items))]
@@ -1257,7 +1311,12 @@
   (intersect-typec [c tc]
     (assert (instance? TypeConstraint tc))
 
-    (MultiConstraint [tc (update-var c (extract-var tc))]))
+    (either (for [type-map (extract-type-map tc)
+                  good-type-map (extract-type-map c)
+                  :when (= (select-keys type-map (keys good-type-map))
+                           type-map)]
+              (MultiConstraint [tc (update-var c (extract-var tc))]))
+            (NoValues [c tc])))
 
   (intersect-max-value [c mvc]
     (NoValues [mvc c]))
@@ -1337,6 +1396,28 @@
     (conj-multi c mc))
 
   ConstraintOps
+  (extract-dynamic-fields [c]
+    (either (map (some (.constraints c) (partial instance? DynamicFieldsConstraint))
+                 extract-dynamic-fields)
+            []))
+
+  (reify-c [constraint param-cs file-name line-number]
+    (let [new-cs (-> (.constraints constraint)
+                     (flat-map (fn [c]
+                                 (let [reified (reify-constraint c param-cs file-name line-number)]
+                                   (either (map (instance? MultiConstraint reified) .constraints)
+                                           [reified]))))
+                     (remove (partial = top-type)))
+          new-cs-count (count new-cs)]
+      (either (or (and (= 0 new-cs-count)
+                       (maybe top-type))
+                  (and (= 1 new-cs-count)
+                       (first new-cs)))
+              (reduce new-cs (MultiConstraint []) intersect)))
+    ;; (MultiConstraint (map constraints (fn [c]
+    ;;                                     (reify-constraint c param-cs))))
+    )
+
   (items-satisfied [info c]
     (flat-map (some (.constraints info) (partial instance? ItemsConstraint))
               (fn [info-itemsc]
@@ -1467,6 +1548,9 @@
               (ResultConstraint intersected))))
 
   ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (.assertion c (reify-constraint (.assertion c) param-cs file-name line-number)))
+
   (=-result-constraint [y x]
     (=* (.assertion x) (.assertion y)))
 
@@ -1478,6 +1562,7 @@
   (set-type [c tc]
     (either (for [c-map (extract-type-map c)
                   tc-map (extract-type-map tc)
+                  ;; TODO: this is just wrong, new-c doesn't get used
                   new-c (or (and (= {ListType #{}} tc-map)
                                  (= {VectorType #{}} c-map))
                             (and (= {VectorType #{}} tc-map)
@@ -1726,6 +1811,9 @@
     (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c)))
 
   ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (.contents c (reify-constraint (.contents c) param-cs file-name line-number)))
+
   (intersect-multi [c mc]
     (let [new-c (intersect (.contents c)
                            (extract-contents-constraint mc))]
@@ -1901,6 +1989,9 @@
     (intersect-coll-of c cc))
 
   ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (.contents c (reify-constraint (.contents c) param-cs file-name line-number)))
+
   (intersect-multi [c mc]
     (let [inters (map (.constraints mc) (partial intersect c))]
       (either (some inters (partial instance? NoValues))
@@ -1984,6 +2075,26 @@
               (.alts c new-alts))))
 
   ConstraintOps
+  (extract-dynamic-fields [c]
+    (-> (apply zip-lists (map (.alts c) (fn [alt]
+                                          (extract-dynamic-fields alt))))
+        (map (fn [new-alts]
+               (either (or (some new-alts (partial = top-type))
+                           (apply = new-alts))
+                       (.alts c new-alts))))
+        vec)) 
+
+  (reify-c [ast param-cs file-name line-number]
+    (let [new-alts (reduce (.alts ast) []
+                           (fn [new-alts alt-c]
+                             (let [new-c (reify-constraint alt-c param-cs file-name line-number)]
+                               (cond
+                                (some new-alts (partial = new-c)) new-alts
+                                (conj new-alts new-c)))))]
+      (either (and (= 1 (count new-alts))
+                   (first new-alts))
+              (.alts ast new-alts))))
+
   (mult-satisfied [c mult-c]
     (either (sum-c-satisfies c mult-c)
             nothing))
@@ -2010,23 +2121,6 @@
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
 
-(extend-type DynamicConstraint
-  Constraint
-  (intersect [c1 c2] c2)
-  (satisfied-by [_ c] (maybe c))
-  (intersect [_ c] c)
-  (clear-sym [x] x)
-  (update-sym [x _] x)
-  (update-var [x v] x)
-  (extract-collection-of [x] top-type)
-  (extract-type-map [_] nothing)
-  (extract-contents-constraint [_] top-type)
-  (extract-coll-constraint [_] top-type)
-
-  ConstraintOps
-  (intersect-typec [c tc] tc)
-  (intersect-multi [c mc] mc))
-
 (extend-type KeysConstraint
   Constraint
   (intersect [sc c]
@@ -2040,6 +2134,9 @@
          (satisfied-by (.constraint c) (.constraint info))))
 
   ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (.constraint c (reify-constraint (.constraint c) param-cs file-name line-number)))
+
   (intersect-keyc [c1 c2]
     (let [new-c (intersect (.constraint c1) (.constraint c2))]
       (either (= new-c bottom-type)
@@ -2126,13 +2223,63 @@
   (conj-multi [c mc]
     (intersect-multi c mc)))
 
-(defn conflicting-assertions [failing-constraint file-name line-number]
-  (apply print-err (list* "Conflicting assertions"
-                           (either (= "" file-name)
-                                   (str "at " file-name ": " line-number))
-                           "\n"
-                           (format-path failing-constraint 0)))
-  nothing)
+(extend-type DynamicConstraint
+  Container
+  (map [c f]
+    (DynamicMappedConstraint c f empty-list nothing ""))
+
+  Constraint
+  (intersect [c1 c2]
+    (either (or (and (= top-type c2)
+                     (maybe c1))
+                (map (instance? MultiConstraint c2)
+                     (partial intersect-multi c1)))
+            (MultiConstraint [c1 c2])))
+  (satisfied-by [_ c] (maybe c))
+  (intersect [_ c] c)
+  (clear-sym [x] (.sym x nothing))
+  (update-sym [x sym] (.sym x (maybe sym)))
+  (update-var [x v] (.var x v))
+  (extract-collection-of [x] top-type)
+  (extract-type-map [_] nothing)
+  (extract-contents-constraint [_] top-type)
+  (extract-coll-constraint [_] top-type)
+
+  ConstraintOps
+  (intersect-typec [c tc]
+    (MultiConstraint [c tc]))
+  (intersect-multi [c mc]
+    (.constraints mc (conj (.constraints mc) c))))
+
+(extend-type DynamicFieldsConstraint
+  ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (.field-cs c (reify-constraint (.field-cs c) param-cs file-name line-number)))
+
+  (extract-dynamic-fields [c]
+    (.field-cs c)))
+
+(extend-type DynamicParamConstraint
+  ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (either (map (get param-cs (.param-index c))
+                 (fn [param-c]
+                   (reduce (reverse (.path c)) param-c
+                           (fn [c [file line]]
+                             (update-path c file line)))))
+            top-type)))
+
+(extend-type DynamicItemConstraint
+  ConstraintOps
+  (reify-c [c param-cs file-name line-number]
+    (either (for [param-c (get param-cs (.param-index c))
+                  item-c (-> param-c
+                             extract-dynamic-fields
+                             (get (.item-index c)))]
+              (reduce (reverse (.path c)) item-c
+                      (fn [c [file line]]
+                        (update-path c file line))))
+            top-type)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
