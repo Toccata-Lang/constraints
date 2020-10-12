@@ -118,7 +118,6 @@
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
 (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
-(def KeysConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, KeysConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: constraints to add
@@ -602,51 +601,6 @@
         (some alts (fn [c]
                      (satisfied-by c info))))))
 
-(deftype KeysConstraint [constraint path sym var]
-  (assert (instance? List path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list (str "(KeysConstraint " (str constraint) " "
-               (str path) " " (str sym) " " (str "\"" var "\"") ")")))
-
-  Constraint
-  (assertion-path [x]
-    path)
-
-  (format-path [x n]
-    (format-path* (cons ["Key Type from" ""] path)
-                  n))
-
-  (extract-type-map [_]
-    (maybe {BitmapIndexedType #{}
-            ArrayNodeType #{}
-            HashCollisionNodeType #{}}))
-
-  (update-path [c file-name line-number]
-    (.path c (cons [file-name line-number] path)))
-
-  (extract-sym [tc]
-    sym)
-
-  (update-sym [tc new-sym]
-    (.sym tc (maybe new-sym)))
-
-  (clear-sym [tc]
-    (.sym tc nothing))
-
-  (extract-var [c]
-    var)
-
-  (update-var [c new-var]
-    (.var c new-var))
-
-  (satisfied-by [c info]
-    (and (instance? KeysConstraint info)
-         (satisfied-by (.constraint c) (.constraint info)))))
-
 (deftype DynamicFieldsConstraint [field-cs path sym var]
   (assert (instance? Vector field-cs))
 
@@ -759,7 +713,6 @@
                                CollectionOf
                                FieldConstraint
                                SumConstraint
-                               KeysConstraint
                                DynamicConstraint))
 
 (deftype NoValues [constraints]
@@ -935,10 +888,6 @@
 
   (extract-dynamic-fields [c]
     [])
-
-  (intersect-keyc [c kc]
-    (assert (instance? KeysConstraint kc))
-    (intersect (update-var c (extract-var kc)) kc))
 
   (items-satisfied [info c]
     (assert (instance? ValueConstraint info))
@@ -1562,11 +1511,11 @@
   (set-type [c tc]
     (either (for [c-map (extract-type-map c)
                   tc-map (extract-type-map tc)
-                  ;; TODO: this is just wrong, new-c doesn't get used
-                  new-c (or (and (= {ListType #{}} tc-map)
-                                 (= {VectorType #{}} c-map))
-                            (and (= {VectorType #{}} tc-map)
-                                 (= {ListType #{}} c-map)))]
+                  ;; check for correctness
+                  _ (or (and (= {ListType #{}} tc-map)
+                             (= {VectorType #{}} c-map))
+                        (and (= {VectorType #{}} tc-map)
+                             (= {ListType #{}} c-map)))]
               (.type-maps c tc-map))
             top-type))
 
@@ -2120,108 +2069,6 @@
               (-> c1
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
-
-(extend-type KeysConstraint
-  Constraint
-  (intersect [sc c]
-    (intersect-keyc c sc))
-
-  (extract-key-constraint [c]
-    (.constraint c))
-
-  (satisfied-by [c info]
-    (and (instance? KeysConstraint info)
-         (satisfied-by (.constraint c) (.constraint info))))
-
-  ConstraintOps
-  (reify-c [c param-cs file-name line-number]
-    (.constraint c (reify-constraint (.constraint c) param-cs file-name line-number)))
-
-  (intersect-keyc [c1 c2]
-    (let [new-c (intersect (.constraint c1) (.constraint c2))]
-      (either (= new-c bottom-type)
-              (.constraint c1 new-c))))
-
-  (intersect-coll-of [c cc]
-    (assert (instance? CollectionOf cc))
-    (assert-result r (instance? Constraints r))
-
-    (MultiConstraint [(update-var c (extract-var cc)) cc]))
-
-  (intersect-static-str [c slc]
-    (assert (instance? StaticStrConstraint slc))
-    (assert-result r (instance? Constraints r))
-
-    (NoValues [(update-var c (extract-var slc)) slc]))
-
-  (intersect-static-len [c slc]
-    (assert (instance? StaticLengthConstraint slc))
-    (assert-result r (instance? Constraints r))
-
-    (MultiConstraint [(update-var c (extract-var slc)) slc]))
-
-  (intersect-sum [c cs]
-    (assert (instance? SumConstraint cs))
-
-    (let [inters (map (.alts cs) (partial intersect c))
-          goods (remove inters (partial instance? NoValues))]
-      (either (and (empty? goods)
-                   (maybe (NoValues [c cs])))
-              (.alts cs goods))))
-
-  (intersect-inner [c ic]
-    (assert (instance? InferredInner ic))
-    (assert-result r (instance? Constraints r))
-
-    (MultiConstraint [(update-var c (extract-var ic)) ic]))
-
-  (intersect-max-value [c mvc]
-    (assert (instance? MaxValue mvc))
-    (assert-result r (instance? Constraints r))
-
-    (NoValues [(update-var c (extract-var mvc)) mvc]))
-
-  (intersect-min-value [c mvc]
-    (assert (instance? MinValue mvc))
-    (assert-result r (instance? Constraints r))
-
-    (NoValues [(update-var c (extract-var mvc)) mvc]))
-
-  (intersect-static-int [c slc]
-    (assert (instance? StaticIntConstraint slc))
-
-    (NoValues [(update-var c (extract-var slc)) slc]))
-
-  (fieldc-satisfied [info c]
-    (assert (instance? FieldConstraint c))
-    nothing)
-
-  (intersect-fieldc [c fc]
-    (assert (instance? FieldConstraint fc))
-    (assert-result r (instance? Constraints r))
-
-    (NoValues [(update-var c (extract-var fc)) fc]))
-
-  (intersect-itemsc [c ic]
-    (assert (instance? ItemsConstraint ic))
-    (assert-result r (instance? Constraints r))
-
-    (NoValues [(update-var c (extract-var ic)) ic]))
-
-  (intersect-multi [c mc]
-    (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r))
-
-    (let [new-c (-> (.constraints mc)
-                    (filter (partial instance? KeysConstraint))
-                    (reduce c intersect))]
-      (either (= new-c bottom-type)
-              (.constraints mc (conj (remove (.constraints mc)
-                                             (partial instance? KeysConstraint))
-                                     new-c)))))
-
-  (conj-multi [c mc]
-    (intersect-multi c mc)))
 
 (extend-type DynamicConstraint
   Container
