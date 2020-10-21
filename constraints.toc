@@ -23,6 +23,16 @@
                    (select-keys type-map (keys c-type-map))))
             type-map))
 
+  (extract-dynamic-fields [c]
+    (assert-result r (instance? Vector r))
+
+    [])
+
+  (extract-dynamic-params [c]
+    (assert-result r (instance? Vector r))
+
+    [])
+
   (extract-type-map [_]
     (assert-result r (instance? (maybe-of TypeMap) r)))
 
@@ -601,12 +611,10 @@
         (some alts (fn [c]
                      (satisfied-by c info))))))
 
-(deftype DynamicFields [field-cs path sym var]
-  (assert (instance? Vector field-cs))
-
+(deftype DynamicFields [path sym var]
   Stringable
   (string-list [_]
-    (list "(DynamicFields " (str field-cs)
+    (list "(DynamicFields "
           (str " " (cons 'list path)) " " (either (map sym (fn [s]
                                                           (str "(maybe '" s ")")))
                                                "nothing")
@@ -616,7 +624,6 @@
   Eq
   (=* [x y]
     (and (instance? DynamicFields y)
-         (= field-cs (.field-cs y))
          (maybe x))))
 
 (deftype DynamicParamConstraint [param-index path sym var]
@@ -628,6 +635,10 @@
                                                "nothing")
           " " (str "\"" var "\"")
           ")"))
+
+  Constraint
+  (extract-dynamic-params [c]
+    [c])
 
   Eq
   (=* [x y]
@@ -641,50 +652,29 @@
     (list "(DynamicItemConstraint " (str param-index) " " (str item-index)
           (str " " (cons 'list path)) " " (either (map sym (fn [s]
                                                              (str "(maybe '" s ")")))
-                                               "nothing")
+                                                  "nothing")
           " " (str "\"" var "\"")
           ")"))
 
-    Eq
-    (=* [x y]
-        (and (instance? DynamicItemConstraint y)
-             (= param-index (.param-index y))
-             (= item-index (.item-index y))
-             (maybe x))))
-
-(deftype DynamicMappedConstraint [inner-c mapping-f path sym var]
-  Stringable
-  (string-list [_]
-    (list "(DynamicMappedConstraint " (str inner-c) ")"))
-
-    Eq
-    (=* [x y]
-        nothing))
-
-(deftype DynamicFieldConstraint [field-index path sym var]
-  Stringable
-  (string-list [_]
-    (list "(DynamicFieldConstraint " (str field-index)
-          (either (map (first path) (fn [[f l]]
-                                      (str " [\"" f "\" " l "]")))
-                  "")
-          " " (str sym) " " (str "\"" var "\"")
-          ")"))
+  Constraint
+  (extract-dynamic-params [c]
+    [c])
 
   Eq
   (=* [x y]
-    (and (instance? DynamicFieldConstraint y)
-         (= field-index (.field-index y))
+    (and (instance? DynamicItemConstraint y)
+         (= param-index (.param-index y))
+         (= item-index (.item-index y))
          (maybe x))))
 
-(deftype DynamicResultConstraint [invokable-c path sym var]
+(deftype DynamicResultConstraint [invokable-c num-args path sym var]
   Stringable
   (string-list [_]
-    (list "(DynamicResultConstraint " (str invokable-c)
-          (either (map (first path) (fn [[f l]]
-                                      (str " [\"" f "\" " l "]")))
-                  "")
-          ")"))
+    (list "(DynamicResultConstraint " (str invokable-c) " " (str num-args)
+          (str " " (cons 'list path)) " " (either (map sym (fn [s]
+                                                             (str "(maybe '" s ")")))
+                                                  "nothing")
+          " " (str "\"" var "\"") ")"))
 
   Eq
   (=* [x y]
@@ -692,12 +682,40 @@
          (= invokable-c (.invokable-c y))
          (maybe x))))
 
+(deftype ReifiedFields [field-cs path sym var]
+  (assert (instance? Vector field-cs))
+
+  Stringable
+  (string-list [_]
+    (list "(ReifiedFields " (str (vec (interpose field-cs "\n")))
+          (str " " (cons 'list path)) " " (either (map sym (fn [s]
+                                                             (str "(maybe '" s ")")))
+                                                  "nothing")
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? ReifiedFields y)
+         (= field-cs (.field-cs y))
+         (maybe x)))
+
+  Constraint
+  (extract-dynamic-fields [c]
+    field-cs)
+
+  (intersect [c1 c2] 
+    (let [new-c (intersect c2 c1)]
+      (print-err 'new-c new-c)
+      new-c))
+
+  (extract-type-map [_] nothing))
+
 (def DynamicConstraint (any-of DynamicParamConstraint
                                DynamicFields
-                               DynamicFieldConstraint
+                               ReifiedFields
                                DynamicItemConstraint
-                               DynamicResultConstraint
-                               DynamicMappedConstraint))
+                               DynamicResultConstraint))
 
 ;; Minimum Constraint Implementations
 ;; (deftype DynamicParamConstraint [param-index]
@@ -809,6 +827,18 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (extract-dynamic-fields [c]
+    (either (first (-> constraints 
+                       (map extract-dynamic-fields)
+                       (remove empty?)))
+            []))
+
+  (extract-dynamic-params [c]
+    (either (first (-> constraints 
+                       (map extract-dynamic-params)
+                       (remove empty?)))
+            []))
+
   (update-type-name [c new-name]
     (.constraints c (map (.constraints c) (fn [inner-c]
                                             (update-type-name inner-c new-name)))))
@@ -870,7 +900,6 @@
     (.constraints mc (map (.constraints mc)
                           (fn [c]
                             (update-path c file-name line-number))))))
-
 (def ValueConstraint (any-of SymbolConstraints
                              MultiConstraint
                              AllValues))
@@ -900,9 +929,6 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
-  (extract-dynamic-fields [c]
-    [])
-
   (items-satisfied [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? ItemsConstraint c))
@@ -1337,11 +1363,6 @@
     (conj-multi c mc))
 
   ConstraintOps
-  (extract-dynamic-fields [c]
-    (either (map (some (.constraints c) (partial instance? DynamicFields))
-                 extract-dynamic-fields)
-            []))
-
   (items-satisfied [info c]
     (flat-map (some (.constraints info) (partial instance? ItemsConstraint))
               (fn [info-itemsc]
@@ -1943,6 +1964,9 @@
 
 (extend-type SumConstraint
   Constraint
+  (extract-dynamic-params [c]
+    (flat-map (.alts c) extract-dynamic-params))
+
   (set-type [c tc]
     (.alts c (-> (.alts c) 
                  (map (fn [inner-c]
@@ -1990,15 +2014,6 @@
               (.alts c new-alts))))
 
   ConstraintOps
-  (extract-dynamic-fields [c]
-    (-> (apply zip-lists (map (.alts c) (fn [alt]
-                                          (extract-dynamic-fields alt))))
-        (map (fn [new-alts]
-               (either (or (some new-alts (partial = top-type))
-                           (apply = new-alts))
-                       (.alts c new-alts))))
-        vec)) 
-
   (mult-satisfied [c mult-c]
     (either (sum-c-satisfies c mult-c)
             nothing))
@@ -2026,10 +2041,6 @@
                   (.alts new-alts))))))
 
 (extend-type DynamicConstraint
-  Container
-  (map [c f]
-    (DynamicMappedConstraint c f empty-list nothing ""))
-
   Constraint
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
@@ -2037,6 +2048,7 @@
                 (map (instance? MultiConstraint c2)
                      (partial intersect-multi c1)))
             (MultiConstraint [c1 c2])))
+
   (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
   (clear-sym [x] (.sym x nothing))
@@ -2051,12 +2063,10 @@
   (intersect-typec [c tc]
     (MultiConstraint [c tc]))
   (intersect-multi [c mc]
-    (.constraints mc (conj (.constraints mc) c))))
-
-(extend-type DynamicFields
-  ConstraintOps
-  (extract-dynamic-fields [c]
-    (.field-cs c)))
+    ;; TODO: only one DynamicConstraint allowed in a MultiConstraint
+    (.constraints mc (cond (some (.constraints mc) (partial = c))
+                           (.constraints mc)
+                           (conj (.constraints mc) c)))))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
