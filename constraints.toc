@@ -1,5 +1,6 @@
 
 ;; TODO: make constraints a recursive type when possible
+;; TODO: add a Hole constraint to print information
 
 (def default-extract-items-constraints)
 
@@ -174,6 +175,10 @@
   (string-list [_]
     (list "(AllValues " (str "\"" var "\"") ")"))
 
+  Container
+  (map [x f]
+    x)
+
   Eq
   (=* [x y]
     (and (=* (get-type x) (get-type y))
@@ -220,6 +225,10 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
+  Container
+  (map [x f]
+    (.contents x (map contents f)))
+
   Constraint
   (extract-items-constraints [c n]
     (vec (repeat n contents)))
@@ -247,6 +256,10 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Container
+  (map [x f]
+    (.contents x (map contents f)))
 
   Constraint
   (update-var [c new-var]
@@ -278,6 +291,12 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" "\")"))
+
+  Container
+  (map [x f]
+    (-> x
+        (.tail-constraint (map tail-constraint f))
+        (.items-constraints (map items-constraints f))))
 
   Constraint
   (set-type [c tc]
@@ -326,6 +345,10 @@
           (str " '" type-sym) " " (sym-str sym)
           " \"" (str var) "\")" ))
 
+  Container
+  (map [x f]
+    x)
+
   Eq
   (=* [x y]
     (for [_ (instance? TypeConstraint y)
@@ -373,6 +396,10 @@
           ") " (sym-str sym)
           " \"" (str var) "\")"))
 
+  Container
+  (map [x f]
+    x)
+
   Constraint
   (assertion-path [_]
     path)
@@ -406,6 +433,10 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
+  Container
+  (map [x f]
+    x)
+
   Constraint
   (satisfied-by [c info]
     (= c info))
@@ -433,6 +464,10 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Container
+  (map [x f]
+    x)
 
   Constraint
   (assertion-path [_]
@@ -466,6 +501,10 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
+  Container
+  (map [x f]
+    x)
+
   Constraint
   (assertion-path [_]
     path)
@@ -490,6 +529,10 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Container
+  (map [x f]
+    x)
 
   Constraint
   (assertion-path [c]
@@ -517,6 +560,10 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
+
+  Container
+  (map [x f]
+    x)
 
   Constraint
   (satisfied-by [c info]
@@ -548,6 +595,10 @@
   (string-list [_]
     (list (str "(SumConstraint " (str alts) " " (str path) " " (either (map sym str) 'nothing) " "
                var ")")))
+
+  Container
+  (map [x f]
+    (.alts x (map alts f)))
 
   Eq
   (=* [x y]
@@ -621,6 +672,10 @@
           " " (str "\"" var "\"")
           ")"))
 
+  Container
+  (map [x f]
+    x)
+
   Eq
   (=* [x y]
     (and (instance? DynamicFields y)
@@ -635,6 +690,10 @@
                                                "nothing")
           " " (str "\"" var "\"")
           ")"))
+
+  Container
+  (map [x f]
+    x)
 
   Constraint
   (extract-dynamic-params [c]
@@ -656,6 +715,10 @@
           " " (str "\"" var "\"")
           ")"))
 
+  Container
+  (map [x f]
+    x)
+
   Constraint
   (extract-dynamic-params [c]
     [c])
@@ -676,6 +739,10 @@
                                                   "nothing")
           " " (str "\"" var "\"") ")"))
 
+  Container
+  (map [x f]
+    (.invokable-c x (map invokable-c f)))
+
   Eq
   (=* [x y]
     (and (instance? DynamicResultConstraint y)
@@ -693,6 +760,10 @@
                                                   "nothing")
           " " (str "\"" var "\"")
           ")"))
+
+  Container
+  (map [x f]
+    (.field-cs x (map field-cs f)))
 
   Eq
   (=* [x y]
@@ -758,6 +829,10 @@
   Stringable
   (string-list [_]
     (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
+
+  Container
+  (map [x f]
+    x)
 
   Constraint
   (intersect [nv _] nv)
@@ -825,6 +900,10 @@
 
   Stringable
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
+
+  Container
+  (map [x f]
+    (.constraints x (map constraints f)))
 
   Constraint
   (extract-dynamic-fields [c]
@@ -909,6 +988,10 @@
 
   Stringable
   (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
+
+  Container
+  (map [x f]
+    (.assertion x (map assertion f)))
 
   Constraint
   (update-var [_ new-var]
