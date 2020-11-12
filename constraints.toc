@@ -18,11 +18,11 @@
 
   (intersect [c1 c2])
 
-  (restrict-types [c type-map]
+  (restrict-types [c types-map]
     (either (map (extract-type-map c)
                  (fn [c-type-map]
-                   (select-keys type-map (keys c-type-map))))
-            type-map))
+                   (select-keys types-map (keys c-type-map))))
+            types-map))
 
   (extract-dynamic-fields [c]
     (assert-result r (instance? Vector r))
@@ -407,12 +407,12 @@
   (extract-type-map [_]
     nothing)
 
-  (restrict-types [c type-map]
-    (reduce (seq type-map) {}
-            (fn [type-map [type-num field-set]]
+  (restrict-types [c types-map]
+    (reduce (seq types-map) {}
+            (fn [types-map [type-num field-set]]
               (either (map (field-set field)
-                           (fn [_] (assoc type-map type-num field-set)))
-                      type-map))))
+                           (fn [_] (assoc types-map type-num field-set)))
+                      types-map))))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Field '" (subs (str field) 1) "' required from") ""]
@@ -890,8 +890,8 @@
     (either (or (= slc c)
                 (and (instance? Symbol c)
                      (maybe (NoValues [slc c])))
-                (for [type-map (extract-type-map c)
-                      :when (get type-map SymbolType)]
+                (for [types-map (extract-type-map c)
+                      :when (get types-map SymbolType)]
                   slc))
             (NoValues [slc c]))))
 
@@ -939,8 +939,8 @@
 
   (extract-type-map [mc]
     (reduce (.constraints mc) nothing
-            (fn [type-map c]
-              (or (map type-map (partial restrict-types c))
+            (fn [types-map c]
+              (or (map types-map (partial restrict-types c))
                   (extract-type-map c)))))
 
   (clear-sym [mc]
@@ -1024,11 +1024,11 @@
     (assert (instance? MultiConstraint c))
     (assert-result r (instance? (maybe-of ValueConstraint) r))
 
-    (let [type-map (extract-type-map c)]
-      (and (or (= nothing type-map)
-               (flat-map type-map
-                         (fn [type-map]
-                           (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
+    (let [types-map (extract-type-map c)]
+      (and (or (= nothing types-map)
+               (flat-map types-map
+                         (fn [types-map]
+                           (satisfied-by (TypeConstraint types-map empty-list (symbol "<unknown>") nothing "")
                                          info))))
            (every (.constraints c)
                   (fn [inner-c]
@@ -1141,8 +1141,8 @@
     (assert-result r (instance? (maybe-of ValueConstraint) r))
 
     (flat-map (extract-type-map info)
-              (fn [type-map]
-                (and (< 0 (count (restrict-types c type-map)))
+              (fn [types-map]
+                (and (< 0 (count (restrict-types c types-map)))
                      (maybe info)))))
 
   (intersect-fieldc [c fc]
@@ -1269,8 +1269,8 @@
     (assert-result r (instance? Constraints r))
 
     (either (flat-map (extract-type-map c)
-                      (fn [type-map]
-                        (or (and (empty? (select-keys (.type-maps tc) (keys type-map)))
+                      (fn [types-map]
+                        (or (and (empty? (select-keys (.type-maps tc) (keys types-map)))
                                  (maybe (NoValues [tc c])))
                             (maybe (MultiConstraint [tc (update-var c (extract-var tc))])))))
             (intersect (update-var c (extract-var tc)) tc))))
@@ -1361,10 +1361,10 @@
   (intersect-typec [c tc]
     (assert (instance? TypeConstraint tc))
 
-    (either (for [type-map (extract-type-map tc)
+    (either (for [types-map (extract-type-map tc)
                   good-type-map (extract-type-map c)
-                  :when (= (select-keys type-map (keys good-type-map))
-                           type-map)]
+                  :when (= (select-keys types-map (keys good-type-map))
+                           types-map)]
               (MultiConstraint [tc (update-var c (extract-var tc))]))
             (NoValues [c tc])))
 
@@ -1488,11 +1488,11 @@
                       (intersect mc new-c)))))
 
   (mult-satisfied [mult-info mult-c]
-    (let [type-map (extract-type-map mult-c)]
-      (and (or (= nothing type-map)
-               (flat-map type-map
-                         (fn [type-map]
-                           (satisfied-by (TypeConstraint type-map empty-list (symbol "<unknown>") nothing "")
+    (let [types-map (extract-type-map mult-c)]
+      (and (or (= nothing types-map)
+               (flat-map types-map
+                         (fn [types-map]
+                           (satisfied-by (TypeConstraint types-map empty-list (symbol "<unknown>") nothing "")
                                          mult-info))))
            (every (.constraints mult-c)
                   (fn [inner-c]
@@ -1652,10 +1652,10 @@
     (let [field (.field fc)
           new-map (reduce (seq (.type-maps c))
                           {}
-                          (fn [type-map [type-num fields]]
+                          (fn [types-map [type-num fields]]
                             (either (map (fields field) (fn [_]
-                                                          (assoc type-map type-num fields)))
-                                    type-map)))]
+                                                          (assoc types-map type-num fields)))
+                                    types-map)))]
       (either (and (empty? new-map)
                    (maybe (NoValues [fc c])))
               (MultiConstraint [fc (-> c
