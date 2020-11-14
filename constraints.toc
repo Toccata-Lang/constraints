@@ -2,9 +2,28 @@
 ;; TODO: make constraints a recursive type when possible
 ;; TODO: add a Hole constraint to print information
 
+;; (defn update-path [c file-name line-number]
+;;   (cata (fn [c]
+;;           (add-to-path c file-name line-number))
+;;         c))
+
+;; (defn clear-sym [c]
+;;   (cata remove-sym c))
+
+;; (defn extract-key-constraint [c]
+;;   (cata key-constraint c))
+
+;; (defn extract-dynamic-params [c]
+;;   (cata dynamic-params c))
+
+;; (defn extract-type-map [c]
+;;   (para type-map c))
+
 (def default-extract-items-constraints)
 
 (def TypeMap (map-of Integer (set-of Symbol)))
+
+(def top-type)
 
 ;; Public interface for Constraints
 (defprotocol Constraint
@@ -175,10 +194,6 @@
   (string-list [_]
     (list "(AllValues " (str "\"" var "\"") ")"))
 
-  Container
-  (map [x f]
-    x)
-
   Eq
   (=* [x y]
     (and (=* (get-type x) (get-type y))
@@ -225,10 +240,6 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
-  Container
-  (map [x f]
-    (.contents x (map contents f)))
-
   Constraint
   (extract-items-constraints [c n]
     (vec (repeat n contents)))
@@ -256,10 +267,6 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Container
-  (map [x f]
-    (.contents x (map contents f)))
 
   Constraint
   (update-var [c new-var]
@@ -291,12 +298,6 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" "\")"))
-
-  Container
-  (map [x f]
-    (-> x
-        (.tail-constraint (map tail-constraint f))
-        (.items-constraints (map items-constraints f))))
 
   Constraint
   (set-type [c tc]
@@ -345,10 +346,6 @@
           (str " '" type-sym) " " (sym-str sym)
           " \"" (str var) "\")" ))
 
-  Container
-  (map [x f]
-    x)
-
   Eq
   (=* [x y]
     (for [_ (instance? TypeConstraint y)
@@ -396,10 +393,6 @@
           ") " (sym-str sym)
           " \"" (str var) "\")"))
 
-  Container
-  (map [x f]
-    x)
-
   Constraint
   (assertion-path [_]
     path)
@@ -433,10 +426,6 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
-  Container
-  (map [x f]
-    x)
-
   Constraint
   (satisfied-by [c info]
     (= c info))
@@ -464,10 +453,6 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Container
-  (map [x f]
-    x)
 
   Constraint
   (assertion-path [_]
@@ -501,10 +486,6 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
-  Container
-  (map [x f]
-    x)
-
   Constraint
   (assertion-path [_]
     path)
@@ -529,10 +510,6 @@
                                       (str "[\"" f "\" " l "]")))
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Container
-  (map [x f]
-    x)
 
   Constraint
   (assertion-path [c]
@@ -561,10 +538,6 @@
                   "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
-  Container
-  (map [x f]
-    x)
-
   Constraint
   (satisfied-by [c info]
     (= c info))
@@ -586,6 +559,7 @@
 
 ;; TODO: add 'typ-sym' and make it a be optional for all constraints
 (deftype SumConstraint [alts path sym var]
+  (assert (instance? Vector alts))
   (assert (instance? (min-count 1) alts))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? (list-of Vector) path))
@@ -595,10 +569,6 @@
   (string-list [_]
     (list (str "(SumConstraint " (str alts) " " (str path) " " (either (map sym str) 'nothing) " "
                var ")")))
-
-  Container
-  (map [x f]
-    (.alts x (map alts f)))
 
   Eq
   (=* [x y]
@@ -672,10 +642,6 @@
           " " (str "\"" var "\"")
           ")"))
 
-  Container
-  (map [x f]
-    x)
-
   Eq
   (=* [x y]
     (and (instance? DynamicFields y)
@@ -690,10 +656,6 @@
                                                "nothing")
           " " (str "\"" var "\"")
           ")"))
-
-  Container
-  (map [x f]
-    x)
 
   Constraint
   (extract-dynamic-params [c]
@@ -715,10 +677,6 @@
           " " (str "\"" var "\"")
           ")"))
 
-  Container
-  (map [x f]
-    x)
-
   Constraint
   (extract-dynamic-params [c]
     [c])
@@ -739,10 +697,6 @@
                                                   "nothing")
           " " (str "\"" var "\"") ")"))
 
-  Container
-  (map [x f]
-    (.invokable-c x (map invokable-c f)))
-
   Eq
   (=* [x y]
     (and (instance? DynamicResultConstraint y)
@@ -760,10 +714,6 @@
                                                   "nothing")
           " " (str "\"" var "\"")
           ")"))
-
-  Container
-  (map [x f]
-    (.field-cs x (map field-cs f)))
 
   Eq
   (=* [x y]
@@ -829,10 +779,6 @@
   Stringable
   (string-list [_]
     (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
-
-  Container
-  (map [x f]
-    x)
 
   Constraint
   (intersect [nv _] nv)
@@ -900,10 +846,6 @@
 
   Stringable
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
-
-  Container
-  (map [x f]
-    (.constraints x (map constraints f)))
 
   Constraint
   (extract-dynamic-fields [c]
@@ -984,14 +926,8 @@
                              AllValues))
 
 (deftype ResultConstraint [assertion]
-  (assert (instance? ValueConstraint assertion))
-
   Stringable
   (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
-
-  Container
-  (map [x f]
-    (.assertion x (map assertion f)))
 
   Constraint
   (update-var [_ new-var]
@@ -1279,6 +1215,9 @@
   Constraint
   (extract-key-constraint [_]
     top-type)
+  Container
+  (map [x f]
+    x)
 
   (extract-contents-constraint [_]
     top-type)
@@ -1298,18 +1237,25 @@
                                              (either (apply = (map type-constraints .type-sym))
                                                      (symbol "<unknown>"))
                                              nothing "")])
-                new-cs (reduce (remove cs (partial instance? TypeConstraint)) tc
-                               (fn [new-cs curr]
-                                 (either (and (some new-cs (fn [c]
-                                                             ;; TODO: add check for dynamic constraint
-                                                             (= c (intersect c curr))))
-                                              (maybe new-cs))
-                                         (conj new-cs curr))))]
+                new-cs (-> cs
+                           (remove (partial instance? TypeConstraint))
+                           (reduce tc (fn [new-cs curr]
+                                        (either (and (some new-cs (fn [c]
+                                                                    ;; TODO: add check for dynamic constraint
+                                                                    (= c (intersect c curr))))
+                                                     (maybe new-cs))
+                                                (conj new-cs curr)))))]
             (either (and (= 1 (count new-cs))
                          (first new-cs))
                     (SumConstraint new-cs empty-list nothing "")))))
 
 (extend-type ItemsConstraint
+  Container
+  (map [x f]
+    (-> x
+        (.tail-constraint (f (.tail-constraint x)))
+        (.items-constraints (map (.items-constraints x) f))))
+
   Eq
   (=* [x y]
     (=-items-constraint y x))
@@ -1435,6 +1381,10 @@
                        (.sym constraint) (extract-var constraint)))))
 
 (extend-type MultiConstraint
+  Container
+  (map [x f]
+    (.constraints x (map (.constraints x) f)))
+
   Eq
   (=* [x y]
     (=-multi y x))
@@ -1562,6 +1512,10 @@
             ics))))
 
 (extend-type ResultConstraint
+  Container
+  (map [x f]
+    (.assertion x (f (.assertion x))))
+
   Eq
   (=* [x y]
     (and (or (=-result-constraint y x)
@@ -1800,6 +1754,10 @@
                   (.path c) 'CoreContainers (.sym c) (extract-var c)))
 
 (extend-type InferredInner
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
   Eq
   (=* [x y]
     (=-inferred-inner y x))
@@ -1955,6 +1913,10 @@
             (NoValues [slc c]))))
 
 (extend-type CollectionOf
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
   Eq
   (=* [x y]
     (=-contentsc y x))
@@ -2046,6 +2008,10 @@
          (maybe x))))
 
 (extend-type SumConstraint
+  Container
+  (map [x f]
+    (.alts x (map (.alts x) f)))
+
   Constraint
   (extract-dynamic-params [c]
     (flat-map (.alts c) extract-dynamic-params))
@@ -2151,6 +2117,16 @@
                            (.constraints mc)
                            (conj (.constraints mc) c)))))
 
+(extend-type DynamicResultConstraint
+  Container
+  (map [x f]
+    (.invokable-c x (f (.invokable-c x)))))
+
+(extend-type ReifiedFields
+  Container
+  (map [x f]
+    (.field-cs x (map (.field-cs x) f))))
+
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
   (assert (instance? Constraints y))
@@ -2172,3 +2148,4 @@
                                              (CollectionOf (TypeConstraint {} empty-list 'no-type nothing "")
                                                            empty-list nothing "")
                                              empty-list nothing ""))
+
