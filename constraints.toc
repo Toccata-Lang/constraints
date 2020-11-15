@@ -2,28 +2,12 @@
 ;; TODO: make constraints a recursive type when possible
 ;; TODO: add a Hole constraint to print information
 
-;; (defn update-path [c file-name line-number]
-;;   (cata (fn [c]
-;;           (add-to-path c file-name line-number))
-;;         c))
-
-;; (defn clear-sym [c]
-;;   (cata remove-sym c))
-
-;; (defn extract-key-constraint [c]
-;;   (cata key-constraint c))
-
-;; (defn extract-dynamic-params [c]
-;;   (cata dynamic-params c))
-
-;; (defn extract-type-map [c]
-;;   (para type-map c))
-
 (def default-extract-items-constraints)
 
 (def TypeMap (map-of Integer (set-of Symbol)))
 
 (def top-type)
+(def type-map)
 
 ;; Public interface for Constraints
 (defprotocol Constraint
@@ -32,45 +16,48 @@
   (format-path [x n]
     (assert-result r (instance? (list-of String) r)))
 
-  (replace-path [c new-path]
-    (assert (instance? (list-of Vector) new-path)))
+  (set-path [c new-path]
+    (assert (instance? (list-of Vector) new-path))
+    (assert-result r (instance? Either r))
+
+    (Right c))
 
   (intersect [c1 c2])
 
   (restrict-types [c types-map]
-    (either (map (extract-type-map c)
+    (either (map (para type-map c)
                  (fn [c-type-map]
                    (select-keys types-map (keys c-type-map))))
             types-map))
 
-  (extract-dynamic-fields [c]
+  (dynamic-fields [c]
+    c)
+
+  (dynamic-params [c]
     (assert-result r (instance? Vector r))
 
     [])
 
-  (extract-dynamic-params [c]
-    (assert-result r (instance? Vector r))
+  (type-map [new old]
+    (assert-result r (instance? (maybe-of TypeMap) r))
 
-    [])
+    ;; TODO: c-exprs from Toccata might show up here and we can extract constraint info from them
+    ;; but for noew, just ignore them
+    nothing)
 
-  (extract-type-map [_]
-    (assert-result r (instance? (maybe-of TypeMap) r)))
+  (extract-contents-constraint [_])
 
   (extract-items-constraints [_]
     (assert-result r (instance? Vector r))
     [])
 
-  (extract-contents-constraint [_])
-
   (extract-items-constraints [c n]
     (assert (instance? Integer n))
-    (assert-result r (instance? Vector r))
+    (assert-result r (instance? Vector r)))
 
-    (default-extract-items-constraints c n))
-
-  (extract-key-constraint [_]
+  (key-constraint [_]
     ;; extract the constraint a key value must satisfy
-    )
+    top-type)
 
   (extract-collection-of [_]
     ;; extract CollectionOf constraint
@@ -79,9 +66,10 @@
   (extract-coll-constraint [_]
     ;; extract the CollectionOf or the InferredInner constraints
     ;; returns either an AllValues or CollectionOf constraint
-    )
 
-  (update-path [constraint file-name line-number]
+    top-type)
+
+  (add-to-path [constraint file-name line-number]
     constraint)
 
   (extract-sym [tc]
@@ -92,7 +80,10 @@
   (update-sym [tc new-sym]
     (assert (instance? Symbol new-sym)))
 
-  (clear-sym [tc])
+  (remove-sym [c]
+    (assert-result r (instance? Either r))
+
+    (Right c))
 
   (extract-var [c]
     (assert-result var (instance? String var)))
@@ -110,6 +101,38 @@
     (assert-result r (instance? Maybe r))
 
     nothing))
+
+;; (defn extract-collection-of [c]
+;;   (let [x (old-extract-collection-of c)
+;;         y (cata collection-of c)]
+;;     (or (= x y)
+;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
+;;     y))
+
+(defn extract-dynamic-fields [c]
+  (cata dynamic-fields c))
+
+(defn replace-path [c new-path]
+  (apo (fn [c]
+         (set-path c new-path))
+       c))
+
+(defn update-path [c file-name line-number]
+  (cata (fn [c]
+          (add-to-path c file-name line-number))
+        c))
+
+(defn clear-sym [c]
+  (apo remove-sym c))
+
+(defn extract-key-constraint [c]
+  (cata key-constraint c))
+
+(defn extract-dynamic-params [c]
+  (cata dynamic-params c))
+
+(defn extract-type-map [c]
+  (para type-map c))
 
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
@@ -202,24 +225,13 @@
   Constraint
   (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
-  (clear-sym [x] x)
   (update-sym [x _] x)
-  (replace-path [x _] x)
-  (update-path [x _ _] x)
+  (add-to-path [x _ _] x)
   (extract-var [_] var)
   (update-var [x v] (AllValues v))
-  (extract-collection-of [x] x)
-  (extract-type-map [_] nothing))
+  (extract-collection-of [x] x))
 
 (def top-type (AllValues ""))
-
-(defn default-extract-items-constraints [c n]
-  (assert (instance? Integer n))
-  (assert-result r (instance? Vector r))
-
-  (take (comp (extract-items-constraints c)
-              (repeat n top-type))
-        n))
 
 (defn sym-str [s]
   (either (map s (fn [s]
@@ -241,14 +253,7 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (extract-items-constraints [c n]
-    (vec (repeat n contents)))
-
-  (extract-type-map [_]
-    nothing)
-
-  (assertion-path [_]
-    path)
+  (assertion-path [_] path)
 
   (format-path [x desired-len]
     (format-path* (cons ["Contents restriction from" ""] path)
@@ -272,11 +277,7 @@
   (update-var [c new-var]
     (.var c new-var))
 
-  (extract-type-map [_]
-    nothing)
-
-  (assertion-path [_]
-    path)
+  (assertion-path [_] path)
 
   (format-path [x desired-len]
     (format-path* (cons ["Contents from" ""] path)
@@ -305,22 +306,9 @@
         (.tail-constraint (set-type (.tail-constraint c) tc))
         (intersect tc)))
 
-  (extract-items-constraints [_]
-    (comp items-constraints
-          (extract-items-constraints tail-constraint)))
+  (assertion-path [_] path)
 
-  (extract-items-constraints [c n]
-    (either (and (<= n 0)
-                 (maybe []))
-            (take (comp items-constraints
-                        (extract-items-constraints tail-constraint (- n (count items-constraints)))
-                        (repeat n top-type))
-                  n)))
-
-  (assertion-path [_]
-    path)
-
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {ListType #{}
             VectorType #{}
             BitmapIndexedType #{}
@@ -359,14 +347,8 @@
 
   (assertion-path [_] path)
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe type-maps))
-
-  (extract-contents-constraint [c]
-    (either (and (or (get type-maps StringBufferType)
-                     (get type-maps SubStringType))
-                 (maybe c))
-            top-type))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Type '" type-sym "' from") ""]
@@ -394,11 +376,7 @@
           " \"" (str var) "\")"))
 
   Constraint
-  (assertion-path [_]
-    path)
-
-  (extract-type-map [_]
-    nothing)
+  (assertion-path [_] path)
 
   (restrict-types [c types-map]
     (reduce (seq types-map) {}
@@ -430,14 +408,13 @@
   (satisfied-by [c info]
     (= c info))
 
-  (assertion-path [c]
-    path)
+  (assertion-path [c] path)
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Integer value '" val "' from") ""] path)
                   desired-len))
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {IntegerType #{}})))
 
 (deftype MinValue [min path sym var]
@@ -455,10 +432,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (assertion-path [_]
-    path)
+  (assertion-path [_] path)
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {IntegerType #{}}))
 
   (format-path [x desired-len]
@@ -487,10 +463,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (assertion-path [_]
-    path)
+  (assertion-path [_] path)
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {IntegerType #{}}))
 
   (format-path [x desired-len]
@@ -512,15 +487,14 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (assertion-path [c]
-    path)
+  (assertion-path [c] path)
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Length from") ""]
                           (.path x))
                     desired-len))
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {ListType #{}
             VectorType #{}})))
 
@@ -546,12 +520,11 @@
     (format-path* (cons ["String from" ""] path)
                   desired-len))
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {StringBufferType #{}
             SubStringType #{}}))
 
-  (assertion-path [c]
-    path))
+  (assertion-path [c] path))
 
 (def StaticConstraints (any-of StaticLengthConstraint
                                StaticStrConstraint
@@ -583,35 +556,18 @@
     (.alts c (map (.alts c) (fn [alt]
                               (update-type-name alt new-name)))))
 
-  (assertion-path [x]
-    path)
+  (assertion-path [x] path)
 
   (format-path [_ n]
     (format-path* (cons ["Sum Type from" ""] path)
                   n))
 
-  (extract-type-map [_]
-    (reduce alts nothing (fn [m c]
-                           (let [c-m (extract-type-map c)]
-                             (or (apply (maybe comp) [m c-m])
-                                 c-m
-                                 m)))))
+  (type-map [c _]
+    (let [alt-maps (.alts c)]
+      (assert (instance? (vector-of (maybe-of TypeMap)) alt-maps))
 
-  (update-path [constraint file-name line-number]
-    (-> constraint
-        (.path (cons [file-name line-number] path))
-        (.alts (map alts
-                    (fn [c]
-                      (update-path c file-name line-number))))))
-
-  (extract-sym [tc]
-    sym)
-
-  (update-sym [tc new-sym]
-    (.sym tc (maybe new-sym)))
-
-  (clear-sym [tc]
-    (.sym tc nothing))
+      (and (some alt-maps identity)
+           (apply (maybe comp) (filter alt-maps identity)))))
 
   (extract-var [c]
     var)
@@ -658,7 +614,7 @@
           ")"))
 
   Constraint
-  (extract-dynamic-params [c]
+  (dynamic-params [c]
     [c])
 
   Eq
@@ -678,7 +634,7 @@
           ")"))
 
   Constraint
-  (extract-dynamic-params [c]
+  (dynamic-params [c]
     [c])
 
   Eq
@@ -722,15 +678,10 @@
          (maybe x)))
 
   Constraint
-  (extract-dynamic-fields [c]
-    field-cs)
-
   (intersect [c1 c2] 
     (let [new-c (intersect c2 c1)]
       (print-err 'new-c new-c)
-      new-c))
-
-  (extract-type-map [_] nothing))
+      new-c)))
 
 (def DynamicConstraint (any-of DynamicParamConstraint
                                DynamicFields
@@ -748,13 +699,13 @@
 ;;   (c/intersect [c1 c2] c2)
 ;;   (c/satisfied-by [_ c] (maybe c))
 ;;   (c/intersect [_ c] c)
-;;   (c/clear-sym [x] x)
+;;   (c/old-clear-sym [x] x)
 ;;   (c/update-sym [x _] x)
 ;;   (c/update-var [x v] x)
 ;;   (c/extract-collection-of [x] c/top-type)
-;;   (c/extract-type-map [_] nothing)
+;;   (c/old-extract-type-map [_] nothing)
 ;;   (c/extract-contents-constraint [_] c/top-type)
-;;   (c/extract-coll-constraint [_] c/top-type)
+;;   (c/extract-coll-constraintraint [_] c/top-type)
 
 ;;   c/ConstraintOps
 ;;   (c/intersect-typec [c tc] tc)
@@ -782,7 +733,6 @@
 
   Constraint
   (intersect [nv _] nv)
-  (clear-sym [x] x)
   (update-sym [x _] x)
   (update-var [x _] x)
   (extract-collection-of [x] x)
@@ -822,14 +772,13 @@
 
 (extend-type Symbol
   Constraint
-  (assertion-path [_]
-    empty-list)
+  (assertion-path [_] empty-list)
 
   (format-path [_ desired-len]
     (format-path* (list ["Symbol from" ""])
                   desired-len))
 
-  (extract-type-map [_]
+  (type-map [_ _]
     (maybe {SymbolType #{}}))
 
   (intersect [slc c]
@@ -848,16 +797,16 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
-  (extract-dynamic-fields [c]
-    (either (first (-> constraints 
-                       (map extract-dynamic-fields)
-                       (remove empty?)))
+  (dynamic-fields [c]
+    (either (-> constraints 
+                (remove empty?)
+                first)
             []))
 
-  (extract-dynamic-params [c]
-    (either (first (-> constraints 
-                       (map extract-dynamic-params)
-                       (remove empty?)))
+  (dynamic-params [c]
+    (either (-> constraints
+                (remove empty?)
+                first)
             []))
 
   (update-type-name [c new-name]
@@ -879,16 +828,25 @@
   (extract-sym [c]
     (some constraints extract-sym))
 
-  (extract-type-map [mc]
-    (reduce (.constraints mc) nothing
-            (fn [types-map c]
-              (or (map types-map (partial restrict-types c))
-                  (extract-type-map c)))))
+  (type-map [mc old-mc]
+    ;; TODO: this might be a place to gain some performance back
+    (let [types-maps (-> mc
+                         .constraints
+                         (reduce [] (fn [types-maps types-map]
+                                      (either (map types-map (partial conj types-maps))
+                                              types-maps))))]
+      (for [types-map (first types-maps)]
+        (let [types-map (-> types-maps
+                            rest
+                            (reduce types-map (fn [types-map m]
+                                                (select-keys types-map (keys m)))))]
+          (-> old-mc
+              .constraints
+              (filter (partial instance? FieldConstraint))
+              (reduce types-map (fn [types-map c]
+                                  (assert (instance? FieldConstraint c))
 
-  (clear-sym [mc]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (clear-sym c)))))
+                                  (restrict-types c types-map))))))))
 
   (update-sym [mc sym]
     (.constraints mc (map (.constraints mc)
@@ -915,12 +873,8 @@
                  (to-str (interpose strs "    ")))))))
 
   (assertion-path [c]
-    (format-path c 0))
+    (format-path c 0)))
 
-  (update-path [mc file-name line-number]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-path c file-name line-number))))))
 (def ValueConstraint (any-of SymbolConstraints
                              MultiConstraint
                              AllValues))
@@ -933,14 +887,12 @@
   (update-var [_ new-var]
     (ResultConstraint (update-var assertion new-var)))
 
-  (clear-sym [_]
-    (ResultConstraint (clear-sym assertion)))
-
   (update-sym [_ new-var]
     (ResultConstraint (update-sym assertion new-var)))
 
-  (extract-type-map [_]
-    (extract-type-map assertion)))
+  (type-map [c _]
+    ;; TODO: if this is just a bare 'assertion', the types conflict
+    (.assertion c)))
 
 (def Constraints (any-of ValueConstraint
                          NoValues
@@ -1150,19 +1102,20 @@
 
 (extend-type SymbolConstraints
   Constraint
-  (replace-path [c new-path]
-    (.path c new-path))
+  (dynamic-fields [c] [])
+
+  (set-path [c new-path]
+    (Left (.path c new-path)))
 
   (extract-sym [c]
     (.sym c))
 
+  (extract-collection-of [_] top-type)
+
   (extract-var [c]
     (.var c))
 
-  (extract-collection-of [_]
-    top-type)
-
-  (update-path [constraint file-name line-number]
+  (add-to-path [constraint file-name line-number]
     (let [new-path (either (for [[top-file top-line] (first (.path constraint))
                                  _ (and (= top-line line-number)
                                         (= top-file file-name))]
@@ -1172,8 +1125,8 @@
                    (maybe constraint))
               (.path constraint new-path))))
 
-  (clear-sym [tc]
-    (.sym tc nothing))
+  (remove-sym [tc]
+    (Left (.sym tc nothing)))
 
   (update-sym [tc new-sym]
     (.sym tc (maybe new-sym)))
@@ -1212,12 +1165,16 @@
             (intersect (update-var c (extract-var tc)) tc))))
 
 (extend-type Constraints
-  Constraint
-  (extract-key-constraint [_]
-    top-type)
   Container
   (map [x f]
     x)
+
+  Constraint
+  (extract-items-constraints [c n]
+    (-> c
+        extract-items-constraints
+        (comp (repeat n top-type))
+        (take n)))
 
   (extract-contents-constraint [_]
     top-type)
@@ -1226,6 +1183,14 @@
     top-type))
 
 (defn sum-type [cs]
+  (assert (instance? Vector cs))
+
+  ;; TODO: the type checker doesn't pass the Vector constraint up the call tree
+  (either (instance? Vector cs)
+          (do
+            (print-err "Invalid 'cs' to 'sum-type'")
+            (abort)))
+
   (either (or (and (empty? cs)
                    (maybe top-type))
               (some cs (partial = top-type))
@@ -1352,6 +1317,22 @@
          (maybe x)))
 
   Constraint
+  (extract-items-constraints [c]
+    (comp (.items-constraints c)
+          (extract-items-constraints (.tail-constraint c))))
+
+  (extract-items-constraints [c n]
+    (either (and (<= n 0)
+                 (maybe []))
+            (let [needed-tail-items (- n (count (.items-constraints c)))
+                  tail-items (-> c
+                                 .tail-constraint
+                                 (extract-items-constraints needed-tail-items))]
+              (-> c
+                  .items-constraints
+                  (comp tail-items (repeat n top-type))
+                  (take n)))))
+
   (extract-contents-constraint [c]
     (-> (.items-constraints c)
         (conj (extract-contents-constraint (.tail-constraint c)))
@@ -1362,23 +1343,7 @@
 
   (intersect [ic c]
     (either (=-items-constraint c ic)
-            (intersect-itemsc c ic)))
-
-  (update-path [constraint file-name line-number]
-    (let [file-name (either (and (= file-name 'core)
-                                 (maybe "$TOCCATA_DIR/core.toc"))
-                            file-name)
-          new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))]
-      (ItemsConstraint (map (.items-constraints constraint)
-                            (fn [constraints]
-                              (update-path constraints file-name line-number)))
-                       (update-path (.tail-constraint constraint) file-name line-number)
-                       new-path
-                       (.sym constraint) (extract-var constraint)))))
+            (intersect-itemsc c ic)))) 
 
 (extend-type MultiConstraint
   Container
@@ -1452,17 +1417,12 @@
            (maybe mult-info))))
 
   Constraint
-  (replace-path [mc new-path]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (replace-path c new-path)))))
-
   (intersect [mc c]
     (intersect-multi c mc))
 
-  (extract-key-constraint [mc]
-    (-> (.constraints mc)
-        (map extract-key-constraint)
+  (key-constraint [mc]
+    (-> mc
+        .constraints
         (reduce top-type intersect)))
 
   (extract-contents-constraint [mc]
@@ -1480,7 +1440,8 @@
                 (reduce top-type intersect))))
 
   (extract-collection-of [mc]
-    (-> (.constraints mc)
+    (-> mc
+        .constraints
         (map extract-collection-of)
         (reduce top-type intersect)))
 
@@ -1509,7 +1470,7 @@
                          (partial instance? StaticLengthConstraint))
                    (fn [len-c]
                      (take ics (.length len-c))))
-            ics))))
+              ics))))
 
 (extend-type ResultConstraint
   Container
@@ -1538,6 +1499,13 @@
 
 (extend-type TypeConstraint
   Constraint
+
+  (extract-contents-constraint [c]
+    (cond (or (get (.type-maps c) StringBufferType)
+              (get (.type-maps c) SubStringType))
+          c
+          top-type))
+
   (set-type [c tc]
     (either (for [c-map (extract-type-map c)
                   tc-map (extract-type-map tc)
@@ -1763,6 +1731,9 @@
     (=-inferred-inner y x))
 
   Constraint
+  (extract-items-constraints [c n]
+    (vec (repeat n (.contents c))))
+
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
 
@@ -1776,19 +1747,6 @@
 
   (intersect [ic c]
     (intersect-inner c ic))
-
-  (update-path [constraint file-name line-number]
-    (let [file-name (either (and (= file-name 'core)
-                                 (maybe "$TOCCATA_DIR/core.toc"))
-                            file-name)
-          new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))]
-      (-> constraint
-          (.contents (update-path (.contents constraint) file-name line-number))
-          (.path new-path))))
 
   (extract-coll-constraint [c]
     (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c)))
@@ -1930,33 +1888,17 @@
              (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
          (maybe coll-info)))
 
-  (extract-coll-constraint [c]
-    c)
+  (extract-coll-constraint [c] c)
 
   (extract-contents-constraint [c]
     (.contents c))
 
-  (extract-collection-of [x]
-    x)
+  (extract-collection-of [x] x)
 
   (extract-items-constraints [c n]
-    (repeat n (.contents c)))
+    (vec (repeat n (.contents c))))
 
-  (update-path [constraint file-name line-number]
-    (let [file-name (either (and (= file-name 'core)
-                                 (maybe "$TOCCATA_DIR/core.toc"))
-                            file-name)
-          new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))]
-      (CollectionOf (update-path (.contents constraint) file-name line-number)
-                    new-path
-                    (.sym constraint) (extract-var constraint))))
-
-
-  (extract-type-map [c]
+  (type-map [c _]
     (maybe {ListType #{}
             MaybeType #{}
             BitmapIndexedType #{}
@@ -1990,7 +1932,7 @@
 
   (intersect-static-str [c slc]
     (either (= (intersect (.contents c) (TypeConstraint {StringBufferType #{} SubStringType #{}}
-                                                           (.path slc) 'String (.sym slc) (extract-var slc)))
+                                                        (.path slc) 'String (.sym slc) (extract-var slc)))
                bottom-type)
             slc))
 
@@ -2013,8 +1955,8 @@
     (.alts x (map (.alts x) f)))
 
   Constraint
-  (extract-dynamic-params [c]
-    (flat-map (.alts c) extract-dynamic-params))
+  (dynamic-params [c]
+    (comp* [] (seq (.alts c))))
 
   (set-type [c tc]
     (.alts c (-> (.alts c) 
@@ -2025,10 +1967,9 @@
   (intersect [sc c]
     (intersect-sum c sc))
 
-  (extract-key-constraint [c]
-    (let [new-alts (map (.alts c) extract-key-constraint)]
-      (either (some new-alts (partial = top-type))
-              (.alts c new-alts))))
+  (key-constraint [c]
+    (either (some (.alts c) (partial = top-type))
+            c))
 
   (extract-items-constraints [c]
     (extract-items-constraints c (-> (.alts c)
@@ -2044,7 +1985,7 @@
         (map (fn [new-alts]
                (either (or (some new-alts (partial = top-type))
                            (apply = new-alts))
-                       (.alts c new-alts))))
+                       (.alts c (vec new-alts)))))
         vec))
 
   (extract-contents-constraint [c]
@@ -2060,7 +2001,10 @@
   (extract-coll-constraint [c]
     (let [new-alts (map (.alts c) extract-coll-constraint)]
       (either (some new-alts (partial = top-type))
-              (.alts c new-alts))))
+              (-> new-alts
+                  (map .contents)
+                  sum-type
+                  (CollectionOf (.path c) (.sym c) (.var c))))))
 
   ConstraintOps
   (mult-satisfied [c mult-c]
@@ -2100,11 +2044,9 @@
 
   (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
-  (clear-sym [x] (.sym x nothing))
   (update-sym [x sym] (.sym x (maybe sym)))
   (update-var [x v] (.var x v))
   (extract-collection-of [x] top-type)
-  (extract-type-map [_] nothing)
   (extract-contents-constraint [_] top-type)
   (extract-coll-constraint [_] top-type)
 
@@ -2125,7 +2067,10 @@
 (extend-type ReifiedFields
   Container
   (map [x f]
-    (.field-cs x (map (.field-cs x) f))))
+    (.field-cs x (map (.field-cs x) f)))
+
+  Constraint
+  (dynamic-fields [c] (.field-cs c)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
