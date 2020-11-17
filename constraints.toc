@@ -1169,6 +1169,9 @@
   (map [x f]
     x)
 
+  (map [x f embed]
+    (embed x))
+
   Constraint
   (extract-items-constraints [c n]
     (-> c
@@ -1220,6 +1223,13 @@
     (-> x
         (.tail-constraint (f (.tail-constraint x)))
         (.items-constraints (map (.items-constraints x) f))))
+
+  (map [x f embed]
+    (for [new-tail (f (.tail-constraint x))
+          new-items (map (.items-constraints x) f embed)]
+      (-> x
+          (.tail-constraint new-tail)
+          (.items-constraints new-items))))
 
   Eq
   (=* [x y]
@@ -1350,6 +1360,11 @@
   (map [x f]
     (.constraints x (map (.constraints x) f)))
 
+  (map [x f embed]
+    (-> (.constraints x)
+        (map f embed)
+        (map (partial .constraints x))))
+
   Eq
   (=* [x y]
     (=-multi y x))
@@ -1476,6 +1491,11 @@
   Container
   (map [x f]
     (.assertion x (f (.assertion x))))
+
+  (map [x f embed]
+    (-> (.assertion x)
+        f
+        (map (partial .assertion x))))
 
   Eq
   (=* [x y]
@@ -1726,6 +1746,11 @@
   (map [x f]
     (.contents x (f (.contents x))))
 
+  (map [x f embed]
+    (-> (.contents x)
+        f
+        (map (partial .contents x))))
+
   Eq
   (=* [x y]
     (=-inferred-inner y x))
@@ -1875,6 +1900,11 @@
   (map [x f]
     (.contents x (f (.contents x))))
 
+  (map [x f embed]
+    (-> (.contents x)
+        f
+        (map (partial .contents x))))
+
   Eq
   (=* [x y]
     (=-contentsc y x))
@@ -1953,6 +1983,11 @@
   Container
   (map [x f]
     (.alts x (map (.alts x) f)))
+
+  (map [x f embed]
+    (-> (.alts x)
+        (map f embed)
+        (map (partial .alts x))))
 
   Constraint
   (dynamic-params [c]
@@ -2062,12 +2097,22 @@
 (extend-type DynamicResultConstraint
   Container
   (map [x f]
-    (.invokable-c x (f (.invokable-c x)))))
+    (.invokable-c x (f (.invokable-c x))))
+
+  (map [x f embed]
+    (-> (.invokable-c x)
+        f
+        (map (partial .invokable-c x)))))
 
 (extend-type ReifiedFields
   Container
   (map [x f]
     (.field-cs x (map (.field-cs x) f)))
+
+  (map [x f embed]
+    (-> (.field-cs x)
+        (map f embed)
+        (map (partial .field-cs x))))
 
   Constraint
   (dynamic-fields [c] (.field-cs c)))
