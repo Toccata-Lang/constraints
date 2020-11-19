@@ -1150,7 +1150,7 @@
     (assert (instance? MultiConstraint mc))
 
     (either (and (some (.constraints mc) (partial = c))
-                 (maybe c))
+                 (maybe mc))
             (MultiConstraint (conj (.constraints mc) c))))
 
   (intersect-typec [c tc]
@@ -2078,7 +2078,6 @@
             (MultiConstraint [c1 c2])))
 
   (satisfied-by [_ c] (maybe c))
-  (intersect [_ c] c)
   (update-sym [x sym] (.sym x (maybe sym)))
   (update-var [x v] (.var x v))
   (extract-collection-of [x] top-type)
@@ -2088,6 +2087,7 @@
   ConstraintOps
   (intersect-typec [c tc]
     (MultiConstraint [c tc]))
+
   (intersect-multi [c mc]
     ;; TODO: only one DynamicConstraint allowed in a MultiConstraint
     (.constraints mc (cond (some (.constraints mc) (partial = c))
