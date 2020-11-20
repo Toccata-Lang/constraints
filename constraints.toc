@@ -1527,14 +1527,31 @@
           top-type))
 
   (set-type [c tc]
+    ;; only used to switch ListType to VectorType or vice versa
     (either (for [c-map (extract-type-map c)
                   tc-map (extract-type-map tc)
-                  ;; check for correctness
-                  _ (or (and (= {ListType #{}} tc-map)
-                             (= {VectorType #{}} c-map))
-                        (and (= {VectorType #{}} tc-map)
-                             (= {ListType #{}} c-map)))]
-              (.type-maps c tc-map))
+                  new-map (or (and (get tc-map ListType)
+                                   (-> c-map
+                                       (dissoc VectorType)
+                                       (assoc ListType #{})
+                                       maybe))
+                              (and (get tc-map VectorType)
+                                   (-> c-map
+                                       (dissoc ListType)
+                                       (assoc VectorType #{})
+                                       maybe)))]
+              (-> c
+                  (.type-maps new-map)
+                  (.type-sym (cond (= {ListType #{}} new-map)
+                                   'List
+
+                                   (= {VectorType #{}} new-map)
+                                   'Vector
+
+                                   (get new-map ListType)
+                                   (symbol "List or something else")
+
+                                   (symbol "Vector or something else")))))
             top-type))
 
   (intersect [tc c]
