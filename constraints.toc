@@ -603,7 +603,7 @@
     (and (instance? DynamicFields y)
          (maybe x))))
 
-(deftype DynamicParamConstraint [param-index path sym var]
+(deftype DynamicParamConstraint [param-index path sym var result-type]
   Stringable
   (string-list [_]
     (list "(DynamicParamConstraint " (str param-index)
@@ -611,6 +611,7 @@
                                                           (str "(maybe '" s ")")))
                                                "nothing")
           " " (str "\"" var "\"")
+          " " (str result-type)
           ")"))
 
   Constraint
@@ -621,6 +622,7 @@
   (=* [x y]
     (and (instance? DynamicParamConstraint y)
          (= param-index (.param-index y))
+         (= result-type (.result-type y))
          (maybe x))))
 
 (deftype DynamicItemConstraint [param-index item-index path sym var]
@@ -1528,30 +1530,32 @@
 
   (set-type [c tc]
     ;; only used to switch ListType to VectorType or vice versa
-    (either (for [c-map (extract-type-map c)
-                  tc-map (extract-type-map tc)
-                  new-map (or (and (get tc-map ListType)
-                                   (-> c-map
-                                       (dissoc VectorType)
-                                       (assoc ListType #{})
-                                       maybe))
-                              (and (get tc-map VectorType)
-                                   (-> c-map
-                                       (dissoc ListType)
-                                       (assoc VectorType #{})
-                                       maybe)))]
-              (-> c
-                  (.type-maps new-map)
-                  (.type-sym (cond (= {ListType #{}} new-map)
-                                   'List
+    (either (or (and (= top-type tc)
+                     (maybe c))
+                (for [c-map (extract-type-map c)
+                      tc-map (extract-type-map tc)
+                      new-map (or (and (get tc-map ListType)
+                                       (-> c-map
+                                           (dissoc VectorType)
+                                           (assoc ListType #{})
+                                           maybe))
+                                  (and (get tc-map VectorType)
+                                       (-> c-map
+                                           (dissoc ListType)
+                                           (assoc VectorType #{})
+                                           maybe)))]
+                  (-> c
+                      (.type-maps new-map)
+                      (.type-sym (cond (= {ListType #{}} new-map)
+                                       'List
 
-                                   (= {VectorType #{}} new-map)
-                                   'Vector
+                                       (= {VectorType #{}} new-map)
+                                       'Vector
 
-                                   (get new-map ListType)
-                                   (symbol "List or something else")
+                                       (get new-map ListType)
+                                       (symbol "List or something else")
 
-                                   (symbol "Vector or something else")))))
+                                       (symbol "Vector or something else"))))))
             top-type))
 
   (intersect [tc c]
@@ -2100,6 +2104,7 @@
   (extract-collection-of [x] top-type)
   (extract-contents-constraint [_] top-type)
   (extract-coll-constraint [_] top-type)
+  (set-type [c _] c)
 
   ConstraintOps
   (intersect-typec [c tc]
@@ -2110,6 +2115,11 @@
     (.constraints mc (cond (some (.constraints mc) (partial = c))
                            (.constraints mc)
                            (conj (.constraints mc) c)))))
+
+(extend-type DynamicParamConstraint
+  Constraint
+  (set-type [c tc]
+    (.result-type c tc)))
 
 (extend-type DynamicResultConstraint
   Container
