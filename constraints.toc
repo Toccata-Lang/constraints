@@ -9,26 +9,22 @@
 (def top-type)
 (def type-map)
 
+(def always-nothing -1)
+(def never-nothing -2)
+
 ;; Public interface for Constraints
 (defprotocol Constraint
   (assertion-path [x])
 
-  (format-path [x n]
-    (assert-result r (instance? (list-of String) r)))
+  ;; Ensure constraint is as small as possible
+  (trim [c]
+    c)
 
   (set-path [c new-path]
     (assert (instance? (list-of Vector) new-path))
     (assert-result r (instance? Either r))
 
     (Right c))
-
-  (intersect [c1 c2])
-
-  (restrict-types [c types-map]
-    (either (map (para type-map c)
-                 (fn [c-type-map]
-                   (select-keys types-map (keys c-type-map))))
-            types-map))
 
   (dynamic-fields [c]
     c)
@@ -45,6 +41,29 @@
     ;; but for noew, just ignore them
     nothing)
 
+  (key-constraint [_]
+    ;; extract the constraint a key value must satisfy
+    top-type)
+
+  (add-to-path [constraint file-name line-number]
+    constraint)
+
+  (remove-sym [c]
+    (assert-result r (instance? Either r))
+
+    (Right c))
+
+  (intersect [c1 c2])
+
+  (format-path [x n]
+    (assert-result r (instance? (list-of String) r)))
+
+  (restrict-types [c types-map]
+    (either (map (para type-map c)
+                 (fn [c-type-map]
+                   (select-keys types-map (keys c-type-map))))
+            types-map))
+
   (extract-contents-constraint [_])
 
   (extract-items-constraints [_]
@@ -54,10 +73,6 @@
   (extract-items-constraints [c n]
     (assert (instance? Integer n))
     (assert-result r (instance? Vector r)))
-
-  (key-constraint [_]
-    ;; extract the constraint a key value must satisfy
-    top-type)
 
   (extract-collection-of [_]
     ;; extract CollectionOf constraint
@@ -69,9 +84,6 @@
 
     top-type)
 
-  (add-to-path [constraint file-name line-number]
-    constraint)
-
   (extract-sym [tc]
     (assert-result r (instance? (maybe-of Symbol) r))
 
@@ -79,11 +91,6 @@
 
   (update-sym [tc new-sym]
     (assert (instance? Symbol new-sym)))
-
-  (remove-sym [c]
-    (assert-result r (instance? Either r))
-
-    (Right c))
 
   (extract-var [c]
     (assert-result var (instance? String var)))
@@ -799,6 +806,26 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (trim [c]
+    (let [new-cs (-> constraints
+                     (flat-map (fn [c]
+                                 (either (map (instance? MultiConstraint c) .constraints)
+                                         [c])))
+                     (reduce {} (fn [m c]
+                                  (let [c-name (type-name c)
+                                        new-c (intersect c (either (get m c-name)
+                                                                   top-type))]
+                                    (and (instance? MultiConstraint new-c)
+                                         (do
+                                           (print-err 'wth c "\n\n" 'new-c new-c)
+                                           (abort)))
+                                    (assoc m c-name new-c))))
+                     vals
+                     vec
+                     (remove (partial = top-type)))]
+      (either (some new-cs (partial = bottom-type))
+              (.constraints c new-cs))))
+
   (dynamic-fields [c]
     (either (-> constraints 
                 (remove empty?)
@@ -1187,27 +1214,21 @@
   (extract-coll-constraint [_]
     top-type))
 
-(defn sum-type [cs]
-  (assert (instance? Vector cs))
+(defn sum-type [const-cs]
+  (assert (instance? Vector const-cs))
 
-  ;; TODO: the type checker doesn't pass the Vector constraint up the call tree
-  (either (instance? Vector cs)
-          (do
-            (print-err "Invalid 'cs' to 'sum-type'")
-            (abort)))
-
-  (either (or (and (empty? cs)
+  (either (or (and (empty? const-cs)
                    (maybe top-type))
-              (some cs (partial = top-type))
-              (apply = cs))
-          (let [type-constraints (filter cs (partial instance? TypeConstraint))
+              (some const-cs (partial = top-type))
+              (apply = const-cs))
+          (let [type-constraints (filter const-cs (partial instance? TypeConstraint))
                 tc (either (empty? type-constraints)
                            [(TypeConstraint (comp* {} (map type-constraints .type-maps))
                                              empty-list
                                              (either (apply = (map type-constraints .type-sym))
                                                      (symbol "<unknown>"))
                                              nothing "")])
-                new-cs (-> cs
+                new-cs (-> const-cs
                            (remove (partial instance? TypeConstraint))
                            (reduce tc (fn [new-cs curr]
                                         (either (and (some new-cs (fn [c]
@@ -1628,7 +1649,13 @@
   (intersect-typec [c tc]
     (either (or (= tc c)
                 (and (empty? (select-keys (.type-maps tc) (keys (.type-maps c))))
-                     (maybe (NoValues [tc c]))))
+                     (maybe (NoValues [tc c])))
+                (and (= (.type-maps tc) (keys (.type-maps c)))
+                     (cond (< (count (.path tc))
+                              (count (.path c)))
+                           (maybe c)
+
+                           (maybe tc))))
             (.type-maps tc (filter-keys (.type-maps tc)
                                         (fn [k]
                                           (get (.type-maps c) k)))))))
@@ -2011,6 +2038,15 @@
         (map (partial .alts x))))
 
   Constraint
+  (trim [c]
+    (let [new-alts (-> (.alts c)
+                       (remove (partial = bottom-type))
+                       (flat-map (fn [c]
+                                   (either (map (instance? SumConstraint c) .alts)
+                                           [c]))))]
+      (either (some new-alts (partial = top-type))
+              (.alts c new-alts))))
+
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
 
