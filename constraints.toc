@@ -53,6 +53,8 @@
 
     (Right c))
 
+  (contents-constraint [_])
+
   (intersect [c1 c2])
 
   (format-path [x n]
@@ -63,8 +65,6 @@
                  (fn [c-type-map]
                    (select-keys types-map (keys c-type-map))))
             types-map))
-
-  (extract-contents-constraint [_])
 
   (extract-items-constraints [_]
     (assert-result r (instance? Vector r))
@@ -115,6 +115,13 @@
 ;;     (or (= x y)
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
+
+(defn extract-contents-constraint [c]
+  (apo (fn [c]
+         (-> c
+             contents-constraint
+             (map trim)))
+       c))
 
 (defn extract-dynamic-fields [c]
   (cata dynamic-fields c))
@@ -547,8 +554,11 @@
 
   Stringable
   (string-list [_]
-    (list (str "(SumConstraint " (str alts) " " (str path) " " (either (map sym str) 'nothing) " "
-               var ")")))
+    (list (str "(SumConstraint " (str alts) " (list"
+               (either (map (first path) (fn [[f l]]
+                                           (str "[\"" f "\" " l "]")))
+                       "") ") " (either (map sym str) 'nothing) " "
+                       (str "\"" var "\"") ")")))
 
   Eq
   (=* [x y]
@@ -1208,8 +1218,8 @@
         (comp (repeat n top-type))
         (take n)))
 
-  (extract-contents-constraint [_]
-    top-type)
+  (contents-constraint [_]
+    (Right top-type))
 
   (extract-coll-constraint [_]
     top-type))
@@ -1366,10 +1376,10 @@
                   (comp tail-items (repeat n top-type))
                   (take n)))))
 
-  (extract-contents-constraint [c]
-    (-> (.items-constraints c)
-        (conj (extract-contents-constraint (.tail-constraint c)))
-        sum-type))
+  (contents-constraint [c]
+    (Left (-> (.items-constraints c)
+              (conj (extract-contents-constraint (.tail-constraint c)))
+              sum-type)))
 
   (satisfied-by [c info]
     (items-satisfied info c))
@@ -1463,19 +1473,19 @@
         .constraints
         (reduce top-type intersect)))
 
-  (extract-contents-constraint [mc]
-    (either (map (some (.constraints mc) (partial instance? StaticLengthConstraint))
-                 (fn [len-c]
-                   (-> mc
-                       (extract-items-constraints (.length len-c))
-                       sum-type)))
-            (-> (.constraints mc)
-                (filter (fn [c]
-                          (or (instance? CollectionOf c)
-                              (instance? InferredInner c)
-                              (instance? ItemsConstraint c))))
-                (map extract-contents-constraint)
-                (reduce top-type intersect))))
+  (contents-constraint [mc]
+    (Left (either (map (some (.constraints mc) (partial instance? StaticLengthConstraint))
+                       (fn [len-c]
+                         (-> mc
+                             (extract-items-constraints (.length len-c))
+                             sum-type)))
+                  (-> (.constraints mc)
+                      (filter (fn [c]
+                                (or (instance? CollectionOf c)
+                                    (instance? InferredInner c)
+                                    (instance? ItemsConstraint c))))
+                      (map extract-contents-constraint)
+                      (reduce top-type intersect)))))
 
   (extract-collection-of [mc]
     (-> mc
@@ -1543,11 +1553,11 @@
 (extend-type TypeConstraint
   Constraint
 
-  (extract-contents-constraint [c]
-    (cond (or (get (.type-maps c) StringBufferType)
-              (get (.type-maps c) SubStringType))
-          c
-          top-type))
+  (contents-constraint [c]
+    (Left (cond (or (get (.type-maps c) StringBufferType)
+                    (get (.type-maps c) SubStringType))
+                c
+                top-type)))
 
   (set-type [c tc]
     ;; only used to switch ListType to VectorType or vice versa
@@ -1815,8 +1825,8 @@
              (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
          (maybe coll-info)))
 
-  (extract-contents-constraint [c]
-    (.contents c))
+  (contents-constraint [c]
+    (Left (.contents c)))
 
   (intersect [ic c]
     (intersect-inner c ic))
@@ -1968,8 +1978,8 @@
 
   (extract-coll-constraint [c] c)
 
-  (extract-contents-constraint [c]
-    (.contents c))
+  (contents-constraint [c]
+    (Left (.contents c)))
 
   (extract-collection-of [x] x)
 
@@ -2039,13 +2049,18 @@
 
   Constraint
   (trim [c]
-    (let [new-alts (-> (.alts c)
-                       (remove (partial = bottom-type))
-                       (flat-map (fn [c]
-                                   (either (map (instance? SumConstraint c) .alts)
-                                           [c]))))]
-      (either (some new-alts (partial = top-type))
-              (.alts c new-alts))))
+    (-> (.alts c)
+        (remove (partial = bottom-type))
+        (flat-map (fn [c]
+                    (either (map (instance? SumConstraint c) .alts)
+                            [c])))
+        sum-type
+        (replace-path (.path c))
+        (update-var (.var c))
+        ((fn [new-c]
+           (either (map (.sym c)
+                        (partial update-sym new-c))
+                   new-c)))))
 
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
@@ -2080,10 +2095,8 @@
                        (.alts c (vec new-alts)))))
         vec))
 
-  (extract-contents-constraint [c]
-    (let [new-alts (map (.alts c) extract-contents-constraint)]
-      (either (some new-alts (partial = top-type))
-              (.alts c new-alts))))
+  (contents-constraint [c]
+    (Right c))
 
   (extract-collection-of [c]
     (let [new-alts (map (.alts c) extract-collection-of)]
@@ -2130,6 +2143,7 @@
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
                      (maybe c1))
+                (= c1 c2)
                 (map (instance? MultiConstraint c2)
                      (partial intersect-multi c1)))
             (MultiConstraint [c1 c2])))
@@ -2138,7 +2152,6 @@
   (update-sym [x sym] (.sym x (maybe sym)))
   (update-var [x v] (.var x v))
   (extract-collection-of [x] top-type)
-  (extract-contents-constraint [_] top-type)
   (extract-coll-constraint [_] top-type)
   (set-type [c _] c)
 
