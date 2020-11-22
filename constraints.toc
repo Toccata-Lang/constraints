@@ -58,6 +58,12 @@
   (collection-of [_]
     ;; extract CollectionOf constraint
     )
+
+  (coll-constraint [_]
+    ;; extract the CollectionOf or the InferredInner constraints
+    ;; returns either an AllValues or CollectionOf constraint
+    )
+
   (intersect [c1 c2])
 
   (format-path [x n]
@@ -76,12 +82,6 @@
   (extract-items-constraints [c n]
     (assert (instance? Integer n))
     (assert-result r (instance? Vector r)))
-
-  (extract-coll-constraint [_]
-    ;; extract the CollectionOf or the InferredInner constraints
-    ;; returns either an AllValues or CollectionOf constraint
-
-    top-type)
 
   (extract-sym [tc]
     (assert-result r (instance? (maybe-of Symbol) r))
@@ -117,9 +117,9 @@
 
 (defn extract-collection-of [c]
   (elgot collection-of trim c))
-    (or (= x y)
-        (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
-    y))
+
+(defn extract-coll-constraint [c]
+  (elgot coll-constraint trim c))
 
 (defn extract-contents-constraint [c]
   (apo (fn [c]
@@ -1156,7 +1156,8 @@
   (extract-sym [c]
     (.sym c))
 
-  (collection-of [x] (Right top-type))
+  (collection-of [x]
+    (Right top-type))
 
   (extract-var [c]
     (.var c))
@@ -1219,6 +1220,9 @@
     (embed x))
 
   Constraint
+  (coll-constraint [x]
+    (collection-of x))
+
   (extract-items-constraints [c n]
     (-> c
         extract-items-constraints
@@ -1226,10 +1230,7 @@
         (take n)))
 
   (contents-constraint [_]
-    (Right top-type))
-
-  (extract-coll-constraint [_]
-    top-type))
+    (Right top-type)))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1237,7 +1238,13 @@
   (either (or (and (empty? const-cs)
                    (maybe top-type))
               (some const-cs (partial = top-type))
-              (apply = const-cs))
+              (apply = const-cs)
+              (and (every const-cs (partial instance? CollectionOf))
+                   (-> const-cs
+                       (map .contents)
+                       sum-type
+                       (CollectionOf empty-list nothing "")
+                       maybe)))
           (let [type-constraints (filter const-cs (partial instance? TypeConstraint))
                 tc (either (empty? type-constraints)
                            [(TypeConstraint (comp* {} (map type-constraints .type-maps))
@@ -1494,17 +1501,12 @@
                       (map extract-contents-constraint)
                       (reduce top-type intersect)))))
 
-  (extract-coll-constraint [mc]
-    (-> (.constraints mc)
-        (map extract-coll-constraint)
-        (reduce top-type intersect)))
-
   (satisfied-by [mult-c info]
     (mult-satisfied info mult-c))
 
   (extract-items-constraints [mc]
     (let [coll-c (-> mc
-                     extract-coll-constraint
+                     old-extract-coll-constraint
                      extract-contents-constraint)
           ics (either (-> (.constraints mc)
                           (some (partial instance? ItemsConstraint))
@@ -1826,14 +1828,14 @@
              (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
          (maybe coll-info)))
 
+  (coll-constraint [c]
+    (Left (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c))))
+
   (contents-constraint [c]
     (Left (.contents c)))
 
   (intersect [ic c]
     (intersect-inner c ic))
-
-  (extract-coll-constraint [c]
-    (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c)))
 
   ConstraintOps
   (intersect-multi [c mc]
@@ -1969,6 +1971,9 @@
     (=-contentsc y x))
 
   Constraint
+  (coll-constraint [c]
+    (Left c))
+
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
 
@@ -1977,12 +1982,11 @@
              (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
          (maybe coll-info)))
 
-  (extract-coll-constraint [c] c)
-
   (contents-constraint [c]
     (Left (.contents c)))
 
-  (collection-of [x] (Left x))
+  (collection-of [x]
+    (Left x))
 
   (extract-items-constraints [c n]
     (vec (repeat n (.contents c))))
@@ -2099,14 +2103,6 @@
   (contents-constraint [c]
     (Right c))
 
-  (extract-coll-constraint [c]
-    (let [new-alts (map (.alts c) extract-coll-constraint)]
-      (either (some new-alts (partial = top-type))
-              (-> new-alts
-                  (map .contents)
-                  sum-type
-                  (CollectionOf (.path c) (.sym c) (.var c))))))
-
   ConstraintOps
   (mult-satisfied [c mult-c]
     (either (sum-c-satisfies c mult-c)
@@ -2148,7 +2144,6 @@
   (update-sym [x sym] (.sym x (maybe sym)))
   (update-var [x v] (.var x v))
   (collection-of [x] (Left top-type))
-   (extract-coll-constraint [_] top-type)
   (set-type [c _] c)
 
   ConstraintOps
@@ -2210,4 +2205,3 @@
                                              (CollectionOf (TypeConstraint {} empty-list 'no-type nothing "")
                                                            empty-list nothing "")
                                              empty-list nothing ""))
-
