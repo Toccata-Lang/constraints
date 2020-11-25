@@ -2,7 +2,7 @@
 ;; TODO: make constraints a recursive type when possible
 ;; TODO: add a Hole constraint to print information
 
-(def default-extract-items-constraints)
+(def default-old-extract-items-constraints)
 
 (def TypeMap (map-of Integer (set-of Symbol)))
 
@@ -75,11 +75,11 @@
                    (select-keys types-map (keys c-type-map))))
             types-map))
 
-  (extract-items-constraints [_]
+  (fixed-items-constraints [c x]
     (assert-result r (instance? Vector r))
     [])
 
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (assert (instance? Integer n))
     (assert-result r (instance? Vector r)))
 
@@ -116,6 +116,12 @@
 ;;     (or (= x y)
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
+
+(defn extract-items-constraints
+  ([c]
+   (para fixed-items-constraints (trim c)))
+  ([c n]
+   (old-extract-items-constraints c n)))
 
 (defn update-type-name [c new-name]
   (cata (fn [c]
@@ -838,6 +844,9 @@
                      vec
                      (remove (partial = top-type)))]
       (either (or (some new-cs (partial = bottom-type))
+                  (map (some new-cs (partial instance? SumConstraint))
+                       (fn [sum-c]
+                         (reduce new-cs sum-c intersect)))
                   (and (empty? new-cs)
                        (maybe top-type))
                   (apply = new-cs))
@@ -1222,7 +1231,7 @@
   (coll-constraint [x]
     (collection-of x))
 
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (-> c
         extract-items-constraints
         (comp (repeat n top-type))
@@ -1373,17 +1382,17 @@
          (maybe x)))
 
   Constraint
-  (extract-items-constraints [c]
-    (comp (.items-constraints c)
-          (extract-items-constraints (.tail-constraint c))))
+  (fixed-items-constraints [c old-ic]
+    (comp (.items-constraints old-ic)
+          (.tail-constraint c)))
 
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (either (and (<= n 0)
                  (maybe []))
             (let [needed-tail-items (- n (count (.items-constraints c)))
                   tail-items (-> c
                                  .tail-constraint
-                                 (extract-items-constraints needed-tail-items))]
+                                 (old-extract-items-constraints needed-tail-items))]
               (-> c
                   .items-constraints
                   (comp tail-items (repeat n top-type))
@@ -1503,20 +1512,21 @@
   (satisfied-by [mult-c info]
     (mult-satisfied info mult-c))
 
-  (extract-items-constraints [mc]
-    (let [coll-c (-> mc
+  (fixed-items-constraints [mc old-mc]
+    (let [coll-c (-> old-mc
                      extract-coll-constraint
                      extract-contents-constraint)
           ics (either (-> (.constraints mc)
-                          (some (partial instance? ItemsConstraint))
-                          (map (fn [ic]
-                                 (-> (extract-items-constraints ic)
-                                     (map (fn [c]
-                                            (-> c
-                                                (intersect coll-c)
-                                                (update-var (extract-var c)))))))))
+                          (some (fn [v]
+                                  (and (first v)
+                                       (maybe v))))
+                          (map (fn [fixed-ic]
+                                 (map fixed-ic (fn [c]
+                                                 (-> c
+                                                     (intersect coll-c)
+                                                     (update-var (extract-var c))))))))
                       [])]
-      (either (map (some (.constraints mc)
+      (either (map (some (.constraints old-mc)
                          (partial instance? StaticLengthConstraint))
                    (fn [len-c]
                      (take ics (.length len-c))))
@@ -1816,7 +1826,7 @@
     (=-inferred-inner y x))
 
   Constraint
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (vec (repeat n (.contents c))))
 
   (satisfied-by [c coll-info]
@@ -1987,7 +1997,7 @@
   (collection-of [x]
     (Left x))
 
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (vec (repeat n (.contents c))))
 
   (type-map [c _]
@@ -2082,22 +2092,26 @@
     (either (some (.alts c) (partial = top-type))
             c))
 
-  (extract-items-constraints [c]
-    (extract-items-constraints c (-> (.alts c)
-                                     (map extract-items-constraints)
-                                     (reduce 0 (fn [max cs]
-                                                 (let [n (count cs)]
-                                                   (either (> max n)
-                                                           n)))))))
+  (fixed-items-constraints [c old-sumc]
+    (-> old-sumc
+        (extract-items-constraints (-> (.alts c)
+                                       (reduce 0 (fn [max cs]
+                                                   (let [n (count cs)]
+                                                     (either (> max n)
+                                                             n))))))
+        (map (fn [c]
+               (update-var c "")))))
 
-  (extract-items-constraints [c n]
+  (old-extract-items-constraints [c n]
     (-> (apply zip-lists (map (.alts c) (fn [alt]
-                                          (extract-items-constraints alt n))))
+                                          (old-extract-items-constraints alt n))))
         (map (fn [new-alts]
                (either (or (some new-alts (partial = top-type))
                            (apply = new-alts))
                        (.alts c (vec new-alts)))))
-        vec))
+        vec
+        (map (fn [c]
+               (update-var c "")))))
 
   (contents-constraint [c]
     (Right c))
