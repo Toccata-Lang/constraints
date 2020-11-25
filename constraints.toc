@@ -97,9 +97,11 @@
   (update-var [c new-var]
     (assert (instance? String new-var)))
 
-  (update-type-name [c new-name]
+  (set-type-name [c new-name]
     c)
 
+  ;; This is only used for calls to seq and vec. And there's not enough benefit to
+  ;; implementing them with recursion schemes
   (set-type [c tc]
     (intersect c tc))
 
@@ -114,6 +116,11 @@
 ;;     (or (= x y)
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
+
+(defn update-type-name [c new-name]
+  (cata (fn [c]
+          (set-type-name c new-name))
+        c))
 
 (defn extract-collection-of [c]
   (elgot collection-of trim c))
@@ -361,7 +368,7 @@
       x))
 
   Constraint
-  (update-type-name [c new-name]
+  (set-type-name [c new-name]
     (.type-sym c new-name))
 
   (assertion-path [_] path)
@@ -574,10 +581,6 @@
          (maybe x)))
 
   Constraint
-  (update-type-name [c new-name]
-    (.alts c (map (.alts c) (fn [alt]
-                              (update-type-name alt new-name)))))
-
   (assertion-path [x] path)
 
   (format-path [_ n]
@@ -854,10 +857,6 @@
                 (remove empty?)
                 first)
             []))
-
-  (update-type-name [c new-name]
-    (.constraints c (map (.constraints c) (fn [inner-c]
-                                            (update-type-name inner-c new-name)))))
 
   (set-type [c tc]
     (MultiConstraint (map constraints (fn [inner-c]
@@ -1506,7 +1505,7 @@
 
   (extract-items-constraints [mc]
     (let [coll-c (-> mc
-                     old-extract-coll-constraint
+                     extract-coll-constraint
                      extract-contents-constraint)
           ics (either (-> (.constraints mc)
                           (some (partial instance? ItemsConstraint))
