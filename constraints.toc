@@ -79,6 +79,7 @@
     (assert-result r (instance? Vector r))
     [])
 
+  ;; TODO: still need to replace this
   (old-extract-items-constraints [c n]
     (assert (instance? Integer n))
     (assert-result r (instance? Vector r)))
@@ -119,7 +120,9 @@
 
 (defn extract-items-constraints
   ([c]
-   (para fixed-items-constraints (trim c)))
+   (para (comp trim fixed-items-constraints)
+         ;; TODO: remove this trim evenutally
+         (trim c)))
   ([c n]
    (old-extract-items-constraints c n)))
 
@@ -333,6 +336,11 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
+  ;; TODO: this needs to bring all fixed items constraints to one level and
+  ;; find the final tail
+  ;; (trim [ic]
+  ;;   )
+
   (set-type [c tc]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
@@ -914,7 +922,9 @@
 
   (format-path [_ n]
     (let [max-len (reduce (map constraints (fn [o]
-                                             (count (.path o))))
+                                             (either (map (get o .path)
+                                                          count)
+                                                     0)))
                           n
                           (fn [max-len path-len]
                             (either (> max-len path-len)
@@ -1125,6 +1135,9 @@
 
 (extend-type Vector
   Constraint
+  (trim [v]
+    (map v trim))
+
   (intersect [v c]
     (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
 
@@ -2063,18 +2076,29 @@
 
   Constraint
   (trim [c]
-    (-> (.alts c)
-        (remove (partial = bottom-type))
-        (flat-map (fn [c]
-                    (either (map (instance? SumConstraint c) .alts)
-                            [c])))
-        sum-type
-        (replace-path (.path c))
-        (update-var (.var c))
-        ((fn [new-c]
-           (either (map (.sym c)
-                        (partial update-sym new-c))
-                   new-c)))))
+    (let [all-alts (flat-map (.alts c) (fn [c]
+                                         (either (map (instance? SumConstraint c) .alts)
+                                                 [c])))
+          tcs (filter all-alts (partial instance? TypeConstraint))
+          tc (either (map (first tcs) (fn [c]
+                                        (.type-maps c (comp* {} (map tcs .type-maps)))))
+                     bottom-type)]
+      (-> all-alts
+          (remove (fn [c]
+                    (or (= bottom-type c)
+                        (instance? TypeConstraint c))))
+          ((fn [new-alts]
+             (cond (= bottom-type tc)
+                   new-alts
+
+                   (conj new-alts tc))))
+          sum-type
+          (replace-path (.path c))
+          (update-var (.var c))
+          ((fn [new-c]
+             (either (map (.sym c)
+                          (partial update-sym new-c))
+                     new-c))))))
 
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
