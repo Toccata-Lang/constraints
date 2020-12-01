@@ -95,6 +95,9 @@
   (extract-var [c]
     (assert-result var (instance? String var)))
 
+  (clear-var [c]
+    c)
+
   (update-var [c new-var]
     (assert (instance? String new-var)))
 
@@ -258,6 +261,9 @@
          (maybe x)))
 
   Constraint
+  (clear-var [c]
+    (.var c ""))
+
   (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
   (update-sym [x _] x)
@@ -1169,6 +1175,9 @@
 
 (extend-type SymbolConstraints
   Constraint
+  (clear-var [c]
+    (.var c ""))
+
   (dynamic-fields [c] [])
 
   (set-path [c new-path]
@@ -1231,6 +1240,9 @@
                                  (maybe (NoValues [tc c])))
                             (maybe (MultiConstraint [tc (update-var c (extract-var tc))])))))
             (intersect (update-var c (extract-var tc)) tc))))
+
+(defn clear-vars [c]
+  (cata clear-var c))
 
 (extend-type Constraints
   Container
@@ -1543,7 +1555,17 @@
                          (partial instance? StaticLengthConstraint))
                    (fn [len-c]
                      (take ics (.length len-c))))
-              ics))))
+              ics)))
+
+  (old-extract-items-constraints [c n]
+    (-> c
+        .constraints
+        (map (fn [c]
+               (old-extract-items-constraints c n)))
+        ((partial apply zip-lists))
+        (map (fn [cs]
+               (reduce cs top-type intersect)))
+        vec)))
 
 (extend-type ResultConstraint
   Container
@@ -1840,7 +1862,9 @@
 
   Constraint
   (old-extract-items-constraints [c n]
-    (vec (repeat n (.contents c))))
+    (either (and (flat-map (extract-type-map c) empty?)
+                 (maybe []))
+            (vec (repeat n (.contents c)))))
 
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
@@ -2011,7 +2035,9 @@
     (Left x))
 
   (old-extract-items-constraints [c n]
-    (vec (repeat n (.contents c))))
+    (either (and (flat-map (extract-type-map c) empty?)
+                 (maybe []))
+            (vec (repeat n (.contents c)))))
 
   (type-map [c _]
     (maybe {ListType #{}
@@ -2080,8 +2106,14 @@
                                          (either (map (instance? SumConstraint c) .alts)
                                                  [c])))
           tcs (filter all-alts (partial instance? TypeConstraint))
-          tc (either (map (first tcs) (fn [c]
-                                        (.type-maps c (comp* {} (map tcs .type-maps)))))
+          tc (either (map (first tcs) (fn [alt-c]
+                                        (-> (either (map (.sym c)
+                                                         (partial update-sym alt-c))
+                                                    alt-c)
+                                            (.type-sym (symbol "<Unknown>"))
+                                            (update-var (.var c))
+                                            (replace-path (.path c))
+                                            (.type-maps (comp* {} (map tcs .type-maps))))))
                      bottom-type)]
       (-> all-alts
           (remove (fn [c]
