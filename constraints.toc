@@ -41,10 +41,6 @@
     ;; but for noew, just ignore them
     nothing)
 
-  (key-constraint [_]
-    ;; extract the constraint a key value must satisfy
-    top-type)
-
   (add-to-path [constraint file-name line-number]
     constraint)
 
@@ -163,14 +159,11 @@
 (defn clear-sym [c]
   (apo remove-sym c))
 
-(defn extract-key-constraint [c]
-  (cata key-constraint c))
+(defn extract-type-map [c]
+  (para type-map c))
 
 (defn extract-dynamic-params [c]
   (cata dynamic-params c))
-
-(defn extract-type-map [c]
-  (para type-map c))
 
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
@@ -210,6 +203,19 @@
 (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
+
+(defn extract-key-constraint [c]
+  (either (flat-map (extract-type-map c)
+                    (fn [types-map]
+                      (and (or (get types-map BitmapIndexedType)
+                               (get types-map ArrayNodeType)
+                               (get types-map HashCollisionNodeType))
+                           (-> c
+                               extract-contents-constraint
+                               extract-items-constraints
+                               first))))
+
+          top-type))
 
 ;; TODO: constraints to add
 ;; number of args the target of a call takes
@@ -1515,12 +1521,7 @@
   (intersect [mc c]
     (intersect-multi c mc))
 
-  (key-constraint [mc]
-    (-> mc
-        .constraints
-        (reduce top-type intersect)))
-
-  (contents-constraint [mc]
+    (contents-constraint [mc]
     (Left (either (map (some (.constraints mc) (partial instance? StaticLengthConstraint))
                        (fn [len-c]
                          (-> mc
@@ -2143,10 +2144,6 @@
 
   (intersect [sc c]
     (intersect-sum c sc))
-
-  (key-constraint [c]
-    (either (some (.alts c) (partial = top-type))
-            c))
 
   (fixed-items-constraints [c old-sumc]
     (-> old-sumc
