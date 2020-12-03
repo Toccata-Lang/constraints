@@ -236,15 +236,22 @@
                                                       (= 0 line)))))
                                 (map (fn [[file line]]
                                        (let [file (str file)]
-                                         (str (either (map (> (count file) 30)
-                                                           (fn [len]
-                                                             (subs file (- len 15))))
+                                         (str (either (-> file
+                                                          str
+                                                          (split-string (partial = "/"))
+                                                          last
+                                                          (map (fn [file]
+                                                                 (either (and (flat-map (first file)
+                                                                                        (partial = "/"))
+                                                                              (maybe file))
+                                                                         file))))
                                                       file)
                                               ": " line)))))
-                       max-width (reduce path 0 (fn [max s]
-                                                  (let [n (count s)]
-                                                    (either (> max n)
-                                                            n))))
+                       max-width (reduce path (count header)
+                                         (fn [max s]
+                                           (let [n (count s)]
+                                             (either (> max n)
+                                                     n))))
                        path (either (and (< (count path) desired-len)
                                          (maybe (comp path (repeat (- desired-len (count path))
                                                                    (spaces max-width)))))
@@ -776,10 +783,6 @@
                                DynamicConstraint))
 
 (deftype NoValues [constraints]
-  (assert (instance? (vector-of (any-of SymbolConstraints
-                                        Symbol))
-                     constraints))
-
   Stringable
   (string-list [_]
     (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
@@ -791,14 +794,15 @@
   (collection-of [x] (Left x))
 
   (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [c] (count (assertion-path c))))
-                          n
-                          (fn [max-len path-len]
-                            (either (> max-len path-len)
-                                    path-len)))
-          paths (map constraints (fn [c]
-                                   (format-path c (inc max-len))))]
-      (-> paths
+    (let [max-len (-> constraints
+                      (map  (fn [c] (count (assertion-path c))))
+                      (reduce n (fn [max-len path-len]
+                                  (either (> max-len path-len)
+                                          path-len)))
+                      inc)]
+      (-> constraints
+          (map (fn [c]
+                 (format-path c max-len)))
           (list-zipper empty-list)
           (map (fn [strs]
                  (str (to-str (interpose strs "    "))
@@ -1142,7 +1146,9 @@
                            (either (= "" file-name)
                                    (str "at " file-name ": " line-number))
                            "\n"
-                           (format-path failing-constraint 0)))
+                           (-> failing-constraint
+                               ;; TODO: add file-name/line-number to empty paths
+                               (format-path 0))))
   nothing)
 
 (extend-type Vector
@@ -1153,7 +1159,37 @@
   (intersect [v c]
     (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
 
+(extend-type Constraints
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (coll-constraint [x]
+    (collection-of x))
+
+  (old-extract-items-constraints [c n]
+    (-> c
+        extract-items-constraints
+        (comp (repeat n top-type))
+        (take n)))
+
+  (contents-constraint [_]
+    (Right top-type)))
+
 (extend-type NoValues
+  Container
+  (map [x f]
+    (.constraints x (f (.constraints x))))
+
+  (map [x f embed]
+    (-> (.constraints x)
+        f
+        (map (partial .constraints x))))
+
   ConstraintOps
   (conj-multi [c mc]
     (maybe c))
@@ -1249,27 +1285,6 @@
 
 (defn clear-vars [c]
   (cata clear-var c))
-
-(extend-type Constraints
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
-
-  Constraint
-  (coll-constraint [x]
-    (collection-of x))
-
-  (old-extract-items-constraints [c n]
-    (-> c
-        extract-items-constraints
-        (comp (repeat n top-type))
-        (take n)))
-
-  (contents-constraint [_]
-    (Right top-type)))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
