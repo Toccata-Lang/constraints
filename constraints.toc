@@ -355,10 +355,14 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
-  ;; TODO: this needs to bring all fixed items constraints to one level and
-  ;; find the final tail
-  ;; (trim [ic]
-  ;;   )
+  (trim [ic]
+    (either (map (instance? ItemsConstraint tail-constraint)
+                 (fn [tail-c]
+                   (-> ic
+                       (.items-constraints (comp items-constraints
+                                                 (.items-constraints tail-c)))
+                       (.tail-constraint (.tail-constraint tail-c)))))
+            ic))
 
   (set-type [c tc]
     (-> c
@@ -717,7 +721,12 @@
   (=* [x y]
     (and (instance? DynamicResultConstraint y)
          (= invokable-c (.invokable-c y))
-         (maybe x))))
+         (maybe x)))
+
+  Constraint
+  (format-path [x desired-len]
+    (format-path* (cons ["Dynamic Result at" ""] path)
+                  desired-len)))
 
 (deftype ReifiedFields [field-cs path sym var]
   (assert (instance? Vector field-cs))
@@ -793,9 +802,16 @@
   (update-var [x _] x)
   (collection-of [x] (Left x))
 
-  (format-path [_ n]
-    (let [max-len (-> constraints
-                      (map  (fn [c] (count (assertion-path c))))
+  (trim [c]
+    (.constraints c (comp (remove constraints (partial instance? NoValues))
+                          (-> constraints
+                              (filter (partial instance? NoValues))
+                              (flat-map .constraints)))))
+
+  (format-path [c n]
+    (let [max-len (-> (trim c)
+                      .constraints
+                      (map (fn [c] (count (assertion-path c))))
                       (reduce n (fn [max-len path-len]
                                   (either (> max-len path-len)
                                           path-len)))
@@ -848,7 +864,7 @@
             (NoValues [slc c]))))
 
 (deftype MultiConstraint [constraints]
-  (assert (instance? (vector-of SymbolConstraints) constraints))
+  (assert (instance? Vector constraints))
 
   Stringable
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
@@ -1348,37 +1364,54 @@
            (maybe info))))
 
   (intersect-coll-of [c cc]
-    (either (or (= (reduce (.items-constraints c)
-                           top-type
-                           (fn [r c]
-                             (either (= r bottom-type)
-                                     (-> (.contents cc)
-                                         (intersect c)
-                                         (update-var (extract-var c))))))
-                   bottom-type)
-                (= (intersect cc (.tail-constraint c))
-                   bottom-type))
-            (MultiConstraint [cc (update-var c (extract-var cc))])))
+    (let [new-items (map (.items-constraints c)
+                         (fn [c]
+                           (-> (.contents cc)
+                               (intersect c)
+                               (update-var (extract-var c)))))
+          new-tail (either (= (.tail-constraint c) bottom-type)
+                           (intersect cc (.tail-constraint c)))]
+      (either (or (some new-items (partial = bottom-type))
+                  (cond (= (.tail-constraint c) bottom-type)
+                        nothing
+                        (= new-tail bottom-type)))
+              (-> c
+                  (.items-constraints new-items)
+                  (.tail-constraint new-tail)))))
 
   (intersect-static-str [c slc]
+    ;; TODO: could be more precise by destructuring the static string
     (either (and (< (count slc) (count (extract-items-constraints c)))
                  (maybe (NoValues [slc c])))
-            (MultiConstraint [slc c])))
+            (intersect-coll-of c (CollectionOf (TypeConstraint {StringBufferType #{} SubStringType #{}}
+                                                               empty-list 'String nothing "")
+                                               empty-list nothing ""))))
 
   (intersect-static-len [c slc]
-    (either (and (< (.length slc) (count (extract-items-constraints c)))
-                 (maybe (NoValues [slc c])))
-            (MultiConstraint [slc c])))
+    (let [items-count (count (extract-items-constraints c))]
+      (either (or (< (.length slc) items-count)
+                  (and (< items-count (.length slc))
+                       (= bottom-type (.tail-constraint c)))
+                  (maybe (NoValues [slc c])))
+              ;; TODO: return ItemsConstraint with correct number of items-constraints
+              ;; and NoValues tail
+              (MultiConstraint [slc c]))))
 
   (intersect-inner [c ic]
-    (either (or (-> (.items-constraints c)
-                    (map (fn [c2]
-                           (intersect (.contents ic) c2)))
-                    (some (fn [c]
-                            (= c bottom-type))))
-                (= (intersect (.tail-constraint c) ic)
-                   bottom-type))
-            (MultiConstraint [ic (update-var c (extract-var ic))])))
+    (let [new-items (map (.items-constraints c)
+                         (fn [c]
+                           (-> (.contents ic)
+                               (intersect c)
+                               (update-var (extract-var c)))))
+          new-tail (either (= (.tail-constraint c) bottom-type)
+                           (intersect ic (.tail-constraint c)))]
+      (either (or (some new-items (partial = bottom-type))
+                  (cond (= (.tail-constraint c) bottom-type)
+                        nothing
+                        (= new-tail bottom-type)))
+              (-> c
+                  (.items-constraints new-items)
+                  (.tail-constraint new-tail)))))
 
   (intersect-typec [c tc]
     (assert (instance? TypeConstraint tc))
@@ -1399,7 +1432,9 @@
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
-    (let [cnt-ic (count (.items-constraints ic))
+    (let [c (cata trim c)
+          ic (cata trim ic)
+          cnt-ic (count (.items-constraints ic))
           cnt-c (count (.items-constraints c))
           max-cnt (either (> cnt-ic cnt-c)
                           cnt-c)
@@ -1408,13 +1443,18 @@
                            (fn [[c1 c2]]
                              (intersect c1 c2)))
           new-tail (intersect (.tail-constraint ic)
-                              (.tail-constraint c))]
-      (either (or (some constraints (fn [c]
-                                      (= c bottom-type)))
-                  (= new-tail bottom-type))
-              (-> ic
-                  (.tail-constraint new-tail)
-                  (.items-constraints (vec constraints))))))
+                              (.tail-constraint c))
+          new-ic (-> ic
+                     (.tail-constraint new-tail)
+                     (.items-constraints (vec constraints)))]
+      (either (some constraints (fn [c]
+                                  (= c bottom-type)))
+              (cond (or (= bottom-type (.tail-constraint ic))
+                        (= bottom-type (.tail-constraint c)))
+                    new-ic
+
+                    (either (= bottom-type new-tail)
+                            new-ic)))))
 
   (intersect-fieldc [c fc]
     (NoValues [fc c]))
@@ -2213,6 +2253,9 @@
 
 (extend-type DynamicConstraint
   Constraint
+  (assertion-path [c]
+    (.path c))
+
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
                      (maybe c1))
@@ -2283,6 +2326,5 @@
             (maybe z))))
 
 (def empty-items-constraint (ItemsConstraint []
-                                             (CollectionOf (TypeConstraint {} empty-list 'no-type nothing "")
-                                                           empty-list nothing "")
+                                             (NoValues [])
                                              empty-list nothing ""))
