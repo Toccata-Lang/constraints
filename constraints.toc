@@ -1389,13 +1389,13 @@
 
   (intersect-static-len [c slc]
     (let [items-count (count (extract-items-constraints c))]
-      (either (or (< (.length slc) items-count)
-                  (and (< items-count (.length slc))
-                       (= bottom-type (.tail-constraint c)))
-                  (maybe (NoValues [slc c])))
-              ;; TODO: return ItemsConstraint with correct number of items-constraints
-              ;; and NoValues tail
-              (MultiConstraint [slc c]))))
+      (cond (or (< (.length slc) items-count)
+                (and (< items-count (.length slc))
+                     (= bottom-type (.tail-constraint c))))
+            (NoValues [slc c])
+            ;; TODO: return ItemsConstraint with correct number of items-constraints
+            ;; and NoValues tail
+            (MultiConstraint [slc c]))))
 
   (intersect-inner [c ic]
     (let [new-items (map (.items-constraints c)
