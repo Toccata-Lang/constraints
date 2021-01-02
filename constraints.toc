@@ -2328,3 +2328,18 @@
 (def empty-items-constraint (ItemsConstraint []
                                              (NoValues [])
                                              empty-list nothing ""))
+
+(def fn-constraint (TypeConstraint {FunctionType #{}} empty-list 'Fn nothing ""))
+(def sym-constraint (TypeConstraint {SymbolType #{}} empty-list 'Symbol nothing ""))
+(def vect-constraint (TypeConstraint {VectorType #{}} empty-list 'Vector nothing ""))
+(def list-constraint (TypeConstraint {ListType #{}} empty-list 'List nothing ""))
+(def seq-constraint (TypeConstraint {ListType #{}
+                                       VectorType #{}} empty-list 'Sequence nothing ""))
+(def string-constraint (TypeConstraint {StringBufferType #{} SubStringType #{}}
+                                         empty-list 'String nothing ""))
+(def hashmap-constraint (TypeConstraint {BitmapIndexedType #{}
+                                           ArrayNodeType #{}
+                                           HashCollisionNodeType #{}}
+                                          empty-list 'HashMap nothing ""))
+(def int-constraint (TypeConstraint {IntegerType #{}} empty-list 'Integer nothing ""))
+(def maybe-constraint  (TypeConstraint {MaybeType #{}} empty-list 'Maybe nothing ""))
