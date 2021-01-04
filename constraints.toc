@@ -7,6 +7,7 @@
 (def TypeMap (map-of Integer (set-of Symbol)))
 
 (def top-type)
+(def bottom-type)
 (def type-map)
 
 (def always-nothing -1)
@@ -71,6 +72,12 @@
                    (select-keys types-map (keys c-type-map))))
             types-map))
 
+  (is-collection? [c]
+    nothing)
+
+  (get-tail-constraint [c x]
+    bottom-type)
+
   (fixed-items-constraints [c x]
     (assert-result r (instance? Vector r))
     [])
@@ -116,6 +123,11 @@
 ;;     (or (= x y)
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
+
+(defn extract-tail-constraint [c]
+  (para (comp trim get-tail-constraint)
+        ;; TODO: remove this trim evenutally
+        (trim c)))
 
 (defn extract-items-constraints
   ([c]
@@ -307,6 +319,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (is-collection? [c]
+    (maybe c))
+
   (assertion-path [_] path)
 
   (format-path [x desired-len]
@@ -328,6 +343,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (is-collection? [c]
+    (maybe c))
+
   (update-var [c new-var]
     (.var c new-var))
 
@@ -355,6 +373,9 @@
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
+  (is-collection? [c]
+    (maybe c))
+
   (trim [ic]
     (either (map (instance? ItemsConstraint tail-constraint)
                  (fn [tail-c]
@@ -576,6 +597,9 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (is-collection? [c]
+    (maybe c))
+
   (satisfied-by [c info]
     (= c info))
 
@@ -747,7 +771,7 @@
          (maybe x)))
 
   Constraint
-  (intersect [c1 c2] 
+  (intersect [c1 c2]
     (let [new-c (intersect c2 c1)]
       (print-err 'new-c new-c)
       new-c)))
@@ -870,6 +894,9 @@
   (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
+  (is-collection? [c]
+    (some constraints is-collection?))
+
   (trim [c]
     (let [new-cs (-> constraints
                      (flat-map (fn [c]
@@ -896,7 +923,7 @@
     (Right c))
 
   (dynamic-fields [c]
-    (either (-> constraints 
+    (either (-> constraints
                 (remove empty?)
                 first)
             []))
@@ -1215,19 +1242,19 @@
 
 (extend-type AllValues
   ConstraintOps
-  (intersect-sum [c sc] sc) 
-  (intersect-result [c rc] rc) 
-  (intersect-typec [c tc] tc) 
-  (intersect-coll-of [c cc] cc) 
-  (intersect-static-str [c slc] slc) 
-  (intersect-static-len [c slc] slc) 
-  (intersect-inner [c ic] ic) 
-  (intersect-max-value [c mvc] mvc) 
-  (intersect-min-value [c mvc] mvc) 
-  (intersect-static-int [c slc] slc) 
-  (intersect-fieldc [c fc] fc) 
-  (intersect-itemsc [c ic] ic) 
-  (intersect-multi [c mc] mc) 
+  (intersect-sum [c sc] sc)
+  (intersect-result [c rc] rc)
+  (intersect-typec [c tc] tc)
+  (intersect-coll-of [c cc] cc)
+  (intersect-static-str [c slc] slc)
+  (intersect-static-len [c slc] slc)
+  (intersect-inner [c ic] ic)
+  (intersect-max-value [c mvc] mvc)
+  (intersect-min-value [c mvc] mvc)
+  (intersect-static-int [c slc] slc)
+  (intersect-fieldc [c fc] fc)
+  (intersect-itemsc [c ic] ic)
+  (intersect-multi [c mc] mc)
   (conj-multi [c mc]
     (maybe mc)))
 
@@ -1468,6 +1495,9 @@
          (maybe x)))
 
   Constraint
+  (get-tail-constraint [c old-ic]
+    (.tail-constraint c))
+
   (fixed-items-constraints [c old-ic]
     (comp (.items-constraints old-ic)
           (.tail-constraint c)))
@@ -1494,7 +1524,7 @@
 
   (intersect [ic c]
     (either (=-items-constraint c ic)
-            (intersect-itemsc c ic)))) 
+            (intersect-itemsc c ic))))
 
 (extend-type MultiConstraint
   Container
@@ -1592,6 +1622,16 @@
 
   (satisfied-by [mult-c info]
     (mult-satisfied info mult-c))
+
+  (get-tail-constraint [mc old-mc]
+    (either (map (is-collection? old-mc)
+                 (fn [_]
+                   (-> (zip-lists (.constraints old-mc) (.constraints mc))
+                       (filter (fn [[old-c]]
+                                 (is-collection? old-c)))
+                       (reduce top-type (fn [final-c [_ curr-c]]
+                                          (intersect final-c curr-c))))))
+            bottom-type))
 
   (fixed-items-constraints [mc old-mc]
     (let [coll-c (-> old-mc
@@ -2192,7 +2232,7 @@
     (comp* [] (seq (.alts c))))
 
   (set-type [c tc]
-    (.alts c (-> (.alts c) 
+    (.alts c (-> (.alts c)
                  (map (fn [inner-c]
                         (set-type inner-c tc)))
                  (remove (partial = bottom-type)))))
