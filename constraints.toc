@@ -1345,16 +1345,14 @@
           (let [type-constraints (filter const-cs (partial instance? TypeConstraint))
                 tc (either (empty? type-constraints)
                            [(TypeConstraint (comp* {} (map type-constraints .type-maps))
-                                             empty-list
-                                             (either (apply = (map type-constraints .type-sym))
-                                                     (symbol "<unknown>"))
-                                             nothing "")])
+                                            empty-list
+                                            (either (apply = (map type-constraints .type-sym))
+                                                    (symbol "<unknown>"))
+                                            nothing "")])
                 new-cs (-> const-cs
                            (remove (partial instance? TypeConstraint))
                            (reduce tc (fn [new-cs curr]
-                                        (either (and (some new-cs (fn [c]
-                                                                    ;; TODO: add check for dynamic constraint
-                                                                    (= c (intersect c curr))))
+                                        (either (and (some new-cs (partial = curr))
                                                      (maybe new-cs))
                                                 (conj new-cs curr)))))]
             (either (and (= 1 (count new-cs))
