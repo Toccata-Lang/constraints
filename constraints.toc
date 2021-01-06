@@ -1,6 +1,26 @@
 
-;; TODO: make constraints a recursive type when possible
 ;; TODO: add a Hole constraint to print information
+
+(def SymbolOrString (any-of Symbol
+                            String))
+
+(deftype Location [file line]
+  (assert (instance? SymbolOrString file))
+  (assert (instance? Integer line))
+
+  Stringable
+  (string-list [_]
+    (list (either (and (= file 'core)
+                       (maybe "$TOCCATA_DIR/core.toc"))
+                  (str file))
+          ", " (str line)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
 
 (def default-old-extract-items-constraints)
 
@@ -163,10 +183,15 @@
          (set-path c new-path))
        c))
 
-(defn update-path [c file-name line-number]
-  (cata (fn [c]
-          (add-to-path c file-name line-number))
-        c))
+(defn update-path
+  ([c loc]
+   (assert (instance? Location loc))
+   (update-path c (.file loc) (.line loc)))
+
+  ([c file-name line-number]
+   (cata (fn [c]
+           (add-to-path c file-name line-number))
+         c)))
 
 (defn clear-sym [c]
   (apo remove-sym c))
@@ -1443,9 +1468,10 @@
 
     (either (for [types-map (extract-type-map tc)
                   good-type-map (extract-type-map c)
-                  :when (= (select-keys types-map (keys good-type-map))
-                           types-map)]
-              (MultiConstraint [tc (update-var c (extract-var tc))]))
+                  :let [new-map (select-keys types-map (keys good-type-map))]
+                  :when-not (empty? new-map)]
+              (MultiConstraint [(.type-maps tc new-map)
+                                (update-var c (extract-var tc))]))
             (NoValues [c tc])))
 
   (intersect-max-value [c mvc]
