@@ -11,9 +11,9 @@
   Stringable
   (string-list [_]
     (list (either (and (= file 'core)
-                       (maybe "$TOCCATA_DIR/core.toc"))
+                       (maybe "core"))
                   (str file))
-          ", " (str line)))
+          ": " (str line)))
 
   Container
   (map [x f]
