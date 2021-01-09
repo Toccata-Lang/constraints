@@ -319,8 +319,7 @@
   (update-sym [x _] x)
   (add-to-path [x _ _] x)
   (extract-var [_] var)
-  (update-var [x v] (AllValues v))
-  (collection-of [x] (Left x)))
+  (update-var [x v] (AllValues v)))
 
 (def top-type (AllValues ""))
 
@@ -849,7 +848,6 @@
   (intersect [nv _] nv)
   (update-sym [x _] x)
   (update-var [x _] x)
-  (collection-of [x] (Left x))
 
   (trim [c]
     (.constraints c (comp (remove constraints (partial instance? NoValues))
@@ -943,9 +941,6 @@
                        (maybe top-type))
                   (apply = new-cs))
               (.constraints c new-cs))))
-
-  (collection-of [c]
-    (Right c))
 
   (dynamic-fields [c]
     (either (-> constraints
@@ -1258,6 +1253,11 @@
         f
         (map (partial .constraints x))))
 
+  Constraint
+  (collection-of [x]
+    (print-err 'called? _LINE_)
+    (Left x))
+
   ConstraintOps
   (conj-multi [c mc]
     (maybe c))
@@ -1266,6 +1266,11 @@
     c))
 
 (extend-type AllValues
+  Constraint
+  (collection-of [x]
+    (print-err 'called? _LINE_)
+    (Left x))
+
   ConstraintOps
   (intersect-sum [c sc] sc)
   (intersect-result [c rc] rc)
@@ -1382,7 +1387,11 @@
                                                 (conj new-cs curr)))))]
             (either (and (= 1 (count new-cs))
                          (first new-cs))
-                    (SumConstraint new-cs empty-list nothing "")))))
+                    (let [common (reduce new-cs top-type intersect)]
+                      (cond (= bottom-type common)
+                            (SumConstraint new-cs empty-list nothing "")
+                            (MultiConstraint [common
+                                              (SumConstraint new-cs empty-list nothing "")])))))))
 
 (extend-type ItemsConstraint
   Container
@@ -1627,6 +1636,9 @@
            (maybe mult-info))))
 
   Constraint
+  (collection-of [c]
+    (Right c))
+
   (intersect [mc c]
     (intersect-multi c mc))
 
