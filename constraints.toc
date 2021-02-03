@@ -47,13 +47,28 @@
 
     (Right c))
 
-  (dynamic-fields [c]
+  (reified-field [c indices]
+    (assert (instance? (vector-of Integer) indices))
+    (assert-result r (instance? Either r))
+
+    (Left nothing))
+
+  (filter-reified-field [c]
+    c)
+
+  ;; TODO: remove these two when old-reify-c is removed from toccata.toc
+  (reified-fields [c]
+    (Right top-type))
+  (filter-reified-fields [c]
     c)
 
   (dynamic-params [c]
     (assert-result r (instance? Vector r))
 
     [])
+
+  (set-arity [c new-arity]
+    c)
 
   (type-map [new old]
     (assert-result r (instance? (maybe-of TypeMap) r))
@@ -175,8 +190,14 @@
              (map trim)))
        c))
 
-(defn extract-dynamic-fields [c]
-  (cata dynamic-fields c))
+(defn extract-reified-fields [c]
+  (elgot reified-fields filter-reified-fields c))
+
+(defn extract-reified-field [c indices]
+  (elgot (fn [inner-c]
+           (reified-field inner-c indices))
+         filter-reified-field
+         c))
 
 (defn replace-path [c new-path]
   (apo (fn [c]
@@ -303,7 +324,7 @@
 
   Stringable
   (string-list [_]
-    (list "(AllValues " (str "\"" var "\"") ")"))
+    (list "(c/AllValues " (str "\"" var "\"") ")"))
 
   Eq
   (=* [x y]
@@ -336,10 +357,10 @@
 
   Stringable
   (string-list [_]
-    (list "(InferredInner " (str contents) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/InferredInner\n" (str contents) " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -360,10 +381,10 @@
 
   Stringable
   (string-list [_]
-    (list "(CollectionOf " (str contents) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/CollectionOf\n" (str contents) " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -389,11 +410,11 @@
 
   Stringable
   (string-list [_]
-    (list "(ItemsConstraint [" (to-str (interpose items-constraints "\n"))
+    (list "(c/ItemsConstraint\n[" (to-str (interpose items-constraints "\n"))
           "]\n" (str tail-constraint) "\n(list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" "\")"))
 
   Constraint
@@ -437,8 +458,10 @@
 
   Stringable
   (string-list [_]
-    (list "(TypeConstraint "  (str type-maps) " "
-          (str (cons 'list path))
+    (list "(c/TypeConstraint "
+          (str type-maps)
+          " "
+          "(list)" ;; (str (cons 'list path))
           (str " '" type-sym) " " (sym-str sym)
           " \"" (str var) "\")" ))
 
@@ -471,15 +494,15 @@
 
   Stringable
   (string-list [_]
-    (list "(FieldConstraint (symbol \"" (str field) "\") \"" (str field-var) "\" (list"
-          (either (map (first path) (fn [[f l]]
-                                      (let [f (str f)]
-                                        (str "[\"" (either (map (> (count f) 15)
-                                                                (fn [len]
-                                                                  (subs f (- len 15))))
-                                                           f)
-                                             "\" " l "]"))))
-                  "")
+    (list "(c/FieldConstraint (symbol \"" (str field) "\") \"" (str field-var) "\" (list"
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (let [f (str f)]
+          ;;                               (str "[\"" (either (map (> (count f) 15)
+          ;;                                                       (fn [len]
+          ;;                                                         (subs f (- len 15))))
+          ;;                                                  f)
+          ;;                                    "\" " l "]"))))
+          ;;         "")
           ") " (sym-str sym)
           " \"" (str var) "\")"))
 
@@ -506,10 +529,10 @@
 
   Stringable
   (string-list [_]
-    (list "(StaticIntConstraint " (str val) " (list"
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/StaticIntConstraint " (str val) " (list"
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -533,10 +556,10 @@
 
   Stringable
   (string-list [_]
-    (list "(MinValue " (str min) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/MinValue " (str min) " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -564,10 +587,10 @@
 
   Stringable
   (string-list [_]
-    (list "(MaxValue " (str max) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/MaxValue " (str max) " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -588,10 +611,10 @@
 
   Stringable
   (string-list [c]
-    (list "(StaticLengthConstraint " (str length) " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/StaticLengthConstraint " (str length) " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -614,10 +637,10 @@
 
   Stringable
   (string-list [_]
-    (list "(StaticStrConstraint " val " (list "
-          (either (map (first path) (fn [[f l]]
-                                      (str "[\"" f "\" " l "]")))
-                  "")
+    (list "(c/StaticStrConstraint " val " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
@@ -651,10 +674,11 @@
 
   Stringable
   (string-list [_]
-    (list (str "(SumConstraint " (str alts) " (list"
-               (either (map (first path) (fn [[f l]]
-                                           (str "[\"" f "\" " l "]")))
-                       "") ") " (either (map sym str) 'nothing) " "
+    (list (str "(c/SumConstraint\n" (str alts) " (list"
+               ;; (either (map (first path) (fn [[f l]]
+               ;;                             (str "[\"" f "\" " l "]")))
+               ;;         "")
+               ") " (either (map sym str) 'nothing) " "
                        (str "\"" var "\"") ")")))
 
   Eq
@@ -701,10 +725,12 @@
 (deftype DynamicFields [path sym var]
   Stringable
   (string-list [_]
-    (list "(DynamicFields "
-          (str " " (cons 'list path)) " " (either (map sym (fn [s]
-                                                          (str "(maybe '" s ")")))
-                                               "nothing")
+    (list "(c/DynamicFields "
+          (str " " "(list)" ;; (cons 'list path)
+               )
+          " " (either (map sym (fn [s]
+                                 (str "(maybe '" s ")")))
+                      "nothing")
           " " (str "\"" var "\"")
           ")"))
 
@@ -713,13 +739,35 @@
     (and (instance? DynamicFields y)
          (maybe x))))
 
+(deftype UpdateDynamicField [arity param-index item-index new-field path sym var]
+  Stringable
+  (string-list [_]
+    (list "(c/UpdateDynamicField " (str "'" arity) " " (str param-index) " " (str item-index)
+          "\n" (str new-field)
+          " (list) " ;; (str " " (cons 'list path))
+          " " (either (map sym (fn [s]
+                                                          (str "(maybe '" s ")")))
+                                               "nothing")
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? UpdateDynamicField y)
+         (=* arity (.arity y))
+         (=* param-index (.param-index y))
+         (=* item-index (.item-index y))
+         (=* new-field (.new-field y))
+         (maybe x))))
+
 (deftype DynamicParamConstraint [arity param-index path sym var result-type]
   Stringable
   (string-list [_]
-    (list "(DynamicParamConstraint " (str param-index)
-          (str " " (cons 'list path)) " " (either (map sym (fn [s]
-                                                          (str "(maybe '" s ")")))
-                                               "nothing")
+    (list "(c/DynamicParamConstraint " (str "'" arity) " " (str param-index)
+          " (list) " ;; (str " " (cons 'list path))
+          " " (either (map sym (fn [s]
+                                 (str "(maybe '" s ")")))
+                      "nothing")
           " " (str "\"" var "\"")
           " " (str result-type)
           ")"))
@@ -735,13 +783,16 @@
          (= result-type (.result-type y))
          (maybe x))))
 
-(deftype DynamicItemConstraint [arity param-index item-index path sym var]
+(deftype DynamicItemConstraint [arity param-index item-indices path sym var]
+  (assert (instance? Vector item-indices))
+
   Stringable
   (string-list [_]
-    (list "(DynamicItemConstraint " (str param-index) " " (str item-index)
-          (str " " (cons 'list path)) " " (either (map sym (fn [s]
-                                                             (str "(maybe '" s ")")))
-                                                  "nothing")
+    (list "(c/DynamicItemConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
+          " (list)" ;;  (str " " (cons 'list path))
+          " " (either (map sym (fn [s]
+                                 (str "(maybe '" s ")")))
+                      "nothing")
           " " (str "\"" var "\"")
           ")"))
 
@@ -749,17 +800,20 @@
   (dynamic-params [c]
     [c])
 
+  (set-arity [c new-arity]
+    (.arity c new-arity))
+
   Eq
   (=* [x y]
     (and (instance? DynamicItemConstraint y)
          (= param-index (.param-index y))
-         (= item-index (.item-index y))
+         (= item-indices (.item-indices y))
          (maybe x))))
 
 (deftype DynamicResultConstraint [arity invokable-c num-args path sym var]
   Stringable
   (string-list [_]
-    (list "(DynamicResultConstraint " (str invokable-c) " " (str num-args)
+    (list "(c/DynamicResultConstraint " (str arity) " " (str invokable-c) " " (str num-args)
           (str " " (cons 'list path)) " " (either (map sym (fn [s]
                                                              (str "(maybe '" s ")")))
                                                   "nothing")
@@ -772,6 +826,9 @@
          (maybe x)))
 
   Constraint
+  (set-arity [c new-arity]
+    (.arity c new-arity))
+
   (format-path [x desired-len]
     (format-path* (cons ["Dynamic Result at" ""] path)
                   desired-len)))
@@ -781,10 +838,11 @@
 
   Stringable
   (string-list [_]
-    (list "(ReifiedFields " (str (vec (interpose field-cs "\n")))
-          (str " " (cons 'list path)) " " (either (map sym (fn [s]
-                                                             (str "(maybe '" s ")")))
-                                                  "nothing")
+    (list "(c/ReifiedFields\n" (str "[" (to-str (interpose field-cs "\n")) "]")
+          " (list)" ;; (str " " (cons 'list path))
+          " " (either (map sym (fn [s]
+                                 (str "(maybe '" s ")")))
+                      "nothing")
           " " (str "\"" var "\"")
           ")"))
 
@@ -802,6 +860,7 @@
 
 (def DynamicConstraint (any-of DynamicParamConstraint
                                DynamicFields
+                               UpdateDynamicField
                                ReifiedFields
                                DynamicItemConstraint
                                DynamicResultConstraint))
@@ -842,7 +901,7 @@
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
-    (list "(NoValues [" (to-str (interpose constraints "\n")) "])"))
+    (list "(c/NoValues\n[" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
   (intersect [nv _] nv)
@@ -914,7 +973,8 @@
   (assert (instance? Vector constraints))
 
   Stringable
-  (string-list [_] (list "(MultiConstraint [" (to-str (interpose constraints "\n")) "])"))
+  (string-list [_]
+    (list "(c/MultiConstraint\n[" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
   (is-collection? [c]
@@ -931,22 +991,39 @@
                                                                    top-type))]
                                     (assoc m c-name new-c))))
                      vals
+                     (flat-map (fn [c]
+                                 (either (map (instance? MultiConstraint c) .constraints)
+                                         [c])))
                      vec
                      (remove (partial = top-type)))]
       (either (or (some new-cs (partial = bottom-type))
                   (map (some new-cs (partial instance? SumConstraint))
                        (fn [sum-c]
                          (reduce new-cs sum-c intersect)))
+                  (for [update (some new-cs (partial instance? UpdateDynamicField))
+                        reified (some new-cs (partial instance? ReifiedFields))]
+                    (.constraints c (-> new-cs
+                                        (remove (fn [c]
+                                                  (or (instance? UpdateDynamicField c)
+                                                      (instance? ReifiedFields c))))
+                                        (conj (intersect reified update)))))
                   (and (empty? new-cs)
                        (maybe top-type))
                   (apply = new-cs))
               (.constraints c new-cs))))
 
-  (dynamic-fields [c]
-    (either (-> constraints
-                (remove empty?)
-                first)
-            []))
+  (reified-field [c _]
+    (Right c))
+
+  (filter-reified-field [c]
+    (some constraints identity))
+
+  (reified-fields [c]
+    (Right c))
+
+  (filter-reified-fields [c]
+    (either (some constraints (partial instance? ReifiedFields))
+            top-type))
 
   (dynamic-params [c]
     (either (-> constraints
@@ -1024,7 +1101,7 @@
 
 (deftype ResultConstraint [assertion]
   Stringable
-  (string-list [_] (list "(ResultConstraint " (str assertion) ")"))
+  (string-list [_] (list "(c/ResultConstraint " (str assertion) ")"))
 
   Constraint
   (update-var [_ new-var]
@@ -1100,6 +1177,12 @@
     (intersect (update-var c (extract-var cc)) cc))
 
   (=-static-str [y x]
+    nothing)
+
+  (intersect-reified [c reified]
+    (assert (instance? ReifiedFields reified))
+    (assert-result r (instance? Maybe r))
+
     nothing)
 
   (intersect-static-str [c slc]
@@ -1298,8 +1381,6 @@
   Constraint
   (clear-var [c]
     (.var c ""))
-
-  (dynamic-fields [c] [])
 
   (set-path [c new-path]
     (Left (.path c new-path)))
@@ -2358,13 +2439,29 @@
     (MultiConstraint [c tc]))
 
   (intersect-multi [c mc]
-    ;; TODO: only one DynamicConstraint allowed in a MultiConstraint
-    (.constraints mc (cond (some (.constraints mc) (partial = c))
-                           (.constraints mc)
-                           (conj (.constraints mc) c)))))
+    (either (and (some (.constraints mc) (partial instance? DynamicConstraint))
+                 (maybe mc))
+            (.constraints mc (conj (.constraints mc) c)))))
+
+(extend-type DynamicItemConstraint
+  Constraint
+  (reified-field [c indices]
+    (print-err 'reified-dyn-item c)
+    (-> c
+        (.item-indices (comp (.item-indices c)
+                             indices))
+        maybe
+        Left)))
 
 (extend-type DynamicParamConstraint
   Constraint
+  (reified-field [c indices]
+    (Left (maybe (DynamicItemConstraint (.arity c) (.param-index c) indices
+                                        (.path c) (.sym c) (.var c)))))
+
+  (set-arity [c new-arity]
+    (.arity c new-arity))
+
   (set-type [c tc]
     (.result-type c tc)))
 
@@ -2378,6 +2475,62 @@
         f
         (map (partial .invokable-c x)))))
 
+(extend-type UpdateDynamicField
+  Container
+  (map [c f]
+    (.new-field c (f (.new-field c))))
+
+  (map [c f embed]
+    (map (f (.new-field c))
+         (partial .new-field c)))
+
+  Constraint
+  (intersect [c1 c2]
+    (either (or (and (= top-type c2)
+                     (maybe c1))
+                (= c1 c2)
+                (map (instance? MultiConstraint c2)
+                     (partial intersect-multi c1)))
+            (intersect c2 c1)))
+
+  (set-arity [c new-arity]
+    (.arity c new-arity))
+
+  ConstraintOps
+  (intersect-reified [c reified]
+    (print-err 'ir-update c "\n\n" 'reified reified)
+    (or (for [new-field (or (instance? UpdateDynamicField (.new-field c))
+                            (and (instance? MultiConstraint (.new-field c))
+                                 (some (.constraints (.new-field c)) (partial instance? UpdateDynamicField))))
+              field-c (get (.field-cs reified) (.item-index c))
+              field-c (or (instance? ReifiedFields field-c)
+                          (and (instance? MultiConstraint field-c)
+                               (some (.constraints field-c) (partial instance? ReifiedFields))))
+              :let [final (intersect (.new-field c) field-c)]
+              _ (do
+                  (print-err 'reified-field field-c "\n\n"
+                             'new-field (.new-field c) "\n\n"
+                             'final final)
+                  (maybe '_))
+              new-reified (store (.field-cs reified) (.item-index c)
+                                 final)]
+          new-reified)
+        (map (store (.field-cs reified) (.item-index c) (.new-field c))
+             (partial .field-cs reified))))
+  
+  (intersect-multi [c mc]
+    (either (for [reified (some (.constraints mc) (partial instance? ReifiedFields))
+                  :let [_ (print-err 'reified reified)]
+                  new-reified (intersect-reified c reified)]
+              (.constraints mc
+                            (-> (.constraints mc)
+                                (remove (partial instance? ReifiedFields))
+                                (conj new-reified))))
+            (cond (some (.constraints mc) (partial = c))
+                  (.constraints mc (.constraints mc))
+
+                  (.constraints mc (conj (.constraints mc) c))))))
+
 (extend-type ReifiedFields
   Container
   (map [x f]
@@ -2389,7 +2542,32 @@
         (map (partial .field-cs x))))
 
   Constraint
-  (dynamic-fields [c] (.field-cs c)))
+  (reified-field [c indices]
+    (either (for [index (first indices)
+                  field (get-in c [.field-cs index])]
+              (Left (extract-reified-field field (rest indices))))
+            (Left (maybe c))))
+
+  (reified-fields [c]
+    (Left c))
+
+  (intersect [reified c]
+    (either (intersect-reified c reified)
+            reified))
+
+  ConstraintOps
+  (intersect-multi [c mc]
+    (either (for [update (some (.constraints mc) (partial instance? UpdateDynamicField))
+                  :let [_ (print-err 'update update)]
+                  reified (intersect-reified update c)]
+              (.constraints mc
+                            (-> (.constraints mc)
+                                (remove (partial instance? UpdateDynamicField))
+                                (conj reified))))
+            (cond (some (.constraints mc) (partial = c))
+                  (.constraints mc (.constraints mc))
+
+                  (.constraints mc (conj (.constraints mc) c))))))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
