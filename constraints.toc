@@ -739,10 +739,12 @@
     (and (instance? DynamicFields y)
          (maybe x))))
 
-(deftype UpdateDynamicField [arity param-index item-index new-field path sym var]
+(deftype UpdateDynamicField [arity param-index item-indices new-field path sym var]
+  (assert (instance? (vector-of Integer) item-indices))
+
   Stringable
   (string-list [_]
-    (list "(c/UpdateDynamicField " (str "'" arity) " " (str param-index) " " (str item-index)
+    (list "(c/UpdateDynamicField " (str "'" arity) " " (str param-index) " " (str item-indices)
           "\n" (str new-field)
           " (list) " ;; (str " " (cons 'list path))
           " " (either (map sym (fn [s]
@@ -756,7 +758,7 @@
     (and (instance? UpdateDynamicField y)
          (=* arity (.arity y))
          (=* param-index (.param-index y))
-         (=* item-index (.item-index y))
+         (=* item-indices (.item-indices y))
          (=* new-field (.new-field y))
          (maybe x))))
 
@@ -2446,7 +2448,6 @@
 (extend-type DynamicItemConstraint
   Constraint
   (reified-field [c indices]
-    (print-err 'reified-dyn-item c)
     (-> c
         (.item-indices (comp (.item-indices c)
                              indices))
@@ -2485,6 +2486,20 @@
          (partial .new-field c)))
 
   Constraint
+  (trim [c]
+    (either (or (map (or (instance? UpdateDynamicField (.new-field c))
+                         (and (instance? MultiConstraint (.new-field c))
+                              (-> c
+                                  .new-field
+                                  .constraints
+                                  (some (partial instance? UpdateDynamicField)))))
+                     (fn [inner-update]
+                       (-> c
+                           (.item-indices (comp (.item-indices c)
+                                                (.item-indices inner-update)))
+                           (.new-field (.new-field inner-update))))))
+            c))
+
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
                      (maybe c1))
@@ -2498,29 +2513,24 @@
 
   ConstraintOps
   (intersect-reified [c reified]
-    (print-err 'ir-update c "\n\n" 'reified reified)
-    (or (for [new-field (or (instance? UpdateDynamicField (.new-field c))
-                            (and (instance? MultiConstraint (.new-field c))
-                                 (some (.constraints (.new-field c)) (partial instance? UpdateDynamicField))))
-              field-c (get (.field-cs reified) (.item-index c))
-              field-c (or (instance? ReifiedFields field-c)
-                          (and (instance? MultiConstraint field-c)
-                               (some (.constraints field-c) (partial instance? ReifiedFields))))
-              :let [final (intersect (.new-field c) field-c)]
-              _ (do
-                  (print-err 'reified-field field-c "\n\n"
-                             'new-field (.new-field c) "\n\n"
-                             'final final)
-                  (maybe '_))
-              new-reified (store (.field-cs reified) (.item-index c)
-                                 final)]
-          new-reified)
-        (map (store (.field-cs reified) (.item-index c) (.new-field c))
-             (partial .field-cs reified))))
+    (or (and (empty? (.item-indices c))
+             (maybe reified))
+
+        (and (= 1 (count (.item-indices c)))
+             (for [item-index (first (.item-indices c))
+                   old-field (get (.field-cs reified) item-index)
+                   new-fields (store (.field-cs reified) item-index (.new-field c))]
+               (.field-cs reified new-fields)))
+
+        (for [item-index (first (.item-indices c))
+              old-field (get (.field-cs reified) item-index)
+              new-fields (store (.field-cs reified) item-index
+                                    (intersect (.item-indices c (rest (.item-indices c)))
+                                               old-field))]
+          (.field-cs reified new-fields))))
   
   (intersect-multi [c mc]
     (either (for [reified (some (.constraints mc) (partial instance? ReifiedFields))
-                  :let [_ (print-err 'reified reified)]
                   new-reified (intersect-reified c reified)]
               (.constraints mc
                             (-> (.constraints mc)
@@ -2545,7 +2555,9 @@
   (reified-field [c indices]
     (either (for [index (first indices)
                   field (get-in c [.field-cs index])]
-              (Left (extract-reified-field field (rest indices))))
+              (cond (= 1 (count indices))
+                    (Left (maybe field))
+                    (Left (extract-reified-field field (rest indices)))))
             (Left (maybe c))))
 
   (reified-fields [c]
