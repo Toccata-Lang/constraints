@@ -762,12 +762,12 @@
          (=* new-field (.new-field y))
          (maybe x))))
 
-(deftype DynamicItemConstraint [arity param-index item-indices path sym var]
+(deftype DynamicParamConstraint [arity param-index item-indices path sym var]
   (assert (instance? Vector item-indices))
 
   Stringable
   (string-list [_]
-    (list "(c/DynamicItemConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
+    (list "(c/DynamicParamConstrainnt " (str "'" arity) " " (str param-index) " " (str item-indices)
           " (list)" ;;  (str " " (cons 'list path))
           " " (either (map sym (fn [s]
                                  (str "(maybe '" s ")")))
@@ -784,7 +784,7 @@
 
   Eq
   (=* [x y]
-    (and (instance? DynamicItemConstraint y)
+    (and (instance? DynamicParamConstraint y)
          (= param-index (.param-index y))
          (= item-indices (.item-indices y))
          (maybe x))))
@@ -840,7 +840,7 @@
 (def DynamicConstraint (any-of DynamicFields
                                UpdateDynamicField
                                ReifiedFields
-                               DynamicItemConstraint
+                               DynamicParamConstraint
                                DynamicResultConstraint))
 
 ;; Minimum Constraint Implementations
@@ -2421,7 +2421,7 @@
                  (maybe mc))
             (.constraints mc (conj (.constraints mc) c)))))
 
-(extend-type DynamicItemConstraint
+(extend-type DynamicParamConstraint
   Constraint
   (reified-field [c indices]
     (-> c
