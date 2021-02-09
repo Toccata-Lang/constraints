@@ -767,7 +767,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/DynamicParamConstrainnt " (str "'" arity) " " (str param-index) " " (str item-indices)
+    (list "(c/DynamicParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
           " (list)" ;;  (str " " (cons 'list path))
           " " (either (map sym (fn [s]
                                  (str "(maybe '" s ")")))
@@ -829,13 +829,7 @@
   (=* [x y]
     (and (instance? ReifiedFields y)
          (= field-cs (.field-cs y))
-         (maybe x)))
-
-  Constraint
-  (intersect [c1 c2]
-    (let [new-c (intersect c2 c1)]
-      (print-err 'new-c new-c)
-      new-c)))
+         (maybe x))))
 
 (def DynamicConstraint (any-of DynamicFields
                                UpdateDynamicField
@@ -963,6 +957,14 @@
                      (flat-map (fn [c]
                                  (either (map (instance? MultiConstraint c) .constraints)
                                          [c])))
+                     ((fn [cs]
+                        (and (< 1 (filter cs (partial instance? DynamicConstraint)))
+                             (do
+                               ;; TODO: remove after it triggers and is analyzed
+                               (print-err 'BOOOOOMMMMM c)
+                               (abort)
+                               nothing))
+                        cs))
                      (reduce {} (fn [m c]
                                   (let [c-name (type-name c)
                                         new-c (intersect c (either (get m c-name)
@@ -1323,7 +1325,6 @@
 
   Constraint
   (collection-of [x]
-    (print-err 'called? _LINE_)
     (Left x))
 
   ConstraintOps
@@ -1792,7 +1793,6 @@
 
 (extend-type TypeConstraint
   Constraint
-
   (contents-constraint [c]
     (Left (cond (or (get (.type-maps c) StringBufferType)
                     (get (.type-maps c) SubStringType))
@@ -1856,8 +1856,9 @@
                    bottom-type)
                 (flat-map (extract-type-map mc)
                           (fn [new-map]
-                            (= (intersect-typec c (.type-maps c new-map))
-                               bottom-type)))
+                            (and (> (count new-map) 1)
+                                 (= (intersect-typec c (.type-maps c new-map))
+                                    bottom-type))))
                 (and (some (.constraints mc) (partial = c))
                      (maybe mc)))
             (MultiConstraint (conj (.constraints mc) c))))
@@ -2417,9 +2418,9 @@
     (MultiConstraint [c tc]))
 
   (intersect-multi [c mc]
-    (either (and (some (.constraints mc) (partial instance? DynamicConstraint))
+    (either (and (some (.constraints mc) (partial = c))
                  (maybe mc))
-            (.constraints mc (conj (.constraints mc) c)))))
+            (MultiConstraint (conj (.constraints mc) c)))))
 
 (extend-type DynamicParamConstraint
   Constraint
@@ -2431,11 +2432,6 @@
         Left))
 
   (set-arity [c new-arity]
-    ;; TODO: make sure this gets called or find out why not
-    (and (= (.arity c) 'nada)
-         (do
-           (print-err 'replaced-dyn-item-nada-arity-id c)
-           nothing))
     (.arity c new-arity))
 
   (set-type [c tc]
@@ -2453,11 +2449,6 @@
 
   Constraint
   (set-arity [c new-arity]
-    ;; TODO: make sure this gets called or find out why not
-    (and (= (.arity c) 'nada)
-         (do
-           (print-err 'replaced-dyn-call-nada-arity-id c)
-           nothing))
     (.arity c new-arity)))
 
 (extend-type UpdateDynamicField
@@ -2485,11 +2476,15 @@
             c))
 
   (intersect [c1 c2]
-    (either (or (and (= top-type c2)
-                     (maybe c1))
-                (= c1 c2)
+    (either (or (= c1 c2)
                 (map (instance? MultiConstraint c2)
-                     (partial intersect-multi c1)))
+                     (partial intersect-multi c1))
+                ;; TODO: remove after it triggers and is analyzed
+                (and (instance? DynamicConstraint c2)
+                     (do
+                       (print-err 'BOOOOOMMMMM c2)
+                       (abort)
+                       nothing)))
             (intersect c2 c1)))
 
   (set-arity [c new-arity]
@@ -2520,8 +2515,9 @@
                             (-> (.constraints mc)
                                 (remove (partial instance? ReifiedFields))
                                 (conj new-reified))))
+
             (cond (some (.constraints mc) (partial = c))
-                  (.constraints mc (.constraints mc))
+                  mc
 
                   (.constraints mc (conj (.constraints mc) c))))))
 
@@ -2547,12 +2543,19 @@
   (reified-fields [c]
     (Left c))
 
+
+  Constraint
   (intersect [reified c]
-    (either (intersect-reified c reified)
-            reified))
+    (cond (instance? ReifiedFields c)
+          top-type
+
+          (either (intersect-reified c reified)
+                  reified)))
 
   ConstraintOps
   (intersect-multi [c mc]
+    ;; TODO: remove after it triggers and is analyzed
+    (print-err 'wut c)
     (either (for [update (some (.constraints mc) (partial instance? UpdateDynamicField))
                   :let [_ (print-err 'update update)]
                   reified (intersect-reified update c)]
