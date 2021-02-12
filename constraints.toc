@@ -463,6 +463,18 @@
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
 
+  Container
+  (map [tc f]
+    (.type-maps tc (map-vals (.type-maps tc) (fn [type-fields]
+                                               (map-vals type-fields (fn [field-c]
+                                                                       (map field-c f)))))))
+
+  (map [x f embed]
+    (map (contextual-map-vals (.type-maps tc) (fn [type-fields]
+                                                (contextual-map-vals type-fields f embed))
+                              embed)
+         (partial .type-maps tc)))
+
   Stringable
   (string-list [_]
     (list "(c/TypeConstraint "
