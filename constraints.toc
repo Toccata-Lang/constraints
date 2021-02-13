@@ -469,7 +469,7 @@
                                                (map-vals type-fields (fn [field-c]
                                                                        (map field-c f)))))))
 
-  (map [x f embed]
+  (map [tc f embed]
     (map (contextual-map-vals (.type-maps tc) (fn [type-fields]
                                                 (contextual-map-vals type-fields f embed))
                               embed)
@@ -505,8 +505,36 @@
                         path)
                   desired-len)))
 
+(def fn-constraint (TypeConstraint {FunctionType {}} empty-list 'Fn nothing ""))
+(def sym-constraint (TypeConstraint {SymbolType {}} empty-list 'Symbol nothing ""))
+(def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
+(def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
+(def seq-constraint (TypeConstraint {ListType {}
+                                       VectorType {}} empty-list 'Sequence nothing ""))
+(def string-constraint (TypeConstraint {StringBufferType {} SubStringType {}}
+                                         empty-list 'String nothing ""))
+(def hashmap-constraint (TypeConstraint {BitmapIndexedType {}
+                                           ArrayNodeType {}
+                                           HashCollisionNodeType {}}
+                                          empty-list 'HashMap nothing ""))
+(def int-constraint (TypeConstraint {IntegerType {}} empty-list 'Integer nothing ""))
+(def maybe-constraint  (TypeConstraint {MaybeType {}} empty-list 'Maybe nothing ""))
+(def set-constraint (TypeConstraint {HashSetType {'set-map hashmap-constraint}}
+                                    empty-list 'HashSet  nothing ""))
+(def agent-constraint (TypeConstraint {AgentType {}} empty-list 'Agent  nothing ""))
+(def promise-constraint (TypeConstraint {PromiseType {}} empty-list 'Promise  nothing ""))
+(def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
+(def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
+(def hash-coll-constraint (TypeConstraint {HashCollisionNodeType {}}
+                                          empty-list 'HashCollisionNode nothing ""))
+(def array-constraint (TypeConstraint {ArrayNodeType {}} empty-list 'ArrayNode nothing ""))
+(def bitmap-constraint (TypeConstraint {BitmapIndexedType {}} empty-list 'BitmapIndexedNode nothing ""))
+(def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
+(def substr-constraint (TypeConstraint {SubStringType {}} empty-list 'String nothing ""))
+(def strbuf-constraint (TypeConstraint {StringBufferType {}} empty-list 'String nothing ""))
+
 (deftype FieldConstraint [field field-var path sym var]
-  (assert (instance? Symbol field))
+  (assert (instance? Field field))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
@@ -531,7 +559,7 @@
   (restrict-types [c types-map]
     (reduce (seq types-map) {}
             (fn [types-map [type-num field-set]]
-              (either (map (field-set field)
+              (either (map (get field-set field)
                            (fn [_] (assoc types-map type-num field-set)))
                       types-map))))
 
@@ -741,7 +769,10 @@
         (some alts (fn [c]
                      (satisfied-by c info))))))
 
-(deftype DynamicFields [path sym var]
+(deftype DynamicFields [type-c fields path sym var]
+  (assert (instance? TypeConstraint type-c))
+  (assert (instance? (vector-of Field) fields))
+
   Stringable
   (string-list [_]
     (list "(c/DynamicFields "
@@ -980,7 +1011,7 @@
                         (and (< 1 (filter cs (partial instance? DynamicConstraint)))
                              (do
                                ;; TODO: remove after it triggers and is analyzed
-                               (print-err 'BOOOOOMMMMM c)
+                               (print-err 'BOOOOOMMMMM _LINE_ c)
                                (abort)
                                nothing))
                         cs))
@@ -2262,7 +2293,7 @@
             ArrayNodeType {}
             HashCollisionNodeType {}
             PromiseType {}
-            HashSetType {'set-map top-type}
+            HashSetType {'set-map hashmap-constraint}
             FutureType {}
             AgentType {}
             FunctionType {}
@@ -2502,7 +2533,7 @@
                 ;; TODO: remove after it triggers and is analyzed
                 (and (instance? DynamicConstraint c2)
                      (do
-                       (print-err 'BOOOOOMMMMM c2)
+                       (print-err 'BOOOOOMMMMM _LINE_ c2)
                        (abort)
                        nothing)))
             (intersect c2 c1)))
@@ -2608,30 +2639,3 @@
 (def empty-items-constraint (ItemsConstraint []
                                              (NoValues [])
                                              empty-list nothing ""))
-
-(def fn-constraint (TypeConstraint {FunctionType {}} empty-list 'Fn nothing ""))
-(def sym-constraint (TypeConstraint {SymbolType {}} empty-list 'Symbol nothing ""))
-(def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
-(def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
-(def seq-constraint (TypeConstraint {ListType {}
-                                       VectorType {}} empty-list 'Sequence nothing ""))
-(def string-constraint (TypeConstraint {StringBufferType {} SubStringType {}}
-                                         empty-list 'String nothing ""))
-(def hashmap-constraint (TypeConstraint {BitmapIndexedType {}
-                                           ArrayNodeType {}
-                                           HashCollisionNodeType {}}
-                                          empty-list 'HashMap nothing ""))
-(def int-constraint (TypeConstraint {IntegerType {}} empty-list 'Integer nothing ""))
-(def maybe-constraint  (TypeConstraint {MaybeType {}} empty-list 'Maybe nothing ""))
-(def set-constraint (TypeConstraint {HashSetType {'set-map}} empty-list 'HashSet  nothing ""))
-(def agent-constraint (TypeConstraint {AgentType {}} empty-list 'Agent  nothing ""))
-(def promise-constraint (TypeConstraint {PromiseType {}} empty-list 'Promise  nothing ""))
-(def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
-(def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
-(def hash-coll-constraint (TypeConstraint {HashCollisionNodeType {}}
-                                          empty-list 'HashCollisionNode nothing ""))
-(def array-constraint (TypeConstraint {ArrayNodeType {}} empty-list 'ArrayNode nothing ""))
-(def bitmap-constraint (TypeConstraint {BitmapIndexedType {}} empty-list 'BitmapIndexedNode nothing ""))
-(def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
-(def substr-constraint (TypeConstraint {SubStringType {}} empty-list 'String nothing ""))
-(def strbuf-constraint (TypeConstraint {StringBufferType {}} empty-list 'String nothing ""))
