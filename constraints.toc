@@ -487,7 +487,7 @@
   Eq
   (=* [x y]
     (for [_ (instance? TypeConstraint y)
-          y-maps (get y .type-maps)
+          y-maps (extract-type-map y)
           _ (= type-maps y-maps)]
       x))
 
@@ -509,8 +509,7 @@
 (def sym-constraint (TypeConstraint {SymbolType {}} empty-list 'Symbol nothing ""))
 (def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
 (def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
-(def seq-constraint (TypeConstraint {ListType {}
-                                       VectorType {}} empty-list 'Sequence nothing ""))
+(def seq-constraint (TypeConstraint {ListType {} VectorType {}} empty-list 'Sequence nothing ""))
 (def string-constraint (TypeConstraint {StringBufferType {} SubStringType {}}
                                          empty-list 'String nothing ""))
 (def hashmap-constraint (TypeConstraint {BitmapIndexedType {}
@@ -1949,18 +1948,64 @@
                                        (update-var (extract-var fc)))]))))
 
   (intersect-typec [c tc]
-    (either (or (= tc c)
-                (and (empty? (select-keys (.type-maps tc) (keys (.type-maps c))))
-                     (maybe (NoValues [tc c])))
-                (and (= (keys (.type-maps tc)) (keys (.type-maps c)))
-                     (cond (< (count (.path tc))
-                              (count (.path c)))
-                           (maybe c)
+    (let [no-fields (reify
+                      ;; TODO: eliminate need to include all these
+                      Type
+                      (type-name [_]
+                        (str "reified at " _LINE_))
 
-                           (maybe tc))))
-            (.type-maps tc (filter-keys (.type-maps tc)
-                                        (fn [k]
-                                          (get (.type-maps c) k)))))))
+                      Stringable
+                      (string-list [x]
+                        (list "<" (type-name x) ">"))
+
+                      Eq
+                      (=* [x y]
+                        (and (= (get-type x) (get-type y))
+                             (maybe x))))]
+      (either (= tc c)
+              (let [new-map (reduce (for [[type-num fields] (vec (.type-maps tc))
+                                          [field c1] (either (and (empty? fields)
+                                                                  (maybe [[no-fields top-type]]))
+                                                             (vec fields))]
+                                      [type-num field c1])
+                                    {}
+                                    (fn [m [type-num field c1]]
+                                      (either (or (= bottom-type m)
+                                                  (and (= field no-fields)
+                                                       (or (map (get (.type-maps c) type-num)
+                                                                (fn [field-map]
+                                                                  (assoc m type-num field-map)))
+                                                           (maybe m)))
+                                                  (and (instance? Field field)
+                                                       (or (map (get-in (.type-maps c) [type-num field])
+                                                                (fn [c2]
+                                                                  (let [field-c (intersect c1 c2)]
+                                                                    (either (= bottom-type field-c)
+                                                                            (assoc-in m [type-num field] field-c)))))
+                                                           (and (get (.type-maps c) type-num)
+                                                                (do
+                                                                  (print-err "Compiler error at:" _FILE_ _LINE_
+                                                                             "\n\n" 'field field
+                                                                             "\n\n" 'c c
+                                                                             "\n\n" 'tc tc)
+                                                                  (abort)
+                                                                  nothing))
+                                                           (maybe m)))
+                                                  (map (get-in (.type-maps c) [type-num field])
+                                                       (fn [c2]
+                                                         (let [field-c (intersect c1 c2)]
+                                                           (either (= bottom-type field-c)
+                                                                   (assoc-in m [type-num field] field-c))))))
+                                              (assoc m field c1))))]
+                (let [r (either (or (and (empty? new-map)
+                                         (maybe (NoValues [c tc])))
+                                    (= bottom-type new-map))
+                                (.type-maps tc new-map))]
+                  (and (= bottom-type r)
+                       (do
+                         (print-err 'c c "\n\n" 'tc tc)
+                         nothing))
+                  r))))))
 
 (extend-type FieldConstraint
   Eq
