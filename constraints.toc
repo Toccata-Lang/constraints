@@ -446,10 +446,7 @@
 
   (type-map [_ _]
     (maybe {ListType {}
-            VectorType {}
-            BitmapIndexedType {}
-            ArrayNodeType {}
-            HashCollisionNodeType {}}))
+            VectorType {}}))
 
   (format-path [x desired-len]
     (format-path* (cons ["Sequence from" ""] path)
@@ -462,18 +459,6 @@
   ;; (assert (instance? Symbol type-sym))
   (assert (instance? (maybe-of Symbol) sym))
   (assert (instance? String var))
-
-  Container
-  (map [tc f]
-    (.type-maps tc (map-vals (.type-maps tc) (fn [type-fields]
-                                               (map-vals type-fields (fn [field-c]
-                                                                       (map field-c f)))))))
-
-  (map [tc f embed]
-    (map (contextual-map-vals (.type-maps tc) (fn [type-fields]
-                                                (contextual-map-vals type-fields f embed))
-                              embed)
-         (partial .type-maps tc)))
 
   Stringable
   (string-list [_]
@@ -710,6 +695,13 @@
                                StaticStrConstraint
                                StaticIntConstraint))
 
+(deftype NoFields []
+  Stringable
+  (string-list [_]
+    (list "<NoFields>")))
+
+(def no-fields (NoFields))
+
 ;; TODO: add 'typ-sym' and make it a be optional for all constraints
 (deftype SumConstraint [alts path sym var]
   (assert (instance? Vector alts))
@@ -724,8 +716,8 @@
                ;; (either (map (first path) (fn [[f l]]
                ;;                             (str "[\"" f "\" " l "]")))
                ;;         "")
-               ") " (either (map sym str) 'nothing) " "
-                       (str "\"" var "\"") ")")))
+               ") " (sym-str sym) " "
+               (str "\"" var "\"") ")")))
 
   Eq
   (=* [x y]
@@ -746,8 +738,26 @@
     (let [alt-maps (.alts c)]
       (assert (instance? (vector-of (maybe-of TypeMap)) alt-maps))
 
-      (and (some alt-maps identity)
-           (apply (maybe comp) (filter alt-maps identity)))))
+      (flat-map (apply (maybe vector)
+                       (filter alt-maps identity))
+                (fn [alt-maps]
+                  (and (first alt-maps)
+                       (-> (reduce (for [[type-num fields] (flat-map alt-maps vec)
+                                         [field c] (either (and (empty? fields)
+                                                                (maybe [[no-fields top-type]]))
+                                                           (vec fields))]
+                                     [type-num field c])
+                                   {}
+                                   (fn [m [type-num field c]]
+                                     (either (update-in m [type-num field] (fn [cs]
+                                                                             (conj cs c)))
+                                             (assoc-in m [type-num field] [c]))))
+                           (map-vals (fn [fields]
+                                       (either (and (get fields no-fields)
+                                                    (maybe {}))
+                                               (map-vals fields (fn [alts]
+                                                                  (SumConstraint alts path sym var))))))
+                           maybe))))))
 
   (extract-var [c]
     var)
@@ -789,7 +799,7 @@
          (maybe x))))
 
 (deftype UpdateDynamicField [arity param-index item-indices new-field path sym var]
-  (assert (instance? (vector-of Integer) item-indices))
+  (assert (instance? Vector item-indices))
 
   Stringable
   (string-list [_]
@@ -1464,11 +1474,46 @@
     (assert (instance? TypeConstraint tc))
     (assert-result r (instance? Constraints r))
 
-    (either (flat-map (extract-type-map c)
-                      (fn [types-map]
-                        (or (and (empty? (select-keys (.type-maps tc) (keys types-map)))
-                                 (maybe (NoValues [tc c])))
-                            (maybe (MultiConstraint [tc (update-var c (extract-var tc))])))))
+    (either (for [types-map (extract-type-map c)]
+              (let [new-map (reduce (for [[type-num fields] (vec (.type-maps tc))
+                                          [field c1] (either (and (empty? fields)
+                                                                  (maybe [[no-fields top-type]]))
+                                                             (vec fields))]
+                                      [type-num field c1])
+                                    {}
+                                    (fn [m [type-num field c1]]
+                                      (either (or (= bottom-type m)
+                                                  (and (= field no-fields)
+                                                       (or (map (get types-map type-num)
+                                                                (fn [field-map]
+                                                                  (assoc m type-num field-map)))
+                                                           (maybe m)))
+                                                  (and (instance? Field field)
+                                                       (or (map (get-in types-map [type-num field])
+                                                                (fn [c2]
+                                                                  (let [field-c (intersect c1 c2)]
+                                                                    (either (= bottom-type field-c)
+                                                                            (assoc-in m [type-num field]
+                                                                                      field-c)))))
+                                                           (and (get types-map type-num)
+                                                                (do
+                                                                  (print-err "Compiler error at:" _FILE_ _LINE_
+                                                                             "\n\n" 'field field
+                                                                             "\n\n" 'c c
+                                                                             "\n\n" 'tc tc)
+                                                                  (abort)
+                                                                  nothing))
+                                                           (maybe m)))
+                                                  (map (get-in types-map [type-num field])
+                                                       (fn [c2]
+                                                         (let [field-c (intersect c1 c2)]
+                                                           (either (= bottom-type field-c)
+                                                                   (assoc-in m [type-num field] field-c))))))
+                                              (assoc m field c1))))]
+                (either (or (= bottom-type new-map)
+                            (and (empty? new-map)
+                                 (maybe (NoValues [c tc]))))
+                        (.type-maps tc new-map))))
             (intersect (update-var c (extract-var tc)) tc))))
 
 (defn clear-vars [c]
@@ -1477,8 +1522,8 @@
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
 
-  (either (or (and (empty? const-cs)
-                   (maybe top-type))
+  (either (or (and (= 1 (count const-cs))
+                   (first const-cs))
               (some const-cs (partial = top-type))
               (apply = const-cs)
               (and (every const-cs (partial instance? CollectionOf))
@@ -1486,23 +1531,10 @@
                        (map .contents)
                        sum-type
                        (CollectionOf empty-list nothing "")
-                       maybe)))
-          (let [type-constraints (filter const-cs (partial instance? TypeConstraint))
-                tc (either (empty? type-constraints)
-                           [(TypeConstraint (comp* {} (map type-constraints .type-maps))
-                                            empty-list
-                                            (either (apply = (map type-constraints .type-sym))
-                                                    (symbol "<unknown>"))
-                                            nothing "")])
-                new-cs (-> const-cs
-                           (remove (partial instance? TypeConstraint))
-                           (reduce tc (fn [new-cs curr]
-                                        (either (and (some new-cs (partial = curr))
-                                                     (maybe new-cs))
-                                                (conj new-cs curr)))))]
-            (either (and (= 1 (count new-cs))
-                         (first new-cs))
-                    (SumConstraint new-cs empty-list nothing "")))))
+                       maybe))
+              (and (< 1 (count const-cs))
+                   (maybe (SumConstraint const-cs empty-list nothing ""))))
+          top-type))
 
 (extend-type ItemsConstraint
   Container
@@ -1841,6 +1873,23 @@
     (maybe (intersect (.assertion rc) (.assertion c)))))
 
 (extend-type TypeConstraint
+  ;; TODO: This should absolutely work, but doesn't
+  ;; Container
+  ;; (map [tc f]
+  ;;   (.type-maps tc (map-vals (.type-maps tc)
+  ;;                            (fn [type-fields]
+  ;;                              (assert (instance? (map-of Field Constraints) type-fields))
+  ;;                              (map-vals type-fields
+  ;;                                        (fn [field-c]
+  ;;                                          (assert (instance? Constraints field-c))
+  ;;                                          (map field-c f)))))))
+
+  ;; (map [tc f embed]
+  ;;   (map (contextual-map-vals (.type-maps tc) (fn [type-fields]
+  ;;                                               (contextual-map-vals type-fields f embed))
+  ;;                             embed)
+  ;;        (partial .type-maps tc)))
+
   Constraint
   (contents-constraint [c]
     (Left (cond (or (get (.type-maps c) StringBufferType)
@@ -1945,67 +1994,7 @@
                    (maybe (NoValues [fc c])))
               (MultiConstraint [fc (-> c
                                        (.type-maps new-map)
-                                       (update-var (extract-var fc)))]))))
-
-  (intersect-typec [c tc]
-    (let [no-fields (reify
-                      ;; TODO: eliminate need to include all these
-                      Type
-                      (type-name [_]
-                        (str "reified at " _LINE_))
-
-                      Stringable
-                      (string-list [x]
-                        (list "<" (type-name x) ">"))
-
-                      Eq
-                      (=* [x y]
-                        (and (= (get-type x) (get-type y))
-                             (maybe x))))]
-      (either (= tc c)
-              (let [new-map (reduce (for [[type-num fields] (vec (.type-maps tc))
-                                          [field c1] (either (and (empty? fields)
-                                                                  (maybe [[no-fields top-type]]))
-                                                             (vec fields))]
-                                      [type-num field c1])
-                                    {}
-                                    (fn [m [type-num field c1]]
-                                      (either (or (= bottom-type m)
-                                                  (and (= field no-fields)
-                                                       (or (map (get (.type-maps c) type-num)
-                                                                (fn [field-map]
-                                                                  (assoc m type-num field-map)))
-                                                           (maybe m)))
-                                                  (and (instance? Field field)
-                                                       (or (map (get-in (.type-maps c) [type-num field])
-                                                                (fn [c2]
-                                                                  (let [field-c (intersect c1 c2)]
-                                                                    (either (= bottom-type field-c)
-                                                                            (assoc-in m [type-num field] field-c)))))
-                                                           (and (get (.type-maps c) type-num)
-                                                                (do
-                                                                  (print-err "Compiler error at:" _FILE_ _LINE_
-                                                                             "\n\n" 'field field
-                                                                             "\n\n" 'c c
-                                                                             "\n\n" 'tc tc)
-                                                                  (abort)
-                                                                  nothing))
-                                                           (maybe m)))
-                                                  (map (get-in (.type-maps c) [type-num field])
-                                                       (fn [c2]
-                                                         (let [field-c (intersect c1 c2)]
-                                                           (either (= bottom-type field-c)
-                                                                   (assoc-in m [type-num field] field-c))))))
-                                              (assoc m field c1))))]
-                (let [r (either (or (and (empty? new-map)
-                                         (maybe (NoValues [c tc])))
-                                    (= bottom-type new-map))
-                                (.type-maps tc new-map))]
-                  (and (= bottom-type r)
-                       (do
-                         (print-err 'c c "\n\n" 'tc tc)
-                         nothing))
-                  r))))))
+                                       (update-var (extract-var fc)))])))))
 
 (extend-type FieldConstraint
   Eq
@@ -2399,26 +2388,9 @@
   (trim [c]
     (let [all-alts (flat-map (.alts c) (fn [c]
                                          (either (map (instance? SumConstraint c) .alts)
-                                                 [c])))
-          tcs (filter all-alts (partial instance? TypeConstraint))
-          tc (either (map (first tcs) (fn [alt-c]
-                                        (-> (either (map (.sym c)
-                                                         (partial update-sym alt-c))
-                                                    alt-c)
-                                            (.type-sym (symbol "<Unknown>"))
-                                            (update-var (.var c))
-                                            (replace-path (.path c))
-                                            (.type-maps (comp* {} (map tcs .type-maps))))))
-                     bottom-type)]
+                                                 [c])))]
       (-> all-alts
-          (remove (fn [c]
-                    (or (= bottom-type c)
-                        (instance? TypeConstraint c))))
-          ((fn [new-alts]
-             (cond (= bottom-type tc)
-                   new-alts
-
-                   (conj new-alts tc))))
+          (remove (partial = bottom-type))
           sum-type
           (replace-path (.path c))
           (update-var (.var c))
@@ -2587,6 +2559,11 @@
     (.arity c new-arity))
 
   ConstraintOps
+  (intersect-typec [c tc]
+    (let [newer-field (intersect-typec (.new-field c) tc)]
+      (either (= bottom-type newer-field)
+              (.new-field c newer-field))))
+
   (intersect-reified [c reified]
     (or (and (empty? (.item-indices c))
              (maybe reified))
