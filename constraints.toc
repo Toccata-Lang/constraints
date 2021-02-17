@@ -78,7 +78,8 @@
     c)
 
   (type-map [new old]
-    (assert-result r (instance? (maybe-of TypeMap) r))
+    ;; TODO: change back to TypeMap
+    (assert-result r (instance? (maybe-of HashMap) r))
 
     ;; TODO: c-exprs from Toccata might show up here and we can extract constraint info from them
     ;; but for noew, just ignore them
@@ -453,7 +454,8 @@
                   desired-len)))
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
-  (assert (instance? TypeMap type-maps))
+  ;; TODO: change back to TypeMap
+  (assert (instance? HashMap type-maps))
   (assert (instance? (list-of Vector) path))
   ;; 'type-sym' has to be more relaxed so it can accept an ast/tagged-symbol
   ;; (assert (instance? Symbol type-sym))
@@ -548,7 +550,8 @@
                       types-map))))
 
   (format-path [x desired-len]
-    (format-path* (cons [(str "Field '" (subs (str field) 1) "' required from") ""]
+    (format-path* (cons [(str "Field '" (-> field .sym str (subs 1))
+                              "' required from") ""]
                         path)
                   desired-len)))
 
@@ -736,7 +739,8 @@
 
   (type-map [c _]
     (let [alt-maps (.alts c)]
-      (assert (instance? (vector-of (maybe-of TypeMap)) alt-maps))
+      ;; TODO: change back to TypeMap
+      (assert (instance? (vector-of (maybe-of HashMap)) alt-maps))
 
       (flat-map (apply (maybe vector)
                        (filter alt-maps identity))
@@ -1874,19 +1878,29 @@
 
 (extend-type TypeConstraint
   ;; TODO: This should absolutely work, but doesn't
+  ;; one problem is the contextual version is used by 'type-check' and
+  ;; introduces ConstrainedAST's into the fields map
   ;; Container
   ;; (map [tc f]
   ;;   (.type-maps tc (map-vals (.type-maps tc)
   ;;                            (fn [type-fields]
-  ;;                              (assert (instance? (map-of Field Constraints) type-fields))
+  ;;                              (print-err 'type-fields type-fields)
   ;;                              (map-vals type-fields
   ;;                                        (fn [field-c]
-  ;;                                          (assert (instance? Constraints field-c))
-  ;;                                          (map field-c f)))))))
+  ;;                                          (or (instance? Constraints field-c)
+  ;;                                              (maybe (abort)))
+  ;;                                          (print-err 'field-c field-c)
+  ;;                                          (let [r (map field-c f)]
+  ;;                                            (or (instance? Constraints r)
+  ;;                                                (do
+  ;;                                                  (print-err 'wtf field-c f)
+  ;;                                                  (maybe (abort))))
+  ;;                                            r)))))))
 
   ;; (map [tc f embed]
-  ;;   (map (contextual-map-vals (.type-maps tc) (fn [type-fields]
-  ;;                                               (contextual-map-vals type-fields f embed))
+  ;;   (map (contextual-map-vals (.type-maps tc)
+  ;;                             (fn [type-fields]
+  ;;                               (contextual-map-vals type-fields f embed))
   ;;                             embed)
   ;;        (partial .type-maps tc)))
 
