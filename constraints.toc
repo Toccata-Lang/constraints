@@ -2544,17 +2544,17 @@
 
   Constraint
   (trim [c]
-    (either (or (map (or (instance? UpdateDynamicField (.new-field c))
-                         (and (instance? MultiConstraint (.new-field c))
-                              (-> c
-                                  .new-field
-                                  .constraints
-                                  (some (partial instance? UpdateDynamicField)))))
-                     (fn [inner-update]
-                       (-> c
-                           (.item-indices (comp (.item-indices c)
-                                                (.item-indices inner-update)))
-                           (.new-field (.new-field inner-update))))))
+    (either (for [inner-update (or (instance? UpdateDynamicField (.new-field c))
+                              (and (instance? MultiConstraint (.new-field c))
+                                   (-> c
+                                       .new-field
+                                       .constraints
+                                       (some (partial instance? UpdateDynamicField)))))
+                  :when (and (= (.arity c) (.arity inner-update))
+                             (= (.param-index c) (.param-index inner-update))
+                             (= (.item-indices c) (subvec (.item-indices inner-update) 0
+                                                          (count (.item-indices c)))))]
+              inner-update)
             c))
 
   (intersect [c1 c2]
