@@ -153,7 +153,7 @@
   ;; This is only used for calls to seq and vec. And there's not enough benefit to
   ;; implementing them with recursion schemes
   (set-type [c tc]
-    (intersect c tc))
+    (trim (intersect c tc)))
 
   (satisfied-by [c info]
     (assert-result r (instance? Maybe r))
@@ -441,7 +441,8 @@
   (set-type [c tc]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
-        (intersect tc)))
+        (intersect tc)
+        trim))
 
   (assertion-path [_] path)
 
@@ -453,6 +454,7 @@
     (format-path* (cons ["Sequence from" ""] path)
                   desired-len)))
 
+;; TODO: it might be possible to eleiminate a number of constraints by using special keys in 'type-maps'
 (deftype TypeConstraint [type-maps path type-sym sym var]
   ;; TODO: change back to TypeMap
   (assert (instance? HashMap type-maps))
@@ -467,7 +469,8 @@
     (list "(c/TypeConstraint "
           (str type-maps)
           " "
-          "(list)" ;; (str (cons 'list path))
+          ;; "(list)"
+          (str (cons 'list path))
           (str " '" type-sym) " " (sym-str sym)
           " \"" (str var) "\")" ))
 
@@ -825,13 +828,15 @@
          (=* new-field (.new-field y))
          (maybe x))))
 
-(deftype DynamicParamConstraint [arity param-index item-indices path sym var]
+(deftype DynamicParamConstraint [arity param-index item-indices final-c path sym var]
   (assert (instance? Vector item-indices))
 
   Stringable
   (string-list [_]
     (list "(c/DynamicParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
-          " (list)" ;;  (str " " (cons 'list path))
+          " " (str final-c)
+          ;; " (list)"
+          (str " " (cons 'list path))
           " " (either (map sym (fn [s]
                                  (str "(maybe '" s ")")))
                       "nothing")
@@ -1075,8 +1080,8 @@
             []))
 
   (set-type [c tc]
-    (MultiConstraint (map constraints (fn [inner-c]
-                                        (set-type inner-c tc)))))
+    (trim (MultiConstraint (map constraints (fn [inner-c]
+                                              (set-type inner-c tc))))))
 
   (extract-var [_]
     (either (some constraints (fn [c]
@@ -1479,7 +1484,16 @@
     (assert-result r (instance? Constraints r))
 
     (either (for [types-map (extract-type-map c)]
-              (let [new-map (reduce (for [[type-num fields] (vec (.type-maps tc))
+              (let [
+                    ;; TODO: Maybe use this to elininate the need for FieldConstraint
+                    ;; and to check all the field constraints
+                    ;; prototype-cs (merge-with c/intersect
+                    ;;                          (either (get types-map UnknownType)
+                    ;;                                  {})
+                    ;;                          (either (get-in tc [.type-maps UnknownType])
+                    ;;                                  {}))
+                    new-map (reduce (for [[type-num fields] (vec (.type-maps tc))
+                                          :when-not (= UnknownType type-num)
                                           [field c1] (either (and (empty? fields)
                                                                   (maybe [[no-fields top-type]]))
                                                              (vec fields))]
@@ -2417,10 +2431,12 @@
     (comp* [] (seq (.alts c))))
 
   (set-type [c tc]
-    (.alts c (-> (.alts c)
-                 (map (fn [inner-c]
-                        (set-type inner-c tc)))
-                 (remove (partial = bottom-type)))))
+    (-> c
+        (.alts (-> (.alts c)
+                   (map (fn [inner-c]
+                          (set-type inner-c tc)))
+                   (remove (partial = bottom-type))))
+        trim))
 
   (intersect [sc c]
     (intersect-sum c sc))
@@ -2517,7 +2533,9 @@
     (.arity c new-arity))
 
   (set-type [c tc]
-    (intersect c tc)))
+    (-> c
+        (.sym nothing)
+        (.final-c tc))))
 
 (extend-type DynamicResultConstraint
   Container
