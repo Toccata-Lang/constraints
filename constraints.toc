@@ -763,6 +763,8 @@
                                        (either (and (get fields no-fields)
                                                     (maybe {}))
                                                (map-vals fields (fn [alts]
+                                                                  ;; TODO: what if 'alts' has NoValues in it?
+                                                                  ;; what if it's empty?
                                                                   (SumConstraint alts path sym var))))))
                            maybe))))))
 
@@ -1368,6 +1370,9 @@
   (conj-multi [c mc]
     (maybe c))
 
+  (intersect-multi [c mc]
+    c)
+
   (intersect-typec [c _]
     c))
 
@@ -1392,6 +1397,88 @@
   (intersect-multi [c mc] mc)
   (conj-multi [c mc]
     (maybe mc)))
+
+(defn intersect-type-maps [m1 tc]
+  (assert (instance? TypeConstraint tc))
+
+  ;; TOOD: this expression is too large. Refactor
+  (let [m2 (.type-maps tc)
+        prototype-cs (merge-with intersect
+                                 (either (get m1 UnknownType)
+                                         {})
+                                 (either (get m2 UnknownType)
+                                         {}))
+        required-fields (-> (keys prototype-cs)
+                            (filter (partial instance? Field)))
+        new-map (either (or (and (= (list UnknownType) (keys m1) (keys m2))
+                                 (maybe {UnknownType prototype-cs}))
+                            (and (= (list UnknownType) (keys m1))
+                                 (maybe (dissoc m2 UnknownType)))
+                            (and (= (list UnknownType) (keys m2))
+                                 (maybe (dissoc m1 UnknownType))))
+                        (reduce (for [[type-num fields] (vec m2)
+                                      :when-not (= UnknownType type-num)
+                                      :let [_ (print-err 'fields (keys fields)
+                                                         "\n" 'reqd required-fields
+                                                         "\n" 'count (count (select-keys fields required-fields)))]
+                                      :when (= (count (select-keys fields required-fields))
+                                               (count required-fields))
+                                      [field c1] (either (and (empty? fields)
+                                                              (maybe [[no-fields top-type]]))
+                                                         (vec fields))]
+                                  [type-num field c1])
+                                {}
+                                (fn [m [type-num field c1]]
+                                  (either (or (= bottom-type m)
+                                              (and (= field no-fields)
+                                                   (or (map (get m1 type-num)
+                                                            (fn [field-map]
+                                                              (assoc m type-num field-map)))
+                                                       (maybe m)))
+                                              (and (instance? Field field)
+                                                   (or (map (get-in m1 [type-num field])
+                                                            (fn [c2]
+                                                              (let [field-c (intersect c1 c2)]
+                                                                (either (= bottom-type field-c)
+                                                                        (assoc-in m [type-num field]
+                                                                                  field-c)))))
+                                                       (and (get m1 type-num)
+                                                            (do
+                                                              (print-err "Compiler error at:"
+                                                                         _FILE_ _LINE_
+                                                                         "\n\n" 'field field)
+                                                              (abort)
+                                                              nothing))
+                                                       (maybe m)))
+                                              (map (get-in m1 [type-num field])
+                                                   (fn [c2]
+                                                     (let [field-c (intersect c1 c2)]
+                                                       (either (= bottom-type field-c)
+                                                               (assoc-in m [type-num field] field-c))))))
+                                          (assoc m field c1)))))
+        checked-fields (-> new-map
+                           vec
+                           (map (fn [[type-num fields-map]]
+                                  (either (some (vec fields-map)
+                                                (fn [[field field-c]]
+                                                  (let [inter (intersect
+                                                               field-c
+                                                               (either (get prototype-cs field)
+                                                                       top-type))]
+                                                    (= bottom-type inter))))
+                                          [type-num fields-map]))))
+        final-map (-> checked-fields
+                      (remove (partial = bottom-type))
+                      (reduce {} (fn [m [type-num fields-map]]
+                                   (assoc m type-num fields-map))))]
+    (either (or (and (empty? new-map)
+                     (maybe (NoValues [])))
+                (and (empty? final-map)
+                     (or (-> checked-fields
+                             (filter (partial = bottom-type))
+                             first)
+                         (maybe (NoValues [])))))
+            (.type-maps tc final-map))))
 
 (extend-type SymbolConstraints
   Constraint
@@ -1453,79 +1540,11 @@
     (assert-result r (instance? Constraints r))
 
     (either (for [types-map (extract-type-map c)]
-              ;; TOOD: this expression is too large. Refactor
-              (let [prototype-cs (merge-with intersect
-                                             (either (get types-map UnknownType)
-                                                     {})
-                                             (either (get-in tc [.type-maps UnknownType])
-                                                     {}))
-                    ;; TODO: verify that at least some types have all the fields specified in prototype-cs
-                    new-map (either (or (and (= (list UnknownType) (keys types-map) (keys (.type-maps tc)))
-                                             (maybe {UnknownType prototype-cs}))
-                                        (and (= (list UnknownType) (keys types-map))
-                                             (maybe (dissoc (.type-maps tc) UnknownType)))
-                                        (and (= (list UnknownType) (keys (.type-maps tc)))
-                                             (maybe (dissoc types-map UnknownType))))
-                                    (reduce (for [[type-num fields] (vec (.type-maps tc))
-                                                  :when-not (= UnknownType type-num)
-                                                  [field c1] (either (and (empty? fields)
-                                                                          (maybe [[no-fields top-type]]))
-                                                                     (vec fields))]
-                                              [type-num field c1])
-                                            {}
-                                            (fn [m [type-num field c1]]
-                                              (either (or (= bottom-type m)
-                                                          (and (= field no-fields)
-                                                               (or (map (get types-map type-num)
-                                                                        (fn [field-map]
-                                                                          (assoc m type-num field-map)))
-                                                                   (maybe m)))
-                                                          (and (instance? Field field)
-                                                               (or (map (get-in types-map [type-num field])
-                                                                        (fn [c2]
-                                                                          (let [field-c (intersect c1 c2)]
-                                                                            (either (= bottom-type field-c)
-                                                                                    (assoc-in m [type-num field]
-                                                                                              field-c)))))
-                                                                   (and (get types-map type-num)
-                                                                        (do
-                                                                          (print-err "Compiler error at:"
-                                                                                     _FILE_ _LINE_
-                                                                                     "\n\n" 'field field
-                                                                                     "\n\n" 'c c
-                                                                                     "\n\n" 'tc tc)
-                                                                          (abort)
-                                                                          nothing))
-                                                                   (maybe m)))
-                                                          (map (get-in types-map [type-num field])
-                                                               (fn [c2]
-                                                                 (let [field-c (intersect c1 c2)]
-                                                                   (either (= bottom-type field-c)
-                                                                           (assoc-in m [type-num field] field-c))))))
-                                                      (assoc m field c1)))))
-                    checked-fields (-> new-map
-                                       vec
-                                       (map (fn [[type-num fields-map]]
-                                              (either (some (vec fields-map)
-                                                            (fn [[field field-c]]
-                                                              (let [inter (intersect
-                                                                           field-c
-                                                                           (either (get prototype-cs field)
-                                                                                   top-type))]
-                                                                (= bottom-type inter))))
-                                                      [type-num fields-map]))))
-                    final-map (-> checked-fields
-                                  (remove (partial = bottom-type))
-                                  (reduce {} (fn [m [type-num fields-map]]
-                                               (assoc m type-num fields-map))))]
-                (either (or (and (empty? new-map)
-                                 (maybe (NoValues [c tc])))
-                            (and (empty? final-map)
-                                 (or (-> checked-fields
-                                         (filter (partial = bottom-type))
-                                         first)
-                                     (maybe (NoValues [c tc])))))
-                        (.type-maps tc final-map))))
+              (let [result-c (intersect-type-maps types-map tc)]
+                (map (instance? NoValues result-c)
+                     (fn [_]
+                       (NoValues [c tc])))
+                result-c))
             (intersect (update-var c (extract-var tc)) tc))))
 
 (defn clear-vars [c]
@@ -1534,18 +1553,24 @@
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
 
-  (either (or (and (= 1 (count const-cs))
-                   (first const-cs))
-              (some const-cs (partial = top-type))
-              (apply = const-cs)
-              (and (every const-cs (partial instance? CollectionOf))
-                   (-> const-cs
-                       (map .contents)
-                       sum-type
-                       (CollectionOf empty-list nothing "")
-                       maybe))
-              (and (< 1 (count const-cs))
-                   (maybe (SumConstraint const-cs empty-list nothing ""))))
+  (either (or (flat-map (every const-cs (partial = bottom-type))
+                        (fn [_]
+                          (first const-cs)))
+              (let [const-cs (remove const-cs (partial = bottom-type))]
+                (or (and (= 1 (count const-cs))
+                         (first const-cs))
+                    (and (empty? const-cs)
+                         (maybe top-type))
+                    (some const-cs (partial = top-type))
+                    (apply = const-cs)
+                    (and (every const-cs (partial instance? CollectionOf))
+                         (-> const-cs
+                             (map .contents)
+                             sum-type
+                             (CollectionOf empty-list nothing "")
+                             maybe))
+                    (and (< 1 (count const-cs))
+                         (maybe (SumConstraint const-cs empty-list nothing ""))))))
           top-type))
 
 (extend-type ItemsConstraint
@@ -2430,16 +2455,17 @@
   (trim [c]
     (let [all-alts (flat-map (.alts c) (fn [c]
                                          (either (map (instance? SumConstraint c) .alts)
-                                                 [c])))]
-      (-> all-alts
-          (remove (partial = bottom-type))
-          sum-type
-          (replace-path (.path c))
-          (update-var (.var c))
-          ((fn [new-c]
-             (either (map (.sym c)
-                          (partial update-sym new-c))
-                     new-c))))))
+                                                 [c])))
+          trimmed (-> (sum-type all-alts)
+                      (update-var (.var c))
+                      ((fn [new-c]
+                         (either (map (.sym c)
+                                      (partial update-sym new-c))
+                                 new-c))))]
+      (either (map (instance? SumConstraint trimmed)
+                   (fn [_]
+                     (replace-path trimmed (.path c))))
+              trimmed)))
 
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
