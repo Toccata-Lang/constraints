@@ -1365,28 +1365,14 @@
                                     (select-keys (dissoc m2 UnknownType) m1-keys)))
         checked-fields (-> (vec new-map)
                            (map (fn [[type-num fields-map]]
-                                  (either (or (some required-fields
-                                                    (fn [[req-field fld-c]]
-                                                      (cond (get fields-map req-field)
-                                                            nothing
+                                  (either (some required-fields
+                                                (fn [[req-field fld-c]]
+                                                  (either (map (get fields-map req-field)
+                                                               (fn [val-c]
+                                                                 (= bottom-type
+                                                                    (intersect val-c fld-c))))
 
-                                                            ;; (-> (TypeConstraint {UnknownType {req-field fld-c}}
-                                                            ;;                     (.path fld-c)
-                                                            ;;                     (symbol (str "field '"
-                                                            ;;                                  (.sym req-field)
-                                                            ;;                                  "' required"))
-                                                            ;;                     nothing "")
-                                                            ;;     (vector tc)
-                                                            ;;     NoValues
-                                                            ;;     maybe)
-                                                            (maybe (NoValues []))
-                                                            )))
-                                              (some (vec fields-map)
-                                                    (fn [[field field-c]]
-                                                      (= bottom-type
-                                                         (intersect field-c
-                                                                    (either (get prototype-cs field)
-                                                                            top-type))))))
+                                                          (maybe (NoValues [])))))
                                           [type-num fields-map]))))
         final-map (-> checked-fields
                       (remove (partial = bottom-type))
@@ -1462,10 +1448,10 @@
 
     (either (for [types-map (extract-type-map c)]
               (let [result-c (intersect-type-maps types-map tc)]
-                (either (map (instance? NoValues result-c)
-                             (fn [_]
-                               (NoValues [c tc])))
-                        result-c)))
+                (cond (and (instance? NoValues result-c)
+                           (empty? (.constraints result-c)))
+                      (NoValues [c tc])
+                      result-c)))
             (intersect (update-var c (extract-var tc)) tc))))
 
 (defn clear-vars [c]
