@@ -791,6 +791,10 @@
           ")"))
 
   Constraint
+  (format-path [x desired-len]
+    (format-path* (cons ["Parameter from" ""] path)
+                  desired-len))
+
   (dynamic-params [c]
     [c])
 
