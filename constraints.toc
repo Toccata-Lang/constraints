@@ -331,7 +331,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/AllValues " (str "\"" var "\"") ")"))
+    (list "c/top-type"))
 
   Eq
   (=* [x y]
@@ -642,7 +642,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/StaticStrConstraint " val " (list "
+    (list "(c/StaticStrConstraint (str " (str "\"" val "\"") ") (list "
           ;; (either (map (first path) (fn [[f l]]
           ;;                             (str "[\"" f "\" " l "]")))
           ;;         "")
@@ -775,13 +775,13 @@
     (and (instance? DynamicFields y)
          (maybe x))))
 
-(deftype DynamicParamConstraint [arity param-index item-indices final-c path sym var]
+(deftype DynamicParamConstraint [arity param-index item-indices intersect-c final-c path sym var]
   (assert (instance? Vector item-indices))
 
   Stringable
   (string-list [_]
     (list "(c/DynamicParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
-          " " (str final-c)
+          " " (str intersect-c) " " (str final-c)
           " (list)"
           ;; (str " " (cons 'list path))
           " " (either (map sym (fn [s]
@@ -806,6 +806,8 @@
     (and (instance? DynamicParamConstraint y)
          (= param-index (.param-index y))
          (= item-indices (.item-indices y))
+         (= intersect-c (.intersect-c y))
+         (= final-c (.final-c y))
          (maybe x))))
 
 (deftype DynamicResultConstraint [arity invokable-c num-args path sym var]
@@ -1103,6 +1105,10 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
+  (extract-dyn-field [c dyn-c]
+    (assert (instance? DynamicParamConstraint dyn-c))
+    c)
+
   (items-satisfied [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? ItemsConstraint c))
@@ -1915,6 +1921,30 @@
                              (maybe info))))))
 
   ConstraintOps
+  (extract-dyn-field [c dyn-c]
+    (either (for [field (first (.item-indices dyn-c))
+                  alts (apply (maybe vector) (-> (.type-maps c)
+                                                 vals
+                                                 (map (fn [fields]
+                                                        (get fields field)))
+                                                 (filter identity)))]
+              (let [dyn-c (.item-indices dyn-c (rest (.item-indices dyn-c)))]
+                (cond (first alts)
+                      (cata (fn [c]
+                              (extract-dyn-field c dyn-c))
+                            (sum-type alts))
+
+                      (instance? Field field)
+                      (cond (= (list UnknownType) (keys (.type-maps c)))
+                            (assoc-in c [.type-maps UnknownType field] top-type)
+
+                            (NoValues [c (TypeConstraint {0 {field top-type}} (.path dyn-c)
+                                                         (symbol (str "field '" (.sym field) "' required"))
+                                                         nothing "")]))
+
+                      top-type)))
+            c))
+
   (conj-multi [c mc]
     (intersect-multi c mc))
 
@@ -2422,6 +2452,30 @@
                  (maybe mc))
             (MultiConstraint (conj (.constraints mc) c)))))
 
+(defn intersect-dyn-param [dyn-c constraint]
+  (assert (instance? DynamicParamConstraint dyn-c))
+
+  ;; TODO: what about when 'final-c' isn't top-type
+  (let [constraint (cond (empty? (.item-indices dyn-c))
+                         constraint
+
+                         (reduce (.item-indices dyn-c)
+                                 constraint
+                                 (fn [c field]
+                                   (let [field-name (either (map (instance? Field field)
+                                                                 (fn [fld]
+                                                                   (str "field '" (.sym fld)
+                                                                        "' constraint")))
+                                                            (str "constraint for key '"
+                                                                 field "'"))]
+                                     (TypeConstraint {0 {field c}}
+                                                     (.path dyn-c)
+                                                     (symbol field-name)
+                                                     nothing "")))))
+        new-inter-c (intersect (.intersect-c dyn-c) constraint)]
+    (either (= bottom-type new-inter-c)
+            (.intersect-c dyn-c new-inter-c))))
+
 (extend-type DynamicParamConstraint
   Constraint
   (reified-field [c indices]
@@ -2435,7 +2489,31 @@
     (.arity c new-arity))
 
   (set-type [c tc]
-    (.final-c c tc)))
+    (.final-c c tc))
+
+  (intersect [c1 c2]
+    (cond (instance? DynamicParamConstraint c2)
+          ;; TODO: need to consider final-c as well
+          (.intersect-c c1 (intersect (.intersect-c c1)
+                                      (.intersect-c c2)))
+          (intersect-dyn-param c1 c2)))
+
+  ConstraintOps
+  (intersect-sum [c cs]
+    (intersect-dyn-param c cs))
+
+  (intersect-typec [c tc]
+    (intersect-dyn-param c tc))
+
+  (intersect-multi [c mc]
+    (either (and (some (.constraints mc) (partial = c))
+                 (maybe mc))
+            (intersect-dyn-param c mc)))
+
+  (extract-dyn-field [c dyn-c]
+    (.item-indices c (comp (.item-indices dyn-c)
+                           (.item-indices c)))))
+
 
 (extend-type DynamicResultConstraint
   Container
