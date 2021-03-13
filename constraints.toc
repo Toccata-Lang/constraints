@@ -1373,28 +1373,36 @@
                         (merge-with (partial merge-with intersect)
                                     (select-keys (dissoc m1 UnknownType) m2-keys)
                                     (select-keys (dissoc m2 UnknownType) m1-keys)))
-        checked-fields (-> (vec new-map)
-                           (map (fn [[type-num fields-map]]
-                                  (either (some required-fields
-                                                (fn [[req-field fld-c]]
-                                                  (either (map (get fields-map req-field)
-                                                               (fn [val-c]
-                                                                 (= bottom-type
-                                                                    (intersect val-c fld-c))))
+        checked-fields (cond (empty? required-fields)
+                             (vec new-map)
 
-                                                          (maybe (NoValues [])))))
-                                          [type-num fields-map]))))
+                             (-> (vec new-map)
+                                 (map (fn [[type-num fields-map]]
+                                        (either (map (every required-fields
+                                                            (fn [[req-field fld-c]]
+                                                              (map (get fields-map req-field)
+                                                                   (fn [val-c]
+                                                                     (let [fld-inter (intersect val-c fld-c)]
+                                                                       (either (= bottom-type (intersect val-c fld-c))
+                                                                               [req-field fld-inter]))))))
+                                                     (fn [flds]
+                                                       (either (some flds (partial = bottom-type))
+                                                               [type-num (reduce flds {}
+                                                                                 (fn [m [k v]]
+                                                                                   (assoc m k v)))])))
+                                                bottom-type)))))
         final-map (-> checked-fields
                       (remove (partial = bottom-type))
                       (reduce {} (fn [m [type-num fields-map]]
                                    (assoc m type-num fields-map))))]
     (either (or (and (empty? new-map)
-                     (maybe (NoValues [])))
+                     (maybe bottom-type))
                 (and (empty? final-map)
                      (or (-> checked-fields
                              (filter (partial = bottom-type))
                              first)
-                         (maybe (NoValues [])))))
+
+                         (maybe bottom-type))))
             (.type-maps tc final-map))))
 
 (extend-type SymbolConstraints
