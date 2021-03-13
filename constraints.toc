@@ -1387,7 +1387,7 @@
                                                                                [req-field fld-inter]))))))
                                                      (fn [flds]
                                                        (either (some flds (partial = bottom-type))
-                                                               [type-num (reduce flds {}
+                                                               [type-num (reduce flds fields-map
                                                                                  (fn [m [k v]]
                                                                                    (assoc m k v)))])))
                                                 bottom-type)))))
@@ -2504,6 +2504,7 @@
           ;; TODO: need to consider final-c as well
           (.intersect-c c1 (intersect (.intersect-c c1)
                                       (.intersect-c c2)))
+
           (intersect-dyn-param c1 c2)))
 
   ConstraintOps
