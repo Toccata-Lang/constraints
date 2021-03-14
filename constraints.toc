@@ -1374,7 +1374,12 @@
                                     (select-keys (dissoc m1 UnknownType) m2-keys)
                                     (select-keys (dissoc m2 UnknownType) m1-keys)))
         checked-fields (cond (empty? required-fields)
-                             (vec new-map)
+                             (-> new-map
+                                 vec
+                                 (map (fn [[type-num fields-map]]
+                                        (either (some (vals fields-map)
+                                                      (partial = bottom-type))
+                                                [type-num fields-map]))))
 
                              (-> (vec new-map)
                                  (map (fn [[type-num fields-map]]
@@ -1383,10 +1388,14 @@
                                                               (map (get fields-map req-field)
                                                                    (fn [val-c]
                                                                      (let [fld-inter (intersect val-c fld-c)]
-                                                                       (either (= bottom-type (intersect val-c fld-c))
+                                                                       (either (= bottom-type fld-inter)
                                                                                [req-field fld-inter]))))))
                                                      (fn [flds]
-                                                       (either (some flds (partial = bottom-type))
+                                                       (either (some flds
+                                                                     (fn [x]
+                                                                       (or (= x bottom-type)
+                                                                           (flat-map (second x)
+                                                                                     (partial = bottom-type)))))
                                                                [type-num (reduce flds fields-map
                                                                                  (fn [m [k v]]
                                                                                    (assoc m k v)))])))
