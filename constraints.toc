@@ -231,6 +231,7 @@
 (defn extract-dynamic-params [c]
   (cata dynamic-params c))
 
+;; TODO: remove unused types
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
 (def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
@@ -261,7 +262,6 @@
 (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
 (def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
     StaticLengthConstraintType};"))
-(def StaticStrConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticStrConstraintType};"))
 (def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
 (def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
@@ -634,39 +634,7 @@
     (maybe {ListType {}
             VectorType {}})))
 
-(deftype StaticStrConstraint [val path sym var]
-  (assert (instance? String val))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/StaticStrConstraint (str " (str "\"" val "\"") ") (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (is-collection? [c]
-    (maybe c))
-
-  (satisfied-by [c info]
-    (= c info))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["String from" ""] path)
-                  desired-len))
-
-  (type-map [_ _]
-    (maybe {StringBufferType {}
-            SubStringType {}}))
-
-  (assertion-path [c] path))
-
 (def StaticConstraints (any-of StaticLengthConstraint
-                               StaticStrConstraint
                                StaticIntConstraint))
 
 (deftype NoFields []
@@ -942,11 +910,6 @@
   (intersect [x c]
     (intersect (StaticIntConstraint x empty-list nothing (extract-var c)) c)))
 
-(extend-type String
-  Constraint
-  (intersect [x c]
-    (intersect (StaticStrConstraint x empty-list nothing (extract-var c)) c)))
-
 (extend-type Symbol
   Constraint
   (assertion-path [_] empty-list)
@@ -1188,12 +1151,6 @@
 
     nothing)
 
-  (intersect-static-str [c slc]
-    (assert (instance? StaticStrConstraint slc))
-    (assert-result r (instance? Constraints r))
-
-    (intersect (update-var c (extract-var slc)) slc))
-
   (=-static-len [y x]
     nothing)
 
@@ -1359,28 +1316,61 @@
   (intersect-result [c rc] rc)
   (intersect-typec [c tc] tc)
   (intersect-coll-of [c cc] cc)
-  (intersect-static-str [c slc] slc)
   (intersect-static-len [c slc] slc)
   (intersect-inner [c ic] ic)
   (intersect-max-value [c mvc] mvc)
   (intersect-min-value [c mvc] mvc)
   (intersect-static-int [c slc] slc)
-  ;; (intersect-fieldc [c fc] fc)
   (intersect-itemsc [c ic] ic)
   (intersect-multi [c mc] mc)
   (conj-multi [c mc]
     (maybe mc)))
+
+(def static-value
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/static-value"))
+
+    ;; TODO: should probably generate these automatically
+    Eq
+    (=* [x y]
+      (and (= (get-type x) (get-type y))
+           (maybe x)))
+
+    Hashable
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "type attribute static value" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
+(defn intersect-attributes-map [attrs1 attrs2]
+  (let [flds1 (dissoc attrs1 static-value)
+        flds2 (dissoc attrs2 static-value)]
+    (let [fields-map (merge-with intersect flds1 flds2)]
+      (either (map (or (for [v1 (get attrs1 static-value)
+                             v2 (get attrs2 static-value)]
+                         (either (= v1 v2)
+                                 bottom-type))
+                       (get attrs1 static-value)
+                       (get attrs2 static-value))
+                   (fn [v]
+                     (assoc fields-map static-value v)))
+              fields-map))))
 
 (defn intersect-type-maps [m1 tc]
   (assert (instance? TypeConstraint tc))
 
   ;; TOOD: this expression is too large. Refactor
   (let [m2 (.type-maps tc)
-        prototype-cs (merge-with intersect
-                                 (either (get m1 UnknownType)
-                                         {})
-                                 (either (get m2 UnknownType)
-                                         {}))
+        prototype-cs (intersect-attributes-map (either (get m1 UnknownType)
+                                                       {})
+                                               (either (get m2 UnknownType)
+                                                       {}))
         required-fields (-> (vec prototype-cs)
                             (filter (fn [[fld _]]
                                       (instance? Field fld))))
@@ -1392,7 +1382,7 @@
                                  (maybe (dissoc m2 UnknownType)))
                             (and (= (list UnknownType) m2-keys)
                                  (maybe (dissoc m1 UnknownType))))
-                        (merge-with (partial merge-with intersect)
+                        (merge-with intersect-attributes-map
                                     (select-keys (dissoc m1 UnknownType) m2-keys)
                                     (select-keys (dissoc m2 UnknownType) m1-keys)))
         checked-fields (cond (empty? required-fields)
@@ -1574,14 +1564,6 @@
                   (.items-constraints new-items)
                   (.tail-constraint new-tail)))))
 
-  (intersect-static-str [c slc]
-    ;; TODO: could be more precise by destructuring the static string
-    (either (and (< (count slc) (count (extract-items-constraints c)))
-                 (maybe (NoValues [slc c])))
-            (intersect-coll-of c (CollectionOf (TypeConstraint {StringBufferType {} SubStringType {}}
-                                                               empty-list 'String nothing "")
-                                               empty-list nothing ""))))
-
   (intersect-static-len [c slc]
     (let [items-count (count (extract-items-constraints c))]
       (cond (or (< (.length slc) items-count)
@@ -1651,9 +1633,6 @@
 
                     (either (= bottom-type new-tail)
                             new-ic)))))
-
-  ;; (intersect-fieldc [c fc]
-  ;;   (NoValues [fc c]))
 
   (intersect-min-value [c mvc]
     (NoValues [mvc c]))
@@ -2001,23 +1980,7 @@
                                             (.contents ic))))
               (MultiConstraint [ic (-> c
                                        (.type-maps new-type-map)
-                                       (update-var (extract-var ic)))]))))
-
-  ;; (intersect-fieldc [c fc]
-  ;;   (let [field (.field fc)
-  ;;         new-map (reduce (seq (.type-maps c))
-  ;;                         {}
-  ;;                         (fn [types-map [type-num fields]]
-  ;;                           (cond (get fields field)
-  ;;                                 (assoc types-map type-num fields)
-
-  ;;                                 types-map)))]
-  ;;     (either (and (empty? new-map)
-  ;;                  (maybe (NoValues [fc c])))
-  ;;             (MultiConstraint [fc (-> c
-  ;;                                      (.type-maps new-map)
-  ;;                                      (update-var (extract-var fc)))]))))
-  )
+                                       (update-var (extract-var ic)))])))))
 
 (extend-type StaticIntConstraint
   Eq
@@ -2031,9 +1994,6 @@
   ConstraintOps
   (intersect-coll-of [c cc]
     (NoValues [cc c]))
-
-  (intersect-static-str [c slc]
-    (NoValues [slc c]))
 
   (intersect-static-len [c slc]
     (NoValues [slc c]))
@@ -2070,9 +2030,6 @@
 
   ConstraintOps
   (intersect-static-len [c ic]
-    (NoValues [ic c]))
-
-  (intersect-static-str [c ic]
     (NoValues [ic c]))
 
   (intersect-inner [c ic]
@@ -2155,12 +2112,6 @@
       (either (= new-inner bottom-type)
               (.contents cc new-inner))))
 
-  (intersect-static-str [c slc]
-    (either (= (intersect (.contents c) (TypeConstraint {StringBufferType {} SubStringType {}}
-                                                     (.path slc) 'String (.sym slc) (extract-var slc)))
-               bottom-type)
-            slc))
-
   (intersect-static-len [c slc]
     (MultiConstraint [slc c]))
 
@@ -2181,9 +2132,6 @@
   ConstraintOps
   (intersect-coll-of [c cc]
     (NoValues [cc c]))
-
-  (intersect-static-str [c slc]
-    (NoValues [slc c]))
 
   (intersect-static-len [c slc]
     (NoValues [slc c]))
@@ -2228,9 +2176,6 @@
   (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (extract-var cc))]))
 
-  (intersect-static-str [c slc]
-    (MultiConstraint [slc c]))
-
   (intersect-static-len [c slc]
     (either (= slc c)
             (NoValues [slc c])))
@@ -2238,24 +2183,6 @@
   (=-static-len [y x]
     (and (= (.length x) (.length y))
          (maybe x))))
-
-(extend-type StaticStrConstraint
-  Eq
-  (=* [x y]
-    (=-static-str y x))
-
-  Constraint
-  (intersect [slc c]
-    (intersect-static-str c slc))
-
-  ConstraintOps
-  (=-static-str [y x]
-    (and (= (.val x) (.val y))
-         (maybe x)))
-
-  (intersect-static-str [c slc]
-    (either (= slc c)
-            (NoValues [slc c]))))
 
 (extend-type CollectionOf
   Container
@@ -2330,12 +2257,6 @@
     (let [new-c (intersect (.contents c) (.contents ic))]
       (either (= new-c bottom-type)
               (.contents c new-c))))
-
-  (intersect-static-str [c slc]
-    (either (= (intersect (.contents c) (TypeConstraint {StringBufferType {} SubStringType {}}
-                                                        (.path slc) 'String (.sym slc) (extract-var slc)))
-               bottom-type)
-            slc))
 
   (intersect-static-len [c slc]
     (MultiConstraint [slc c]))
@@ -2744,7 +2665,6 @@
 ;; MaxValue                  
 ;; StaticIntConstraint
 ;; StaticLengthConstraint
-;; StaticStrConstraint
 ;; DynamicFields
 ;; ReifiedFields
 ;; GetField                  extract-field
