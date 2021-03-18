@@ -472,10 +472,10 @@
   (string-list [_]
     (list "(c/TypeConstraint "
           (str type-maps)
-          " "
+          "\n"
           "(list)"
           ;; (str (cons 'list path))
-          (str " '" type-sym) " " (sym-str sym)
+          (str " (symbol \"" type-sym "\")") " " (sym-str sym)
           " \"" (str var) "\")" ))
 
   Eq
@@ -704,9 +704,12 @@
   Constraint
   (assertion-path [x] path)
 
-  (format-path [_ n]
-    (format-path* (cons ["Sum Type from" ""] path)
-                  n))
+  (format-path [c n]
+    (let [sum-sym (either (and (every (.alts c) (partial instance? TypeConstraint))
+                               (apply = (map (.alts c) .type-sym)))
+                          "Sum Type")]
+      (format-path* (cons [(str sum-sym " from") ""] path)
+                    n)))
 
   (type-map [c _]
     (let [alt-maps (.alts c)]
@@ -733,7 +736,8 @@
                                                (map-vals fields (fn [alts]
                                                                   ;; TODO: what if 'alts' has NoValues in it?
                                                                   ;; what if it's empty?
-                                                                  (SumConstraint alts path sym var))))))
+                                                                  (either (some alts (partial = top-type))
+                                                                          (SumConstraint alts path sym var)))))))
                            maybe))))))
 
   (extract-var [c]
@@ -775,14 +779,14 @@
     (and (instance? DynamicFields y)
          (maybe x))))
 
-(deftype DynamicParamConstraint [arity param-index item-indices intersect-c final-c path sym var]
+(deftype ParamConstraint [arity param-index item-indices mods path sym var]
   (assert (instance? Vector item-indices))
 
   Stringable
   (string-list [_]
-    (list "(c/DynamicParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
-          " " (str intersect-c) " " (str final-c)
-          " (list)"
+    (list "(c/ParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
+          "\n[" (to-str (interpose mods "\n"))
+          "]\n(list)"
           ;; (str " " (cons 'list path))
           " " (either (map sym (fn [s]
                                  (str "(maybe '" s ")")))
@@ -803,12 +807,15 @@
 
   Eq
   (=* [x y]
-    (and (instance? DynamicParamConstraint y)
+    (and (instance? ParamConstraint y)
          (= param-index (.param-index y))
-         (= item-indices (.item-indices y))
-         (= intersect-c (.intersect-c y))
-         (= final-c (.final-c y))
+         (= mods (.mods y))
          (maybe x))))
+
+(defn mod-param [c mod]
+  (assert (instance? ParamConstraint c))
+
+  (.mods c (conj (.mods c) mod)))
 
 (deftype DynamicResultConstraint [arity invokable-c num-args path sym var]
   Stringable
@@ -854,14 +861,14 @@
 
 (def DynamicConstraint (any-of DynamicFields
                                ReifiedFields
-                               DynamicParamConstraint
+                               ParamConstraint
                                DynamicResultConstraint))
 
 ;; Minimum Constraint Implementations
-;; (deftype DynamicParamConstraint [param-index]
+;; (deftype ParamConstraint [param-index]
 ;;   Stringable
 ;;   (string-list [_]
-;;     (list "(DynamicParamConstraint " (str param-index ")")))
+;;     (list "(ParamConstraint " (str param-index ")")))
 
 ;;   c/Constraint
 ;;   (c/intersect [c1 c2] c2)
@@ -1105,9 +1112,11 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
-  (extract-dyn-field [c dyn-c]
-    (assert (instance? DynamicParamConstraint dyn-c))
-    c)
+  (apply-mod [mod c]
+    (intersect c mod))
+
+  (extract-field [c fld]
+    (assert (instance? Field fld)))
 
   (items-satisfied [info c]
     (assert (instance? ValueConstraint info))
@@ -1143,6 +1152,11 @@
     (assert-result r (instance? Maybe r))
 
     nothing)
+
+  (intersect-dyn-param [c dyn-c]
+    (assert (instance? ParamConstraint dyn-c))
+
+    (mod-param dyn-c c))
 
   (intersect-result [c rc]
     (assert (instance? ResultConstraint rc))
@@ -1274,6 +1288,12 @@
                                (format-path 0))))
   nothing)
 
+(defn apply-param-mods [c dyn-c]
+  (assert (instance? ParamConstraint dyn-c))
+
+  (reduce (.mods dyn-c) c (fn [c mod]
+                            (apply-mod mod c))))
+
 (extend-type Vector
   Constraint
   (trim [v]
@@ -1304,28 +1324,27 @@
     (Right top-type)))
 
 (extend-type NoValues
-  Container
-  (map [x f]
-    (.constraints x (f (.constraints x))))
+  ;; TODO: this is wrong and in the wrong place
+  ;; Container
+  ;; (map [x f]
+  ;;   (.constraints x (f (.constraints x))))
 
-  (map [x f embed]
-    (-> (.constraints x)
-        f
-        (map (partial .constraints x))))
+  ;; (map [x f embed]
+  ;;   (-> (.constraints x)
+  ;;       f
+  ;;       (map (partial .constraints x))))
 
   Constraint
   (collection-of [x]
     (Left x))
 
   ConstraintOps
+  (apply-mod [mod _] mod)
+  (intersect-dyn-param [c _] c)
+  (intersect-multi [c mc] c)
+  (intersect-typec [c _] c)
   (conj-multi [c mc]
-    (maybe c))
-
-  (intersect-multi [c mc]
-    c)
-
-  (intersect-typec [c _]
-    c))
+    (maybe c)))
 
 (extend-type AllValues
   Constraint
@@ -1333,6 +1352,9 @@
     (Left x))
 
   ConstraintOps
+  (apply-mod [_ c] c)
+  (extract-field [x _] x)
+  (intersect-dyn-param [c dyn-c] dyn-c)
   (intersect-sum [c sc] sc)
   (intersect-result [c rc] rc)
   (intersect-typec [c tc] tc)
@@ -1844,32 +1866,20 @@
     (maybe (intersect (.assertion rc) (.assertion c)))))
 
 (extend-type TypeConstraint
-  ;; TODO: This should absolutely work, but doesn't
-  ;; one problem is the contextual version is used by 'type-check' and
-  ;; introduces ConstrainedAST's into the fields map
-  ;; Container
-  ;; (map [tc f]
-  ;;   (.type-maps tc (map-vals (.type-maps tc)
-  ;;                            (fn [type-fields]
-  ;;                              (print-err 'type-fields type-fields)
-  ;;                              (map-vals type-fields
-  ;;                                        (fn [field-c]
-  ;;                                          (or (instance? Constraints field-c)
-  ;;                                              (maybe (abort)))
-  ;;                                          (print-err 'field-c field-c)
-  ;;                                          (let [r (map field-c f)]
-  ;;                                            (or (instance? Constraints r)
-  ;;                                                (do
-  ;;                                                  (print-err 'wtf field-c f)
-  ;;                                                  (maybe (abort))))
-  ;;                                            r)))))))
+  Container
+  (map [tc f]
+    (.type-maps tc (map-vals (.type-maps tc)
+                             (fn [type-fields]
+                               (map-vals type-fields
+                                         (fn [field-c]
+                                           (f field-c)))))))
 
-  ;; (map [tc f embed]
-  ;;   (map (contextual-map-vals (.type-maps tc)
-  ;;                             (fn [type-fields]
-  ;;                               (contextual-map-vals type-fields f embed))
-  ;;                             embed)
-  ;;        (partial .type-maps tc)))
+  (map [tc f embed]
+    (map (contextual-map-vals (.type-maps tc)
+                              (fn [type-fields]
+                                (contextual-map-vals type-fields f embed))
+                              embed)
+         (partial .type-maps tc)))
 
   Constraint
   (add-to-path [constraint file-name line-number]
@@ -1897,6 +1907,7 @@
 
   (set-type [c tc]
     ;; only used to switch ListType to VectorType or vice versa
+    ;; TODO: actually, could be used on HashMaps as well. Maybe
     (either (or (and (= top-type tc)
                      (maybe c))
                 (for [c-map (extract-type-map c)
@@ -1938,29 +1949,18 @@
                              (maybe info))))))
 
   ConstraintOps
-  (extract-dyn-field [c dyn-c]
-    (either (for [field (first (.item-indices dyn-c))
-                  alts (apply (maybe vector) (-> (.type-maps c)
+  (extract-field [c fld]
+    (either (for [types-map (extract-type-map c)
+                  alts (apply (maybe vector) (-> types-map
                                                  vals
                                                  (map (fn [fields]
-                                                        (get fields field)))
-                                                 (filter identity)))]
-              (let [dyn-c (.item-indices dyn-c (rest (.item-indices dyn-c)))]
-                (cond (first alts)
-                      (cata (fn [c]
-                              (extract-dyn-field c dyn-c))
-                            (sum-type alts))
-
-                      (instance? Field field)
-                      (cond (= (list UnknownType) (keys (.type-maps c)))
-                            (assoc-in c [.type-maps UnknownType field] top-type)
-
-                            (NoValues [c (TypeConstraint {0 {field top-type}} (.path dyn-c)
-                                                         (symbol (str "field '" (.sym field) "' required"))
-                                                         nothing "")]))
-
-                      top-type)))
-            c))
+                                                        (get fields fld)))
+                                                 (filter identity)))
+                  :when-not (empty? alts)]
+              (sum-type alts))
+            (NoValues [c (TypeConstraint {0 {fld top-type}} empty-list
+                                         (symbol (str "field '" (.sym fld) "' required"))
+                                         nothing "")])))
 
   (conj-multi [c mc]
     (intersect-multi c mc))
@@ -2415,6 +2415,19 @@
     (Right c))
 
   ConstraintOps
+  (extract-field [c fld]
+    (either (for [types-map (extract-type-map c)
+                  alts (apply (maybe vector) (-> types-map
+                                                 vals
+                                                 (map (fn [fields]
+                                                        (get fields fld)))
+                                                 (filter identity)))
+                  :when-not (empty? alts)]
+              (sum-type alts))
+            (NoValues [c (TypeConstraint {0 {fld top-type}} empty-list
+                                         (symbol (str "field '" (.sym fld) "' required"))
+                                         nothing "")])))
+
   (mult-satisfied [c mult-c]
     (either (sum-c-satisfies c mult-c)
             nothing))
@@ -2469,31 +2482,30 @@
                  (maybe mc))
             (MultiConstraint (conj (.constraints mc) c)))))
 
-(defn intersect-dyn-param [dyn-c constraint]
-  (assert (instance? DynamicParamConstraint dyn-c))
+(deftype SetType [tc]
+  (assert (instance? TypeConstraint tc))
 
-  ;; TODO: what about when 'final-c' isn't top-type
-  (let [constraint (cond (empty? (.item-indices dyn-c))
-                         constraint
+  Stringable
+  (string-list [_]
+    (list "(c/SetType " (str tc) ")"))
 
-                         (reduce (.item-indices dyn-c)
-                                 constraint
-                                 (fn [c field]
-                                   (let [field-name (either (map (instance? Field field)
-                                                                 (fn [fld]
-                                                                   (str "field '" (.sym fld)
-                                                                        "' constraint")))
-                                                            (str "constraint for key '"
-                                                                 field "'"))]
-                                     (TypeConstraint {0 {field c}}
-                                                     (.path dyn-c)
-                                                     (symbol field-name)
-                                                     nothing "")))))
-        new-inter-c (intersect (.intersect-c dyn-c) constraint)]
-    (either (= bottom-type new-inter-c)
-            (.intersect-c dyn-c new-inter-c))))
+  Container
+  (map [x f]
+    x)
 
-(extend-type DynamicParamConstraint
+  (map [x f embed]
+    (embed x)))
+
+(extend-type ParamConstraint
+  Container
+  (map [x f]
+    (.mods x (map (.mods x) f)))
+
+  (map [x f embed]
+    (map (map (.mods x) f embed)
+         (fn [new-mods]
+           (.mods x new-mods))))
+
   Constraint
   (reified-field [c indices]
     (-> c
@@ -2506,31 +2518,40 @@
     (.arity c new-arity))
 
   (set-type [c tc]
-    (.final-c c tc))
+    (mod-param c (SetType tc)))
 
   (intersect [c1 c2]
-    (cond (instance? DynamicParamConstraint c2)
-          ;; TODO: need to consider final-c as well
-          (.intersect-c c1 (intersect (.intersect-c c1)
-                                      (.intersect-c c2)))
-
-          (intersect-dyn-param c1 c2)))
+    (intersect-dyn-param c2 c1))
 
   ConstraintOps
+  (apply-mod [dyn-c c]
+    (mod-param dyn-c c))
+
+  (intersect-dyn-param [c dyn-c]
+    (either (or (= c dyn-c)
+                (and (= (.arity c) (.arity dyn-c))
+                     (= (.param-index c) (.param-index dyn-c))
+                     (cond (empty? (.mods c))
+                           (maybe dyn-c)
+
+                           (and (empty? (.mods dyn-c))
+                                (maybe c)))))
+            (do
+              ;; TODO: this should only be called when two params have the same
+              ;; symbol in a function. Replace the old paramconstraint instead of intersecting
+              ;; (print-err 'intersecting-at _FILE_ _LINE_
+              ;;            "\n" 'c c
+              ;;            "\n\n" 'dyn-c dyn-c)
+              (mod-param dyn-c c))))
+
   (intersect-sum [c cs]
-    (intersect-dyn-param c cs))
+    (mod-param c cs))
 
   (intersect-typec [c tc]
-    (intersect-dyn-param c tc))
+    (mod-param c tc))
 
   (intersect-multi [c mc]
-    (either (and (some (.constraints mc) (partial = c))
-                 (maybe mc))
-            (intersect-dyn-param c mc)))
-
-  (extract-dyn-field [c dyn-c]
-    (.item-indices c (comp (.item-indices dyn-c)
-                           (.item-indices c)))))
+    (mod-param c mc)))
 
 
 (extend-type DynamicResultConstraint
@@ -2587,6 +2608,107 @@
 
           (.constraints mc (conj (.constraints mc) c)))))
 
+(deftype SetField [fld fld-c]
+  (assert (instance? Field fld))
+
+  Stringable
+  (string-list [_]
+    (list "(c/SetField " (str "(c/Field (symbol \"" (.sym fld) "\"))") " "
+          (str fld-c) ")"))
+
+  Container
+  (map [x f]
+    (.fld-c x (f (.fld-c x))))
+
+  (map [x f embed]
+    (map (f (.fld-c x))
+         (fn [new-fld-c]
+           (.fld-c x new-fld-c))))
+
+  ConstraintOps
+  (apply-mod [mod c]
+    (intersect (apo (fn [c]
+                      (cond (instance? TypeConstraint c)
+                            (Left (.type-maps c (map-vals (.type-maps c)
+                                                          (fn [fld-map]
+                                                            (either (and (get fld-map fld)
+                                                                         (maybe (assoc fld-map fld fld-c)))
+                                                                    fld-map)))))
+
+                            (instance? ParamConstraint c)
+                            (Left (mod-param c mod))
+
+                            (or (instance? SumConstraint c)
+                                (instance? MultiConstraint c))
+                            (Right c)
+
+                            (Left c)))
+                    c)
+               (TypeConstraint {UnknownType {fld top-type}} empty-list
+                               (symbol (str "field '" (.sym fld) "' required"))
+                               nothing ""))))
+
+(defn set-field [fld c]
+  (SetField fld c))
+
+(deftype GetField [fld]
+  (assert (instance? Field fld))
+
+  Stringable
+  (string-list [_]
+    (list "(c/GetField " (str "(c/Field (symbol \"" (.sym fld) "\"))") ")"))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  ConstraintOps
+  (apply-mod [mod c]
+    (either (map (instance? ParamConstraint c)
+                 (fn [c]
+                   (mod-param c mod)))
+            (extract-field c fld))))
+
+(defn get-field [fld]
+  (GetField fld))
+
+(defn full-param-consraint [c]
+  (trim (cata (fn [c]
+                (either (map (instance? ParamConstraint c)
+                             (fn [dyn-c]
+                               (-> (.mods dyn-c)
+                                   reverse
+                                   (reduce top-type (fn [c mod]
+                                                      (cond (instance? ParamConstraint mod)
+                                                            top-type
+
+                                                            (instance? SetField mod)
+                                                            (TypeConstraint
+                                                             {UnknownType {(.fld mod) top-type}}
+                                                             empty-list
+                                                             (symbol (str "field '" (.sym (.fld mod))
+                                                                          "' required"))
+                                                             nothing "")
+
+                                                            (instance? GetField mod)
+                                                            (TypeConstraint
+                                                             {UnknownType {(.fld mod) c}}
+                                                             empty-list
+                                                             (symbol (str "field '" (.sym (.fld mod))
+                                                                          "' required"))
+                                                             nothing "")
+
+                                                            (instance? SetType mod)
+                                                            ;; TODO: needs completion
+                                                            top-type
+
+                                                            (intersect mod c)))))))
+                        c))
+              c)))
+
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
   (assert (instance? Constraints y))
@@ -2607,3 +2729,24 @@
 (def empty-items-constraint (ItemsConstraint []
                                              (NoValues [])
                                              empty-list nothing ""))
+
+
+;; AllValues                 extract-field
+;; InferredInner             
+;; CollectionOf              
+;; ItemsConstraint           
+;; TypeConstraint            extract-field
+;; SumConstraint             extract-field
+;; ParamConstraint           
+;; NoValues                  
+;; MultiConstraint           
+;; MinValue                  
+;; MaxValue                  
+;; StaticIntConstraint
+;; StaticLengthConstraint
+;; StaticStrConstraint
+;; DynamicFields
+;; ReifiedFields
+;; GetField                  extract-field
+;; SetField                  extract-field
+;; SetType
