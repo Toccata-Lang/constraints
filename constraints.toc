@@ -256,9 +256,6 @@
 (def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
 (def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
 (def ItemsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ItemsConstraintType};"))
-(def StaticIntConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StaticIntConstraintType};"))
-(def MinValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MinValueType};"))
-(def MaxValueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaxValueType};"))
 (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
 (def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
     StaticLengthConstraintType};"))
@@ -526,87 +523,23 @@
 (def substr-constraint (TypeConstraint {SubStringType {}} empty-list 'String nothing ""))
 (def strbuf-constraint (TypeConstraint {StringBufferType {}} empty-list 'String nothing ""))
 
-(deftype StaticIntConstraint [val path sym var]
-  (assert (instance? Integer val))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/StaticIntConstraint " (str val) " (list"
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (satisfied-by [c info]
-    (= c info))
-
-  (assertion-path [c] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "Integer value '" val "' from") ""] path)
-                  desired-len))
-
-  (type-map [_ _]
-    (maybe {IntegerType {}})))
-
-(deftype MinValue [min path sym var]
-  (assert (instance? Integer min))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/MinValue " (str min) " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (assertion-path [_] path)
-
-  (type-map [_ _]
-    (maybe {IntegerType {}}))
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "Min value of " min " from") ""] path)
-                  desired-len))
-
-  (update-var [c new-var]
-    (.var c new-var))
-
-  (intersect [mvc c]
-    (either (= mvc c)
-            (intersect (update-var c (extract-var mvc)) mvc))))
-
-(deftype MaxValue [max path sym var]
-  (assert (instance? Integer max))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/MaxValue " (str max) " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (assertion-path [_] path)
-
-  (type-map [_ _]
-    (maybe {IntegerType {}}))
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "Max value of " max " from") ""] path)
-                  desired-len)))
+(def core-type-constraints {'Integer int-constraint
+                            'StringBuffer strbuf-constraint
+                            'SubString substr-constraint
+                            'FnArity arity-constraint
+                            'BitmapIndexedNode bitmap-constraint
+                            'ArrayNode array-constraint
+                            'HashCollisionNode hash-coll-constraint
+                            'Fn fn-constraint
+                            'List list-constraint
+                            'Maybe maybe-constraint
+                            'Vector vect-constraint
+                            'Symbol sym-constraint
+                            'HashMap hashmap-constraint
+                            'Promise promise-constraint
+                            'Future future-constraint
+                            'Agent agent-constraint
+                            'Opaque opaque-constraint})
 
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
@@ -635,7 +568,7 @@
             VectorType {}})))
 
 (def StaticConstraints (any-of StaticLengthConstraint
-                               StaticIntConstraint))
+                               ))
 
 (deftype NoFields []
   Stringable
@@ -855,8 +788,6 @@
 ;;   (c/intersect-multi [c mc] mc))
 
 (def SymbolConstraints (any-of TypeConstraint
-                               MinValue
-                               MaxValue
                                InferredInner
                                StaticConstraints
                                ItemsConstraint
@@ -904,11 +835,6 @@
              (maybe x)))))
 
 (def bottom-type (NoValues []))
-
-(extend-type Integer
-  Constraint
-  (intersect [x c]
-    (intersect (StaticIntConstraint x empty-list nothing (extract-var c)) c)))
 
 (extend-type Symbol
   Constraint
@@ -1185,34 +1111,6 @@
 
     (intersect (update-var c (extract-var ic)) ic))
 
-  (=-max-value [y x]
-    (assert (instance? MaxValue x))
-    nothing)
-
-  (intersect-max-value [c mvc]
-    (assert (instance? MaxValue mvc))
-    (assert-result r (instance? Constraints r))
-
-    (intersect (update-var c (extract-var mvc)) mvc))
-
-  (=-min-value [y x]
-    (assert (instance? MinValue x))
-    nothing)
-
-  (intersect-min-value [c mvc]
-    (assert (instance? MinValue mvc))
-    (assert-result r (instance? Constraints r))
-
-    (intersect c mvc))
-
-  (=-static-int [y x]
-    (assert (instance? StaticIntConstraint x))
-    nothing)
-
-  (intersect-static-int [c slc]
-    (assert (instance? StaticIntConstraint slc))
-    (intersect (update-var c (extract-var slc)) slc))
-
   (=-items-constraint [y x]
     (assert (instance? ItemsConstraint x))
     nothing)
@@ -1318,9 +1216,6 @@
   (intersect-coll-of [c cc] cc)
   (intersect-static-len [c slc] slc)
   (intersect-inner [c ic] ic)
-  (intersect-max-value [c mvc] mvc)
-  (intersect-min-value [c mvc] mvc)
-  (intersect-static-int [c slc] slc)
   (intersect-itemsc [c ic] ic)
   (intersect-multi [c mc] mc)
   (conj-multi [c mc]
@@ -1348,32 +1243,128 @@
         (sha1-update x ctxt)
         (sha1-finalize ctxt)))))
 
+(def min-value
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/min-value"))
+
+    ;; TODO: should probably generate these automatically
+    Eq
+    (=* [x y]
+      (and (= (get-type x) (get-type y))
+           (maybe x)))
+
+    Hashable
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "type attribute min value" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
+(def max-value
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/max-value"))
+
+    ;; TODO: should probably generate these automatically
+    Eq
+    (=* [x y]
+      (and (= (get-type x) (get-type y))
+           (maybe x)))
+
+    Hashable
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "type attribute max value" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
+(defn merge-static-values [fields-map attrs1 attrs2]
+  (either (or (for [v1 (get attrs1 static-value)
+                    v2 (get attrs2 static-value)]
+                (cond (= v1 v2)
+                      (assoc fields-map static-value v1)
+                      (assoc fields-map (Field (symbol "")) bottom-type)))
+              (map (or (get attrs1 static-value)
+                       (get attrs2 static-value))
+                   (partial assoc fields-map static-value)))
+         fields-map))
+
+(defn merge-min-values [fields-map attrs1 attrs2]
+  (either (map (get attrs1 min-value)
+               (fn [min-v]
+                 (either (or (map (get fields-map static-value)
+                                  (fn [v]
+                                    (cond (<= min-v v)
+                                          fields-map
+                                          (assoc fields-map (Field (symbol "")) bottom-type))))
+                             (map (get attrs2 min-value)
+                                  (fn [v]
+                                    (assoc fields-map
+                                      min-value (either (> min-v v)
+                                                        v)))))
+                         (assoc fields-map min-value min-v))))
+          fields-map))
+
+(defn merge-max-values [fields-map attrs1 attrs2]
+  (either (map (get attrs1 max-value)
+               (fn [max-v]
+                 (either (or (map (get fields-map static-value)
+                                  (fn [v]
+                                    (cond (<= v max-v)
+                                          fields-map
+                                          (assoc fields-map (Field (symbol "")) bottom-type))))
+                             (map (get attrs2 max-value)
+                                  (fn [v]
+                                    (assoc fields-map
+                                      max-value (either (< max-v v)
+                                                        v)))))
+                         (assoc fields-map max-value max-v))))
+          fields-map))
+
+(defn check-min-max [fields-map]
+  (either (for [min-v (get fields-map min-value)
+                max-v (get fields-map max-value)]
+            (cond (<= min-v max-v)
+                  fields-map
+                  (assoc fields-map (Field (symbol "")) bottom-type)))
+          fields-map))
+
 (defn intersect-attributes-map [attrs1 attrs2]
   (let [flds1 (dissoc attrs1 static-value)
         flds2 (dissoc attrs2 static-value)]
-    (let [fields-map (merge-with intersect flds1 flds2)]
-      (either (map (or (for [v1 (get attrs1 static-value)
-                             v2 (get attrs2 static-value)]
-                         (either (= v1 v2)
-                                 bottom-type))
-                       (get attrs1 static-value)
-                       (get attrs2 static-value))
-                   (fn [v]
-                     (assoc fields-map static-value v)))
-              fields-map))))
+    ;; Order of calls is important
+    (-> (merge-with intersect flds1 flds2)
+        (merge-static-values attrs1 attrs2)
+        (merge-min-values attrs1 attrs2)
+        (merge-min-values attrs2 attrs1)
+        (merge-max-values attrs1 attrs2)
+        (merge-max-values attrs2 attrs1)
+        (check-min-max))))
 
 (defn intersect-type-maps [m1 tc]
   (assert (instance? TypeConstraint tc))
 
   ;; TOOD: this expression is too large. Refactor
   (let [m2 (.type-maps tc)
-        prototype-cs (intersect-attributes-map (either (get m1 UnknownType)
-                                                       {})
-                                               (either (get m2 UnknownType)
-                                                       {}))
+        prototype-cs (either (or (for [attrs1 (get m1 UnknownType)
+                                       attrs2 (get m2 UnknownType)]
+                                   (intersect-attributes-map attrs1 attrs2))
+                                 (get m1 UnknownType)
+                                 (get m2 UnknownType))
+                             {})
         required-fields (-> (vec prototype-cs)
                             (filter (fn [[fld _]]
                                       (instance? Field fld))))
+        ;; TODO: should be so much cleaner. Dissoc UnknownType
         m1-keys (keys m1)
         m2-keys (keys m2)
         new-map (either (or (and (= (list UnknownType) m1-keys m2-keys)
@@ -1601,12 +1592,6 @@
                                 (update-var c (extract-var tc))]))
             (NoValues [c tc])))
 
-  (intersect-max-value [c mvc]
-    (NoValues [mvc c]))
-
-  (intersect-static-int [c slc]
-    (NoValues [slc c]))
-
   (intersect-itemsc [c ic]
     (assert (instance? ItemsConstraint ic))
 
@@ -1633,9 +1618,6 @@
 
                     (either (= bottom-type new-tail)
                             new-ic)))))
-
-  (intersect-min-value [c mvc]
-    (NoValues [mvc c]))
 
   (=-items-constraint [y x]
     (and (= (.items-constraints y) (.items-constraints x))
@@ -1849,14 +1831,29 @@
   (map [tc f]
     (.type-maps tc (map-vals (.type-maps tc)
                              (fn [type-fields]
-                               (map-vals type-fields
-                                         (fn [field-c]
-                                           (f field-c)))))))
+                               (-> type-fields
+                                   vec
+                                   (map (fn [[fld fld-c]]
+                                          (cond (instance? Field fld)
+                                                [fld (f fld-c)]
+                                                [fld fld-c])))
+                                   (reduce {} (fn [m [k v]]
+                                                (assoc m k v))))))))
 
   (map [tc f embed]
     (map (contextual-map-vals (.type-maps tc)
                               (fn [type-fields]
-                                (contextual-map-vals type-fields f embed))
+                                (-> type-fields
+                                    vec
+                                    (map (fn [[fld fld-c]]
+                                           (cond (instance? Field fld)
+                                                 (map (f fld-c)
+                                                      (partial vector fld))
+                                                 (embed [fld fld-c])))
+                                         embed)
+                                    (map (fn [new-flds]
+                                           (reduce new-flds {} (fn [m [k v]]
+                                                                 (assoc m k v)))))))
                               embed)
          (partial .type-maps tc)))
 
@@ -1982,73 +1979,6 @@
                                        (.type-maps new-type-map)
                                        (update-var (extract-var ic)))])))))
 
-(extend-type StaticIntConstraint
-  Eq
-  (=* [x y]
-    (=-static-int y x))
-
-  Constraint
-  (intersect [slc c]
-    (intersect-static-int c slc))
-
-  ConstraintOps
-  (intersect-coll-of [c cc]
-    (NoValues [cc c]))
-
-  (intersect-static-len [c slc]
-    (NoValues [slc c]))
-
-  (intersect-inner [c ic]
-    (NoValues [ic c]))
-
-  (=-static-int [y x]
-    (and (= (.val y) (.val x))
-         (maybe x)))
-
-  (intersect-max-value [c mvc]
-    (either (and (<= (.val c) (.max mvc))
-                 (maybe c))
-            (NoValues [mvc c])))
-
-  (intersect-static-int [c slc]
-    (either (= slc c)
-            (NoValues [slc c])))
-
-  (intersect-min-value [c mvc]
-    (either (and (< (.val c) (.min mvc))
-                 (maybe (NoValues [mvc c])))
-            c)))
-
-(extend-type MinValue
-  Eq
-  (=* [x y]
-    (=-min-value y x))
-
-  Constraint
-  (intersect [mvc c]
-    (intersect-min-value c mvc))
-
-  ConstraintOps
-  (intersect-static-len [c ic]
-    (NoValues [ic c]))
-
-  (intersect-inner [c ic]
-    (NoValues [ic c]))
-
-  (intersect-max-value [c mvc]
-    (either (and (<= (.min c) (.max mvc))
-                 (maybe (MultiConstraint [c mvc])))
-            (NoValues [mvc c])))
-
-  (=-min-value [y x]
-    (and (= (.min y) (.min x))
-         (maybe x)))
-
-  (intersect-min-value [c mvc]
-    (either (=* c mvc)
-            (.min mvc (either (< (.min mvc) (.min c))
-                              (.min c))))))
-
 (defn core-containers [c]
   (TypeConstraint {VectorType {}
                    MaybeType {}
@@ -2123,33 +2053,6 @@
     (let [new-c (intersect (.contents ic) (.contents c))]
       (either (= new-c bottom-type)
               (.contents ic new-c)))))
-
-(extend-type MaxValue
-  Eq
-  (=* [x y]
-    (=-max-value y x))
-
-  ConstraintOps
-  (intersect-coll-of [c cc]
-    (NoValues [cc c]))
-
-  (intersect-static-len [c slc]
-    (NoValues [slc c]))
-
-  (intersect-inner [c ic]
-    (NoValues [ic c]))
-
-  (=-max-value [y x]
-    (and (= (.max x) (.max y))
-         (maybe x)))
-
-  (intersect-max-value [c mvc]
-    (.max mvc (either (< (.max mvc) (.max c))
-                      (.max c))))
-
-  Constraint
-  (intersect [mvc c]
-    (intersect-max-value c mvc)))
 
 (extend-type StaticLengthConstraint
   Eq
@@ -2653,17 +2556,14 @@
 
 
 ;; AllValues                 extract-field
+;; NoValues                  
 ;; InferredInner             
 ;; CollectionOf              
 ;; ItemsConstraint           
 ;; TypeConstraint            extract-field
 ;; SumConstraint             extract-field
 ;; ParamConstraint           
-;; NoValues                  
 ;; MultiConstraint           
-;; MinValue                  
-;; MaxValue                  
-;; StaticIntConstraint
 ;; StaticLengthConstraint
 ;; DynamicFields
 ;; ReifiedFields
