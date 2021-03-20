@@ -1339,8 +1339,8 @@
           fields-map))
 
 (defn intersect-attributes-map [attrs1 attrs2]
-  (let [flds1 (dissoc attrs1 static-value)
-        flds2 (dissoc attrs2 static-value)]
+  (let [flds1 (dissoc attrs1 static-value min-value max-value)
+        flds2 (dissoc attrs2 static-value min-value max-value)]
     ;; Order of calls is important
     (-> (merge-with intersect flds1 flds2)
         (merge-static-values attrs1 attrs2)
@@ -1363,19 +1363,22 @@
                              {})
         required-fields (-> (vec prototype-cs)
                             (filter (fn [[fld _]]
-                                      (instance? Field fld))))
-        ;; TODO: should be so much cleaner. Dissoc UnknownType
-        m1-keys (keys m1)
-        m2-keys (keys m2)
-        new-map (either (or (and (= (list UnknownType) m1-keys m2-keys)
-                                 (maybe {UnknownType prototype-cs}))
-                            (and (= (list UnknownType) m1-keys)
-                                 (maybe (dissoc m2 UnknownType)))
-                            (and (= (list UnknownType) m2-keys)
-                                 (maybe (dissoc m1 UnknownType))))
-                        (merge-with intersect-attributes-map
-                                    (select-keys (dissoc m1 UnknownType) m2-keys)
-                                    (select-keys (dissoc m2 UnknownType) m1-keys)))
+                                      (or (instance? Field fld)
+                                          (instance? Symbol fld)))))
+        m1 (dissoc m1 UnknownType)
+        m2 (dissoc m2 UnknownType)
+        new-map (cond (and (empty? m1) (empty? m2))
+                      {UnknownType prototype-cs}
+
+                      (empty? m1)
+                      m2
+
+                      (empty? m2)
+                      m1
+                      
+                      (merge-with intersect-attributes-map
+                                  (select-keys m1 (keys m2))
+                                  (select-keys m2 (keys m1))))
         checked-fields (cond (empty? required-fields)
                              (-> new-map
                                  vec
