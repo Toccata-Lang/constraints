@@ -38,7 +38,14 @@
 
   Stringable
   (string-list [_]
-    (list (str "(c/Field (symbol \"" sym "\"))"))))
+    (list (str "(c/Field (symbol \"" sym "\"))")))
+
+  Container
+  (map [x _]
+    x)
+
+  (map [x _ embed]
+    (embed x)))
 
 ;; Public interface for Constraints
 (defprotocol Constraint
@@ -1241,7 +1248,14 @@
     (sha1 [x]
       (let [ctxt (sha1-init)]
         (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+        (sha1-finalize ctxt)))
+
+    Container
+    (map [x _]
+      x)
+
+    (map [x _ embed]
+      (embed x))))
 
 (def map-values
   (reify
@@ -1263,7 +1277,14 @@
     (sha1 [x]
       (let [ctxt (sha1-init)]
         (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+        (sha1-finalize ctxt)))
+
+    Container
+    (map [x _]
+      x)
+
+    (map [x _ embed]
+      (embed x))))
 
 (def static-value
   (reify
@@ -1900,9 +1921,13 @@
                                (-> type-fields
                                    vec
                                    (map (fn [[fld fld-c]]
-                                          (cond (instance? Field fld)
-                                                [fld (f fld-c)]
-                                                [fld fld-c])))
+                                          ;; TODO: when you can use reified values in 'any-of',
+                                          ;; change this to instance? LeafFields, etc. etc.
+                                          (cond (or (= static-value fld)
+                                                    (= max-value fld)
+                                                    (= min-value fld))
+                                                [fld fld-c]
+                                                [(f fld) (f fld-c)])))
                                    (reduce {} (fn [m [k v]]
                                                 (assoc m k v))))))))
 
@@ -1912,10 +1937,13 @@
                                 (-> type-fields
                                     vec
                                     (map (fn [[fld fld-c]]
-                                           (cond (instance? Field fld)
-                                                 (map (f fld-c)
-                                                      (partial vector fld))
-                                                 (embed [fld fld-c])))
+                                           (cond (or (= static-value fld)
+                                                     (= max-value fld)
+                                                     (= min-value fld))
+                                                 (embed [fld fld-c])
+                                                 (for [new-fld (f fld)
+                                                       new-c (f fld-c)]
+                                                   [new-fld new-c])))
                                          embed)
                                     (map (fn [new-flds]
                                            (reduce new-flds {} (fn [m [k v]]
