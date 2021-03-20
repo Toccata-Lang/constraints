@@ -1221,6 +1221,50 @@
   (conj-multi [c mc]
     (maybe mc)))
 
+(def map-keys
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/map-keys"))
+
+    ;; TODO: should probably generate these automatically
+    Eq
+    (=* [x y]
+      (and (= (get-type x) (get-type y))
+           (maybe x)))
+
+    Hashable
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "type attribute map keys" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
+(def map-values
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/map-values"))
+
+    ;; TODO: should probably generate these automatically
+    Eq
+    (=* [x y]
+      (and (= (get-type x) (get-type y))
+           (maybe x)))
+
+    Hashable
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "type attribute map vals" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
 (def static-value
   (reify
     Stringable
@@ -1338,6 +1382,25 @@
                   (assoc fields-map (Field (symbol "")) bottom-type)))
           fields-map))
 
+(defn check-hash-map-attrs [fields-map]
+  (let [fields-map (either (for [key-c (get fields-map map-keys)
+                                 bad-key-c (-> fields-map
+                                               keys
+                                               (filter (partial instance? Constraints))
+                                               (some (fn [k]
+                                                       (= bottom-type (intersect key-c k)))))]
+                             (assoc fields-map map-keys bad-key-c))
+                           fields-map)]
+    (either (for [val-c (get fields-map map-values)
+                  bad-val-c (-> fields-map
+                                (dissoc map-keys map-values)
+                                vals
+                                (filter (partial instance? Constraints))
+                                (some (fn [v]
+                                        (= bottom-type (intersect val-c v)))))]
+              (assoc fields-map map-values bad-val-c))
+            fields-map)))
+
 (defn intersect-attributes-map [attrs1 attrs2]
   (let [flds1 (dissoc attrs1 static-value min-value max-value)
         flds2 (dissoc attrs2 static-value min-value max-value)]
@@ -1348,7 +1411,8 @@
         (merge-min-values attrs2 attrs1)
         (merge-max-values attrs1 attrs2)
         (merge-max-values attrs2 attrs1)
-        (check-min-max))))
+        check-min-max
+        check-hash-map-attrs)))
 
 (defn intersect-type-maps [m1 tc]
   (assert (instance? TypeConstraint tc))
@@ -1363,8 +1427,7 @@
                              {})
         required-fields (-> (vec prototype-cs)
                             (filter (fn [[fld _]]
-                                      (or (instance? Field fld)
-                                          (instance? Symbol fld)))))
+                                      (instance? Field fld))))
         m1 (dissoc m1 UnknownType)
         m2 (dissoc m2 UnknownType)
         new-map (cond (and (empty? m1) (empty? m2))
