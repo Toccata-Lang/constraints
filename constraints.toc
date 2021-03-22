@@ -483,6 +483,8 @@
           " \"" (str var) "\")" ))
 
   Eq
+  ;; TODO: equality musth check the field maps as well
+  ;; verify this
   (=* [x y]
     (for [_ (instance? TypeConstraint y)
           y-maps (extract-type-map y)
@@ -1008,6 +1010,9 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
+  (is-bottom [c]
+    )
+
   (apply-mod [mod c]
     (intersect c mod))
 
@@ -1201,6 +1206,7 @@
     (Left x))
 
   ConstraintOps
+  (is-bottom [c] c)
   (apply-mod [mod _] mod)
   (intersect-dyn-param [c _] c)
   (intersect-multi [c mc] c)
@@ -1214,6 +1220,7 @@
     (Left x))
 
   ConstraintOps
+  (is-bottom [c] c)
   (apply-mod [_ c] c)
   (extract-field [x _] x)
   (intersect-dyn-param [c dyn-c] dyn-c)
@@ -1255,7 +1262,10 @@
       x)
 
     (map [x _ embed]
-      (embed x))))
+      (embed x))
+
+    ConstraintOps
+    (is-bottom [x] x)))
 
 (def map-values
   (reify
@@ -1284,7 +1294,10 @@
       x)
 
     (map [x _ embed]
-      (embed x))))
+      (embed x))
+
+    ConstraintOps
+    (is-bottom [x] x)))
 
 (def static-value
   (reify
@@ -1306,7 +1319,10 @@
     (sha1 [x]
       (let [ctxt (sha1-init)]
         (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+        (sha1-finalize ctxt)))
+
+    ConstraintOps
+    (is-bottom [x] x)))
 
 (def min-value
   (reify
@@ -1328,7 +1344,10 @@
     (sha1 [x]
       (let [ctxt (sha1-init)]
         (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+        (sha1-finalize ctxt)))
+
+    ConstraintOps
+    (is-bottom [x] x)))
 
 (def max-value
   (reify
@@ -1350,7 +1369,10 @@
     (sha1 [x]
       (let [ctxt (sha1-init)]
         (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+        (sha1-finalize ctxt)))
+
+    ConstraintOps
+    (is-bottom [x] x)))
 
 (defn merge-static-values [fields-map attrs1 attrs2]
   (either (or (for [v1 (get attrs1 static-value)
@@ -1541,6 +1563,8 @@
     (.var tc new-var))
 
   ConstraintOps
+  (is-bottom [c] c)
+
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
     (assert-result r (instance? Constraints r))
@@ -1616,6 +1640,11 @@
     (=-items-constraint y x))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (or (some (.items-constraints c) (partial = bottom-type))
+                (= bottom-type (.tail-constraint c)))
+            c))
+
   (items-satisfied [info c]
     (let [c-items (.items-constraints c)
           info-items (extract-items-constraints info (count c-items))]
@@ -1764,6 +1793,10 @@
     (conj-multi c mc))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (some (.constraints c) (partial = bottom-type))
+            c))
+
   (items-satisfied [info c]
     (flat-map (some (.constraints info) (partial instance? ItemsConstraint))
               (fn [info-itemsc]
@@ -1907,6 +1940,10 @@
               (ResultConstraint intersected))))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (= (.assertion c) bottom-type)
+            c))
+
   (=-result-constraint [y x]
     (=* (.assertion x) (.assertion y)))
 
@@ -2019,6 +2056,17 @@
                              (maybe info))))))
 
   ConstraintOps
+  (is-bottom [c]
+    (let [fld-cs (flat-map (vec (.type-maps c))
+                              (fn [[_ fld-map]]
+                                (flatten (vec fld-map))))]
+      (print-err 'fld-cs fld-cs)
+      (either (some (flat-map (vec (.type-maps c))
+                              (fn [[_ fld-map]]
+                                (flatten (vec fld-map))))
+                    (partial = bottom-type))
+              c)))
+
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
                   alts (apply (maybe vector) (-> types-map
@@ -2120,6 +2168,10 @@
     (intersect-inner c ic))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (= (.contents c) bottom-type)
+            c))
+
   (intersect-multi [c mc]
     (let [new-c (intersect (.contents c)
                            (extract-contents-constraint mc))]
@@ -2237,6 +2289,10 @@
     (intersect-coll-of c cc))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (= (.contents c) bottom-type)
+            c))
+
   (intersect-typec [c tc]
     (intersect-coll-of tc c))
 
@@ -2333,6 +2389,10 @@
     (Right c))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (some (.alts c) (partial = bottom-type))
+            c))
+
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
                   alts (apply (maybe vector) (-> types-map
@@ -2412,7 +2472,10 @@
     x)
 
   (map [x f embed]
-    (embed x)))
+    (embed x))
+
+  ConstraintOps
+  (is-bottom [c] c))
 
 (extend-type ParamConstraint
   Container
@@ -2442,6 +2505,9 @@
     (intersect-dyn-param c2 c1))
 
   ConstraintOps
+  (is-bottom [c]
+    c)
+
   (apply-mod [dyn-c c]
     (mod-param dyn-c c))
 
@@ -2484,7 +2550,11 @@
 
   Constraint
   (set-arity [c new-arity]
-    (.arity c new-arity)))
+    (.arity c new-arity))
+
+  ConstraintOps
+  (is-bottom [c]
+    c))
 
 (extend-type ReifiedFields
   Container
@@ -2518,6 +2588,9 @@
                   reified)))
 
   ConstraintOps
+  (is-bottom [c]
+    c)
+
   (intersect-multi [c mc]
     ;; TODO: remove after it triggers and is analyzed
     (print-err 'wut c)
@@ -2527,30 +2600,49 @@
           (.constraints mc (conj (.constraints mc) c)))))
 
 (deftype SetField [fld fld-c]
-  (assert (instance? Field fld))
-
   Stringable
   (string-list [_]
-    (list "(c/SetField " (str "(c/Field (symbol \"" (.sym fld) "\"))") " "
+    (list "(c/SetField " (either (map (instance? Field fld)
+                                      (fn [fld]
+                                        (str "(c/Field (symbol \"" (.sym fld) "\"))")))
+                                 (str fld)) " "
           (str fld-c) ")"))
 
   Container
   (map [x f]
-    (.fld-c x (f (.fld-c x))))
+    (let [new-fld (f (.fld x))]
+      (SetField (cond (= top-type new-fld)
+                        (.fld x)
+                        new-fld)
+                (f (.fld-c x)))))
 
   (map [x f embed]
-    (map (f (.fld-c x))
-         (fn [new-fld-c]
-           (.fld-c x new-fld-c))))
+    (for [new-fld (f (.fld x))
+          new-c (f (.fld-c x))]
+      (SetField (cond (= top-type new-fld)
+                        (.fld x)
+                        new-fld)
+                new-c)))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (or (= (.fld c) bottom-type)
+                (= (.fld-c c) bottom-type))
+            c))
+
   (apply-mod [mod c]
-    (intersect (apo (fn [c]
+    ;; TODO: what if you assoc an invalid field value?
+    (let [new-c (apo (fn [c]
                       (cond (instance? TypeConstraint c)
                             (Left (.type-maps c (map-vals (.type-maps c)
                                                           (fn [fld-map]
-                                                            (either (and (get fld-map fld)
-                                                                         (maybe (assoc fld-map fld fld-c)))
+                                                            (either (and (or (instance? SymbolConstraints fld)
+                                                                             (and (instance? Field fld)
+                                                                                  (get fld-map fld)))
+                                                                         (-> (assoc fld-map fld fld-c)
+                                                                             check-min-max
+                                                                             check-hash-map-attrs
+                                                                             maybe))
                                                                     fld-map)))))
 
                             (instance? ParamConstraint c)
@@ -2561,10 +2653,18 @@
                             (Right c)
 
                             (Left c)))
-                    c)
-               (TypeConstraint {UnknownType {fld top-type}} empty-list
-                               (symbol (str "field '" (.sym fld) "' required"))
-                               nothing ""))))
+                     c)
+          new-c (cata is-bottom new-c)]
+      (print-err 'test 2 new-c)
+      (cond (instance? Field fld)
+             (intersect new-c
+                        (TypeConstraint {UnknownType {fld top-type}} empty-list
+                                        (symbol (either (map (instance? Field fld)
+                                                             (fn [fld]
+                                                               (str "(c/Field (symbol \"" (.sym fld) "\"))")))
+                                                        (str fld)))
+                                        nothing ""))
+             new-c))))
 
 (defn set-field [fld c]
   (SetField fld c))
@@ -2584,6 +2684,10 @@
     (embed x))
 
   ConstraintOps
+  (is-bottom [c]
+    (either (= (.fld c) bottom-type)
+            c))
+
   (apply-mod [mod c]
     (either (map (instance? ParamConstraint c)
                  (fn [c]
