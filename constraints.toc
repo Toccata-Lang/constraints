@@ -1461,6 +1461,8 @@
   (assert (instance? TypeConstraint tc))
 
   ;; TOOD: this expression is too large. Refactor
+
+  ;; TODO: don't try to pass bottom-type up
   (let [m2 (.type-maps tc)
         prototype-cs (either (or (for [attrs1 (get m1 UnknownType)
                                        attrs2 (get m2 UnknownType)]
@@ -1588,8 +1590,8 @@
     (assert-result r (instance? Constraints r))
 
     (either (for [types-map (extract-type-map c)]
-              (let [result-c (intersect-type-maps types-map tc)]
-                (cond (and (instance? NoValues result-c)
+              (let [result-c (cata is-bottom (intersect-type-maps types-map tc))]
+                (cond (and (= bottom-type result-c)
                            (empty? (.constraints result-c)))
                       (NoValues [c tc])
                       result-c)))
@@ -1859,19 +1861,14 @@
   (intersect [mc c]
     (intersect-multi c mc))
 
-    (contents-constraint [mc]
-    (Left (either (map (some (.constraints mc) (partial instance? StaticLengthConstraint))
-                       (fn [len-c]
-                         (-> mc
-                             (extract-items-constraints (.length len-c))
-                             sum-type)))
-                  (-> (.constraints mc)
-                      (filter (fn [c]
-                                (or (instance? CollectionOf c)
-                                    (instance? InferredInner c)
-                                    (instance? ItemsConstraint c))))
-                      (map extract-contents-constraint)
-                      (reduce top-type intersect)))))
+  (contents-constraint [mc]
+    (Left (-> (.constraints mc)
+              (filter (fn [c]
+                        (or (instance? CollectionOf c)
+                            (instance? InferredInner c)
+                            (instance? ItemsConstraint c))))
+              (map extract-contents-constraint)
+              (reduce top-type intersect))))
 
   (satisfied-by [mult-c info]
     (mult-satisfied info mult-c))
@@ -2057,15 +2054,11 @@
 
   ConstraintOps
   (is-bottom [c]
-    (let [fld-cs (flat-map (vec (.type-maps c))
-                              (fn [[_ fld-map]]
-                                (flatten (vec fld-map))))]
-      (print-err 'fld-cs fld-cs)
-      (either (some (flat-map (vec (.type-maps c))
-                              (fn [[_ fld-map]]
-                                (flatten (vec fld-map))))
-                    (partial = bottom-type))
-              c)))
+    (either (some (flat-map (vec (.type-maps c))
+                            (fn [[_ fld-map]]
+                              (flatten (vec fld-map))))
+                  (partial = bottom-type))
+            c))
 
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
@@ -2655,7 +2648,6 @@
                             (Left c)))
                      c)
           new-c (cata is-bottom new-c)]
-      (print-err 'test 2 new-c)
       (cond (instance? Field fld)
              (intersect new-c
                         (TypeConstraint {UnknownType {fld top-type}} empty-list
@@ -2696,6 +2688,10 @@
 
 (defn get-field [fld]
   (GetField fld))
+
+(extend-type Field
+  ConstraintOps
+  (is-bottom [x] x))
 
 (defn full-param-consraint [c]
   (trim (cata (fn [c]
