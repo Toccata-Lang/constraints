@@ -156,7 +156,8 @@
     c)
 
   (update-var [c new-var]
-    (assert (instance? String new-var)))
+    (assert (instance? String new-var))
+    c)
 
   (set-type-name [c new-name]
     c)
@@ -1017,9 +1018,6 @@
   (is-bottom [c]
     )
 
-  (apply-mod [mod c]
-    (intersect c mod))
-
   (extract-field [c fld]
     (assert (instance? Field fld)))
 
@@ -1163,7 +1161,7 @@
   (assert (instance? ParamConstraint dyn-c))
 
   (reduce (.mods dyn-c) c (fn [c mod]
-                            (apply-mod mod c))))
+                            (intersect mod c))))
 
 (extend-type Vector
   Constraint
@@ -1211,7 +1209,6 @@
 
   ConstraintOps
   (is-bottom [c] c)
-  (apply-mod [mod _] mod)
   (intersect-param [c _] c)
   (intersect-multi [c mc] c)
   (intersect-typec [c _] c)
@@ -1225,7 +1222,6 @@
 
   ConstraintOps
   (is-bottom [c] c)
-  (apply-mod [_ c] c)
   (extract-field [x _] x)
   (intersect-param [c dyn-c] dyn-c)
   (intersect-sum [c sc] sc)
@@ -2508,9 +2504,6 @@
   ConstraintOps
   (is-bottom [c] c)
 
-  (apply-mod [dyn-c c]
-    (mod-param dyn-c c))
-
   (intersect-param [c dyn-c]
     (either (or (= c dyn-c)
                 (and (= (.arity c) (.arity dyn-c))
@@ -2618,6 +2611,14 @@
                       new-fld)
                 new-c)))
 
+  Constraint
+  (intersect [c1 c2]
+    (cond (or (instance? MultiConstraint c2)
+              (instance? SumConstraint c2)
+              (instance? TypeConstraint c2))
+          (intersect c2 c1)
+          c2))
+
   ConstraintOps
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
@@ -2655,8 +2656,6 @@
   (SetField fld c))
 
 (deftype GetField [fld]
-  (assert (instance? Field fld))
-
   Stringable
   (string-list [_]
     (list "(c/GetField " (str fld) ")"))
@@ -2668,19 +2667,43 @@
   (map [x f embed]
     (embed x))
 
+  Constraint
+  (intersect [c1 c2]
+    ;; TODO handle case where 'fld' is a Constraint
+    (cond (instance? Field fld)
+          (extract-field c2 fld)
+          top-type))
+
   ConstraintOps
   (is-bottom [c]
     (either (= (.fld c) bottom-type)
             c))
 
-  (apply-mod [mod c]
-    (either (map (instance? ParamConstraint c)
-                 (fn [c]
-                   (mod-param c mod)))
-            (extract-field c fld))))
+  (intersect-param [c dyn-c]
+    ;; TODO handle case where 'fld' is a Constraint
+    (cond (instance? Field fld)
+          (mod-param dyn-c c)
+          dyn-c))
+
+  (intersect-typec [c tc]
+    ;; TODO handle case where 'fld' is a Constraint
+    (cond (instance? Field fld)
+          (extract-field tc fld)
+          top-type))
+
+  (intersect-multi [c mc]
+    ;; TODO handle case where 'fld' is a Constraint
+    (cond (instance? Field fld)
+          (extract-field mc fld)
+          top-type)))
 
 (defn get-field [fld]
   (GetField fld))
+
+(extend-type ParamConstraint
+  ConstraintOps
+  (extract-field [dyn-c fld]
+    (mod-param dyn-c (GetField fld))))
 
 (extend-type Field
   ConstraintOps
@@ -2747,7 +2770,7 @@
 ;; ItemsConstraint           
 ;; TypeConstraint            extract-field
 ;; SumConstraint             extract-field
-;; ParamConstraint           
+;; ParamConstraint           extract-field
 ;; MultiConstraint           
 ;; StaticLengthConstraint
 ;; DynamicFields
