@@ -2700,6 +2700,42 @@
 (defn get-field [fld]
   (GetField fld))
 
+(deftype CallValue [args]
+  Stringable
+  (string-list [_]
+    (list "(c/CallValue " (to-str (interpose args "\n")) ")"))
+
+  Container
+  (map [x f]
+    (.args x (map args f)))
+
+  (map [x f embed]
+    (map (map args f embed)
+         (partial .args x)))
+
+  Constraint
+  (intersect [c1 c2]
+    (cond (instance? ParamConstraint c2)
+          (intersect c2 c1)
+          top-type))
+
+  ConstraintOps
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (some args (partial = bottom-type))
+            c))
+
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c))
+
+  (intersect-typec [c tc]
+    (print-err 'calling-typec c "\n\n" 'tc tc)
+    top-type)
+
+  (intersect-multi [c mc]
+    (print-err 'calling-multi c "\n\n" 'mc mc)
+    top-type))
+
 (extend-type ParamConstraint
   ConstraintOps
   (extract-field [dyn-c fld]
