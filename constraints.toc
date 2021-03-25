@@ -62,6 +62,8 @@
   (trim [c]
     c)
 
+  (get-type-sym [c])
+
   (set-path [c new-path]
     (assert (instance? (list-of Vector) new-path))
     (assert-result r (instance? Either r))
@@ -523,6 +525,9 @@
       x))
 
   Constraint
+  (get-type-sym [c]
+    type-sym)
+
   (set-type-name [c new-name]
     (.type-sym c new-name))
 
@@ -582,11 +587,7 @@
          (maybe x)))
 
   Constraint
-  (assertion-path [_] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Integer from:" ""] path)
-                  desired-len)))
+  (get-type-sym [_] 'Integer))
 
 (def fn-constraint (TypeConstraint {FunctionType {}} empty-list 'Fn nothing ""))
 (def sym-constraint (TypeConstraint {SymbolType {}} empty-list 'Symbol nothing ""))
@@ -632,6 +633,8 @@
                             'Future future-constraint
                             'Agent agent-constraint
                             'Opaque opaque-constraint})
+
+(def CoreValConstraint (any-of IntegerConstraint))
 
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
@@ -698,8 +701,8 @@
   (assertion-path [x] path)
 
   (format-path [c n]
-    (let [sum-sym (either (and (every (.alts c) (partial instance? TypeConstraint))
-                               (apply = (map (.alts c) .type-sym)))
+    (let [sum-sym (either (and (every (.alts c) (partial instance? CoreValConstraint))
+                               (apply = (map (.alts c) get-type-sym)))
                           "Sum Type")]
       (format-path* (cons [(str sum-sym " from") ""] path)
                     n)))
@@ -878,8 +881,6 @@
 ;;   c/ConstraintOps
 ;;   (c/intersect-typec [c tc] tc)
 ;;   (c/intersect-multi [c mc] mc))
-
-(def CoreValConstraint (any-of IntegerConstraint))
 
 (def SymbolConstraints (any-of CoreValConstraint
                                TypeConstraint
@@ -1611,6 +1612,12 @@
 
 (extend-type CoreValConstraint
   Constraint
+  (assertion-path [x] (.path x))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str (get-type-sym x)) " from:" ""] (.path x))
+                  desired-len))
+
   (extract-sym [c]
     (either (and (= (.sym c) no-symbol)
                  (maybe nothing))
@@ -2674,6 +2681,7 @@
   (intersect [c1 c2]
     (cond (or (instance? MultiConstraint c2)
               (instance? SumConstraint c2)
+              (instance? ParamConstraint c2)
               (instance? TypeConstraint c2))
           (intersect c2 c1)
           c2))
