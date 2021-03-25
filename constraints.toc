@@ -379,10 +379,12 @@
     ;; TODO: should probably generate these automatically
     Eq
     (=* [x y]
-      (and (= (get-type x) (get-type y))
-           (maybe x)))
+      (or (instance? Symbol y)
+          (and (= (get-type x) (get-type y))
+               (maybe x))))
 
     Hashable
+    ;; TODO: remove these impls after HashMapConstraint is implented
     (sha1-update [x ctxt]
       (sha1-update-type x ctxt)
       (sha1-update "no-symbol" ctxt))
@@ -541,7 +543,7 @@
                         path)
                   desired-len)))
 
-(def no-static-int
+(def no-int
   (reify
     Stringable
     (string-list [_]
@@ -561,7 +563,7 @@
 
 (deftype IntegerConstraint [static-value max min path sym var]
   ;; (assert (instance? (any-of Integer
-  ;;                            no-static-int) static-value))
+  ;;                            no-int) static-value))
   ;; (assert (instance? (any-of Integer
   ;;                            no-max-int) max))
   ;; (assert (instance? (any-of Integer
@@ -589,8 +591,32 @@
   Constraint
   (get-type-sym [_] 'Integer))
 
+(deftype SymbolConstraint [static-value path sym var]
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) static-value))
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/SymbolConstraint " (str static-value) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? SymbolConstraint y)
+         (= static-value (.static-value y))
+         (maybe x)))
+
+  Constraint
+  (get-type-sym [_] 'Symbol))
+
 (def fn-constraint (TypeConstraint {FunctionType {}} empty-list 'Fn nothing ""))
-(def sym-constraint (TypeConstraint {SymbolType {}} empty-list 'Symbol nothing ""))
+(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
 (def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
 (def seq-constraint (TypeConstraint {ListType {} VectorType {}} empty-list 'Sequence nothing ""))
@@ -600,7 +626,7 @@
                                            ArrayNodeType {}
                                            HashCollisionNodeType {}}
                                           empty-list 'HashMap nothing ""))
-(def int-constraint (IntegerConstraint no-static-int int-max int-min empty-list no-symbol ""))
+(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (TypeConstraint {MaybeType {}} empty-list 'Maybe nothing ""))
 (def set-constraint (TypeConstraint {HashSetType {(Field 'set-map) hashmap-constraint}}
                                     empty-list 'HashSet  nothing ""))
@@ -634,7 +660,8 @@
                             'Agent agent-constraint
                             'Opaque opaque-constraint})
 
-(def CoreValConstraint (any-of IntegerConstraint))
+(def CoreValConstraint (any-of IntegerConstraint
+                               SymbolConstraint))
 
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
@@ -931,26 +958,6 @@
              (maybe x)))))
 
 (def bottom-type (NoValues []))
-
-(extend-type Symbol
-  Constraint
-  (assertion-path [_] empty-list)
-
-  (format-path [_ desired-len]
-    (format-path* (list ["Symbol from" ""])
-                  desired-len))
-
-  (type-map [_ _]
-    (maybe {SymbolType {}}))
-
-  (intersect [slc c]
-    (either (or (= slc c)
-                (and (instance? Symbol c)
-                     (maybe (NoValues [slc c])))
-                (for [types-map (extract-type-map c)
-                      :when (get types-map SymbolType)]
-                  slc))
-            (NoValues [slc c]))))
 
 (deftype MultiConstraint [constraints]
   (assert (instance? Vector constraints))
@@ -1673,7 +1680,7 @@
                                        (.min y))
                        new-max (either (< (.max x) (.max y))
                                        (.max y))
-                       new-static (or (= no-static-int (.static-value x) (.static-value y))
+                       new-static (or (= no-int (.static-value x) (.static-value y))
                                       (flat-map (or (= (.static-value x) (.static-value y))
                                                     (= (.static-value y) (.static-value x)))
                                                 (fn [new-static]
@@ -1686,6 +1693,22 @@
                                          (.static-value new-static)
                                          (.min new-min)
                                          (.max new-max))))))
+            (cond (= y top-type)
+                  x
+                  (NoValues [x y]))))
+
+  ConstraintOps
+  (is-bottom [c] c))
+
+(extend-type SymbolConstraint
+  Constraint
+  (intersect [x y]
+    (either (and (instance? SymbolConstraint y)
+                 (map (or (= (.static-value x) (.static-value y))
+                          (= (.static-value y) (.static-value x)))
+                      ;; TODO: use the path from the most restrictive constraint
+                      ;; determined by satisfied-by
+                      (partial .static-value x)))
             (cond (= y top-type)
                   x
                   (NoValues [x y]))))
@@ -2164,7 +2187,7 @@
             (MultiConstraint (conj (.constraints mc) c))))
 
   (intersect-coll-of [c ic]
-    (let [new-type-map (dissoc (.type-maps c) SymbolType)]
+    (let [new-type-map (.type-maps c)]
       (either (or (and (empty? new-type-map)
                        (maybe (NoValues [ic c])))
                   (= bottom-type (intersect (extract-contents-constraint c)
@@ -2174,7 +2197,7 @@
                                        (update-var (extract-var ic)))]))))
 
   (intersect-inner [c ic]
-    (let [new-type-map (dissoc (.type-maps c) SymbolType)]
+    (let [new-type-map (.type-maps c)]
       (either (or (and (empty? new-type-map)
                        (maybe (NoValues [ic c])))
                   (= bottom-type (intersect (extract-contents-constraint c)
