@@ -615,7 +615,28 @@
   Constraint
   (get-type-sym [_] 'Symbol))
 
-(def fn-constraint (TypeConstraint {FunctionType {}} empty-list 'Fn nothing ""))
+(deftype FnConstraint [arities path sym var]
+  (assert (instance? HashMap arities))
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/FnConstraint " (str arities) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (identical x y))
+
+  Constraint
+  (get-type-sym [_] 'Fn))
+
+(def fn-constraint (FnConstraint {} empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
 (def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
@@ -661,7 +682,8 @@
                             'Opaque opaque-constraint})
 
 (def CoreValConstraint (any-of IntegerConstraint
-                               SymbolConstraint))
+                               SymbolConstraint
+                               FnConstraint))
 
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
@@ -2789,6 +2811,11 @@
 (defn get-field [fld]
   (GetField fld))
 
+(deftype fn-arity [param-consts result-const]
+  Stringable
+  (string-list [_]
+    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
+
 (deftype CallValue [args]
   Stringable
   (string-list [_]
@@ -2806,6 +2833,25 @@
   (intersect [c1 c2]
     (cond (instance? ParamConstraint c2)
           (intersect c2 c1)
+
+          (instance? FnConstraint c2)
+          (do
+            ;; (print-err "Intersecting CallValue")
+            ;; (print-err 'c1 c1)
+            ;; (print-err 'c2 c2)
+            (either (for [arity-info (or (get-in c2 [.arities (count args)])
+                                         ;; TODO: handle variadic
+                                         )]
+                      (let [checked-params (-> (zip-lists (extract-items-constraints (.param-consts arity-info))
+                                                          args)
+                                               (some (fn [[param arg]]
+                                                       (= bottom-type (intersect param arg)))))]
+                        ;; (print-err 'result (.result-const arity-info))
+                        (either (flat-map checked-params
+                                          (partial = bottom-type))
+                                (.result-const arity-info))))
+                    (NoValues [c1 c2])))
+
           top-type))
 
   ConstraintOps
@@ -2824,6 +2870,28 @@
   (intersect-multi [c mc]
     (print-err 'calling-multi c "\n\n" 'mc mc)
     top-type))
+
+(extend-type FnConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= y top-type)
+          x
+
+          (instance? FnConstraint y)
+          (either (or (identical x y)
+                      (and (empty? (.arities x))
+                           (maybe y))
+                      (and (empty? (.arities y))
+                           (maybe x)))
+                  (NoValues [x y]))
+
+          (instance? CallValue y)
+          (intersect y x)
+
+          (NoValues [x y])))
+
+  ConstraintOps
+  (is-bottom [c] c))
 
 (extend-type ParamConstraint
   ConstraintOps
