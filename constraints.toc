@@ -376,7 +376,6 @@
     (string-list [_]
       (list "c/no-symbol"))
 
-    ;; TODO: should probably generate these automatically
     Eq
     (=* [x y]
       (or (instance? Symbol y)
@@ -615,6 +614,77 @@
   Constraint
   (get-type-sym [_] 'Symbol))
 
+(def no-string
+  (reify
+    Stringable
+    (string-list [_]
+      (list "c/no-string"))
+
+    Eq
+    (=* [x y]
+      (or (instance? String y)
+          (and (= (get-type x) (get-type y))
+               (maybe x))))
+
+    Hashable
+    ;; TODO: remove these impls after HashMapConstraint is implented
+    (sha1-update [x ctxt]
+      (sha1-update-type x ctxt)
+      (sha1-update "no-symbol" ctxt))
+
+    (sha1 [x]
+      (let [ctxt (sha1-init)]
+        (sha1-update x ctxt)
+        (sha1-finalize ctxt)))))
+
+(deftype StrBuffConstraint [static-value path sym var]
+  ;; (assert (instance? (any-of String
+  ;;                            no-string) static-value))
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/StrBuffConstraint " (str static-value) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? StrBuffConstraint y)
+         (= static-value (.static-value y))
+         (maybe x)))
+
+  Constraint
+  (get-type-sym [_] 'String))
+
+(deftype SubStrConstraint [static-value path sym var]
+  ;; (assert (instance? (any-of String
+  ;;                            no-string) static-value))
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/SubStrConstraint " (str static-value) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? SubStrConstraint y)
+         (= static-value (.static-value y))
+         (maybe x)))
+
+  Constraint
+  (get-type-sym [_] 'String))
+
 (deftype FnConstraint [arities path sym var]
   (assert (instance? HashMap arities))
   (assert (instance? (list-of Vector) path))
@@ -635,55 +705,6 @@
 
   Constraint
   (get-type-sym [_] 'Fn))
-
-(def fn-constraint (FnConstraint {} empty-list no-symbol ""))
-(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
-(def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
-(def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
-(def seq-constraint (TypeConstraint {ListType {} VectorType {}} empty-list 'Sequence nothing ""))
-(def string-constraint (TypeConstraint {StringBufferType {} SubStringType {}}
-                                         empty-list 'String nothing ""))
-(def hashmap-constraint (TypeConstraint {BitmapIndexedType {}
-                                           ArrayNodeType {}
-                                           HashCollisionNodeType {}}
-                                          empty-list 'HashMap nothing ""))
-(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
-(def maybe-constraint  (TypeConstraint {MaybeType {}} empty-list 'Maybe nothing ""))
-(def set-constraint (TypeConstraint {HashSetType {(Field 'set-map) hashmap-constraint}}
-                                    empty-list 'HashSet  nothing ""))
-(def agent-constraint (TypeConstraint {AgentType {}} empty-list 'Agent  nothing ""))
-(def promise-constraint (TypeConstraint {PromiseType {}} empty-list 'Promise  nothing ""))
-(def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
-(def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
-(def hash-coll-constraint (TypeConstraint {HashCollisionNodeType {}}
-                                          empty-list 'HashCollisionNode nothing ""))
-(def array-constraint (TypeConstraint {ArrayNodeType {}} empty-list 'ArrayNode nothing ""))
-(def bitmap-constraint (TypeConstraint {BitmapIndexedType {}} empty-list 'BitmapIndexedNode nothing ""))
-(def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
-(def substr-constraint (TypeConstraint {SubStringType {}} empty-list 'String nothing ""))
-(def strbuf-constraint (TypeConstraint {StringBufferType {}} empty-list 'String nothing ""))
-
-(def core-type-constraints {'Integer int-constraint
-                            'StringBuffer strbuf-constraint
-                            'SubString substr-constraint
-                            'FnArity arity-constraint
-                            'BitmapIndexedNode bitmap-constraint
-                            'ArrayNode array-constraint
-                            'HashCollisionNode hash-coll-constraint
-                            'Fn fn-constraint
-                            'List list-constraint
-                            'Maybe maybe-constraint
-                            'Vector vect-constraint
-                            'Symbol sym-constraint
-                            'HashMap hashmap-constraint
-                            'Promise promise-constraint
-                            'Future future-constraint
-                            'Agent agent-constraint
-                            'Opaque opaque-constraint})
-
-(def CoreValConstraint (any-of IntegerConstraint
-                               SymbolConstraint
-                               FnConstraint))
 
 (deftype StaticLengthConstraint [length path sym var]
   (assert (instance? Integer length))
@@ -720,6 +741,14 @@
     (list "<NoFields>")))
 
 (def no-fields (NoFields))
+
+(def StrConstraint (any-of StrBuffConstraint
+                           SubStrConstraint))
+
+(def CoreValConstraint (any-of IntegerConstraint
+                               SymbolConstraint
+                               StrConstraint
+                               FnConstraint))
 
 ;; TODO: add 'typ-sym' and make it a be optional for all constraints
 (deftype SumConstraint [alts path sym var]
@@ -803,6 +832,51 @@
                               (satisfied-by c-c info-c))))))
         (some alts (fn [c]
                      (satisfied-by c info))))))
+
+(def fn-constraint (FnConstraint {} empty-list no-symbol ""))
+(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
+(def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
+(def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
+(def seq-constraint (TypeConstraint {ListType {} VectorType {}} empty-list 'Sequence nothing ""))
+(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
+(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
+(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
+                                      empty-list nothing ""))
+(def hashmap-constraint (TypeConstraint {BitmapIndexedType {}
+(def hash-coll-constraint (TypeConstraint {HashCollisionNodeType {}}
+                                          empty-list 'HashCollisionNode nothing ""))
+(def array-constraint (TypeConstraint {ArrayNodeType {}} empty-list 'ArrayNode nothing ""))
+(def bitmap-constraint (TypeConstraint {BitmapIndexedType {}} empty-list 'BitmapIndexedNode nothing ""))
+                                           ArrayNodeType {}
+                                           HashCollisionNodeType {}}
+                                          empty-list 'HashMap nothing ""))
+(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
+(def maybe-constraint  (TypeConstraint {MaybeType {}} empty-list 'Maybe nothing ""))
+(def set-constraint (TypeConstraint {HashSetType {(Field 'set-map) hashmap-constraint}}
+                                    empty-list 'HashSet  nothing ""))
+(def agent-constraint (TypeConstraint {AgentType {}} empty-list 'Agent  nothing ""))
+(def promise-constraint (TypeConstraint {PromiseType {}} empty-list 'Promise  nothing ""))
+(def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
+(def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
+(def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
+
+(def core-type-constraints {'Integer int-constraint
+                            'StringBuffer strbuff-constraint
+                            'SubString substr-constraint
+                            'FnArity arity-constraint
+                            'BitmapIndexedNode bitmap-constraint
+                            'ArrayNode array-constraint
+                            'HashCollisionNode hash-coll-constraint
+                            'Fn fn-constraint
+                            'List list-constraint
+                            'Maybe maybe-constraint
+                            'Vector vect-constraint
+                            'Symbol sym-constraint
+                            'HashMap hashmap-constraint
+                            'Promise promise-constraint
+                            'Future future-constraint
+                            'Agent agent-constraint
+                            'Opaque opaque-constraint})
 
 (deftype DynamicFields [type-c fields path sym var]
   (assert (instance? TypeConstraint type-c))
@@ -1129,6 +1203,9 @@
   (is-bottom [c]
     )
 
+  (intersect-str [c str-c]
+    (assert (instance? StrConstraint str-c)))
+
   (extract-field [c fld]
     (assert (instance? Field fld)))
 
@@ -1319,6 +1396,7 @@
     (Left x))
 
   ConstraintOps
+  (intersect-str [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
   (intersect-multi [c mc] c)
@@ -1332,6 +1410,7 @@
     (Left x))
 
   ConstraintOps
+  (intersect-str [_ c] c)
   (is-bottom [c] c)
   (extract-field [x _] x)
   (intersect-param [c dyn-c] dyn-c)
@@ -1738,6 +1817,30 @@
   ConstraintOps
   (is-bottom [c] c))
 
+(extend-type StrConstraint
+  Constraint
+  (intersect [x y]
+    (intersect-str y x))
+
+  ConstraintOps
+  (intersect-coll-of [str-c c]
+    (intersect-str (.contents c) strbuff-constraint))
+
+  (intersect-inner [str-c c]
+    (intersect-str (.contents c) strbuff-constraint))
+
+  (intersect-str [y x]
+    (either (map (or (= (.static-value x) (.static-value y))
+                     (= (.static-value y) (.static-value x)))
+                 ;; TODO: use the path from the most restrictive constraint
+                 ;; determined by satisfied-by
+                 (partial .static-value x))
+            (cond (= y top-type)
+                  x
+                  (NoValues [x y]))))
+
+  (is-bottom [c] c))
+
 (extend-type ItemsConstraint
   Container
   (map [x f]
@@ -2117,10 +2220,8 @@
                   (.path new-path)))))
 
   (contents-constraint [c]
-    (Left (cond (or (get (.type-maps c) StringBufferType)
-                    (get (.type-maps c) SubStringType))
-                c
-                top-type)))
+    (Left (either (instance? StrConstraint c)
+                  top-type)))
 
   (set-type [c tc]
     ;; only used to switch ListType to VectorType or vice versa
@@ -2279,6 +2380,9 @@
     (either (= (.contents c) bottom-type)
             c))
 
+  (intersect-str [c str-c]
+    (intersect-str (.contents c) str-c))
+
   (intersect-multi [c mc]
     (let [new-c (intersect (.contents c)
                            (extract-contents-constraint mc))]
@@ -2379,8 +2483,6 @@
 
   (type-map [c _]
     (maybe {ListType {}
-            StringBufferType {}
-            SubStringType {}
             MaybeType {}
             BitmapIndexedType {}
             ArrayNodeType {}
@@ -2396,6 +2498,9 @@
     (intersect-coll-of c cc))
 
   ConstraintOps
+  (intersect-str [c str-c]
+    (intersect-str (.contents c) str-c))
+
   (is-bottom [c]
     (either (= (.contents c) bottom-type)
             c))
@@ -2500,6 +2605,9 @@
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (some (.alts c) (partial = bottom-type))
             c))
+
+  (intersect-str [c str-c]
+    (intersect-sum str-c c))
 
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
@@ -2614,6 +2722,9 @@
 
   ConstraintOps
   (is-bottom [c] c)
+
+  (intersect-str [pc str-c]
+    (mod-param pc str-c))
 
   (intersect-param [c dyn-c]
     (either (or (= c dyn-c)
