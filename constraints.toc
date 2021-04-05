@@ -707,6 +707,50 @@
   Constraint
   (get-type-sym [_] 'Maybe))
 
+(deftype AgentConstraint [contents path sym var]
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/AgentConstraint " (str contents) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? AgentConstraint y)
+         (= contents (.contents y))
+         (maybe x)))
+
+  Constraint
+  (get-type-sym [_] 'Agent))
+
+(deftype PromiseConstraint [contents path sym var]
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/PromiseConstraint " (str contents) " "
+          "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? PromiseConstraint y)
+         (= contents (.contents y))
+         (maybe x)))
+
+  Constraint
+  (get-type-sym [_] 'Promise))
+
 (deftype FnConstraint [arities path sym var]
   (assert (instance? HashMap arities))
   (assert (instance? (list-of Vector) path))
@@ -771,6 +815,8 @@
                                SymbolConstraint
                                StrConstraint
                                MaybeConstraint
+                               AgentConstraint
+                               PromiseConstraint
                                FnConstraint))
 
 ;; TODO: add 'typ-sym' and make it a be optional for all constraints
@@ -877,8 +923,8 @@
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
 (def set-constraint (TypeConstraint {HashSetType {(Field 'set-map) hashmap-constraint}}
                                     empty-list 'HashSet  nothing ""))
-(def agent-constraint (TypeConstraint {AgentType {}} empty-list 'Agent  nothing ""))
-(def promise-constraint (TypeConstraint {PromiseType {}} empty-list 'Promise  nothing ""))
+(def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
+(def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
 (def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
 (def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
 (def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
@@ -1226,6 +1272,31 @@
   (is-bottom [c]
     )
 
+  (intersect-fn [c fn-c]
+    (assert (instance? FnConstraint fn-c))
+
+    (NoValues [c fn-c]))
+
+  (intersect-int [c int-c]
+    (assert (instance? IntegerConstraint int-c))
+
+    (NoValues [c int-c]))
+
+  (intersect-sym [c sym-c]
+    (assert (instance? SymbolConstraint sym-c))
+
+    (NoValues [c sym-c]))
+
+  (intersect-promise [c promise-c]
+    (assert (instance? PromiseConstraint promise-c))
+
+    (NoValues [c promise-c]))
+
+  (intersect-agent [c agent-c]
+    (assert (instance? AgentConstraint agent-c))
+
+    (NoValues [c agent-c]))
+
   (intersect-str [c str-c]
     (assert (instance? StrConstraint str-c))
 
@@ -1427,7 +1498,12 @@
 
   ConstraintOps
   (intersect-str [c _] c)
+  (intersect-int [c _] c)
+  (intersect-sym [c _] c)
   (intersect-maybe [c _] c)
+  (intersect-agent [c _] c)
+  (intersect-promise [c _] c)
+  (intersect-fn [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
   (intersect-multi [c mc] c)
@@ -1442,7 +1518,12 @@
 
   ConstraintOps
   (intersect-str [_ c] c)
+  (intersect-int [_ c] c)
+  (intersect-sym [_ c] c)
   (intersect-maybe [_ c] c)
+  (intersect-agent [_ c] c)
+  (intersect-promise [_ c] c)
+  (intersect-fn [_ c] c)
   (is-bottom [c] c)
   (extract-field [x _] x)
   (intersect-param [c dyn-c] dyn-c)
@@ -1808,45 +1889,45 @@
 (extend-type IntegerConstraint
   Constraint
   (intersect [x y]
-    (either (and (instance? IntegerConstraint y)
-                 (let [new-min (either (> (.min x) (.min y))
-                                       (.min y))
-                       new-max (either (< (.max x) (.max y))
-                                       (.max y))
-                       new-static (or (= no-int (.static-value x) (.static-value y))
-                                      (flat-map (or (= (.static-value x) (.static-value y))
-                                                    (= (.static-value y) (.static-value x)))
-                                                (fn [new-static]
-                                                  (and (<= new-min new-static new-max)
-                                                       (maybe new-static)))))]
-                   (map new-static (fn [new-static]
-                                     ;; TODO: use the path from the most restrictive constraint
-                                     ;; determined by satisfied-by
-                                     (-> x
-                                         (.static-value new-static)
-                                         (.min new-min)
-                                         (.max new-max))))))
-            (cond (= y top-type)
-                  x
-                  (NoValues [x y]))))
+    (intersect-int y x))
 
   ConstraintOps
+  (intersect-int [y x]
+    (let [new-min (either (> (.min x) (.min y))
+                          (.min y))
+          new-max (either (< (.max x) (.max y))
+                          (.max y))
+          new-static (or (= no-int (.static-value x) (.static-value y))
+                         (flat-map (or (= (.static-value x) (.static-value y))
+                                       (= (.static-value y) (.static-value x)))
+                                   (fn [new-static]
+                                     (and (<= new-min new-static new-max)
+                                          (maybe new-static)))))]
+      (either (map new-static (fn [new-static]
+                                ;; TODO: use the path from the most restrictive constraint
+                                ;; determined by satisfied-by
+                                (-> x
+                                    (.static-value new-static)
+                                    (.min new-min)
+                                    (.max new-max))))
+              (NoValues [x y]))))
+
   (is-bottom [c] c))
 
 (extend-type SymbolConstraint
   Constraint
   (intersect [x y]
-    (either (and (instance? SymbolConstraint y)
-                 (map (or (= (.static-value x) (.static-value y))
-                          (= (.static-value y) (.static-value x)))
-                      ;; TODO: use the path from the most restrictive constraint
-                      ;; determined by satisfied-by
-                      (partial .static-value x)))
-            (cond (= y top-type)
-                  x
-                  (NoValues [x y]))))
+    (intersect-sym y x))
 
   ConstraintOps
+  (intersect-sym [x y]
+    (either (map (or (= (.static-value x) (.static-value y))
+                     (= (.static-value y) (.static-value x)))
+                 ;; TODO: use the path from the most restrictive constraint
+                 ;; determined by satisfied-by
+                 (partial .static-value x))
+            (NoValues [x y])))
+
   (is-bottom [c] c))
 
 (extend-type StrConstraint
@@ -1872,6 +1953,14 @@
   (is-bottom [c] c))
 
 (extend-type MaybeConstraint
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
+  (map [x f embed]
+    (map (f (.contents x))
+         (partial .contents x)))
+
   Constraint
   (intersect [x y]
     (intersect-maybe y x))
@@ -1888,6 +1977,78 @@
               (.contents x contents))))
 
   (intersect-maybe [y x]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c))
+
+  (is-bottom [c]
+    (either (= bottom-type (.contents c))
+              c)))
+
+(extend-type PromiseConstraint
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
+  (map [x f embed]
+    (map (f (.contents x))
+         (partial .contents x)))
+
+  Constraint
+  (intersect [x y]
+    (intersect-promise y x))
+
+  ConstraintOps
+  (intersect-coll-of [x y]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-inner [x y]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-promise [y x]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c))
+
+  (is-bottom [c]
+    (either (= bottom-type (.contents c))
+              c)))
+
+(extend-type AgentConstraint
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
+  (map [x f embed]
+    (map (f (.contents x))
+         (partial .contents x)))
+
+  Constraint
+  (intersect [x y]
+    (intersect-agent y x))
+
+  ConstraintOps
+  (intersect-coll-of [x y]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-inner [x y]
+    (let [contents (intersect (.contents x) (.contents y))]
+      (either (= bottom-type contents)
+              (.contents x contents))))
+
+  (intersect-agent [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
               (.contents x contents))))
@@ -2394,6 +2555,8 @@
                                    ArrayNodeType {}
                                    HashCollisionNodeType {}}
                                   (.path c) 'CoreContainers (.sym c) (extract-var c))
+                  (AgentConstraint top-type (.path c) (.sym c) (extract-var c))
+                  (PromiseConstraint top-type (.path c) (.sym c) (extract-var c))
                   (MaybeConstraint top-type (.path c) (.sym c) (extract-var c))]
                  (.path c) (.sym c) (extract-var c)))
 
@@ -2441,6 +2604,12 @@
 
   (intersect-str [c str-c]
     (intersect-inner str-c c))
+
+  (intersect-promise [c promise-c]
+    (intersect-inner promise-c c))
+
+  (intersect-agent [c agent-c]
+    (intersect-inner agent-c c))
 
   (intersect-maybe [c maybe-c]
     (intersect-inner maybe-c c))
@@ -2548,10 +2717,8 @@
             BitmapIndexedType {}
             ArrayNodeType {}
             HashCollisionNodeType {}
-            PromiseType {}
             HashSetType {(Field 'set-map) hashmap-constraint}
             FutureType {}
-            AgentType {}
             FunctionType {}
             VectorType {}}))
 
@@ -2564,6 +2731,12 @@
 
   (intersect-maybe [c maybe-c]
     (intersect-coll-of maybe-c c))
+
+  (intersect-promise [c promise-c]
+    (intersect-coll-of promise-c c))
+
+  (intersect-agent [c agent-c]
+    (intersect-coll-of agent-c c))
 
   (is-bottom [c]
     (either (= (.contents c) bottom-type)
@@ -2670,11 +2843,26 @@
     (either (some (.alts c) (partial = bottom-type))
             c))
 
-  (intersect-str [c str-c]
-    (intersect-sum str-c c))
+  (intersect-int [sum-c c]
+    (intersect-sum c sum-c))
 
-  (intersect-maybe [c maybe-c]
-    (intersect-sum maybe-c c))
+  (intersect-fn [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-sym [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-str [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-maybe [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-promise [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-agent [sum-c c]
+    (intersect-sum c sum-c))
 
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
@@ -2788,13 +2976,31 @@
     (intersect-param c2 c1))
 
   ConstraintOps
-  (is-bottom [c] c)
+  (is-bottom [c]
+    ;; TODO: need this?
+    ;; (either (some (.mods c) (partial = bottom-type)))
+    c)
+
+  (intersect-int [pc int-c]
+    (mod-param pc int-c))
+
+  (intersect-fn [pc fn-c]
+    (mod-param pc fn-c))
+
+  (intersect-sym [pc sym-c]
+    (mod-param pc sym-c))
 
   (intersect-str [pc str-c]
     (mod-param pc str-c))
 
   (intersect-maybe [pc maybe-c]
     (mod-param pc maybe-c))
+
+  (intersect-promise [pc promise-c]
+    (mod-param pc promise-c))
+
+  (intersect-agent [pc agent-c]
+    (mod-param pc agent-c))
 
   (intersect-param [c dyn-c]
     (either (or (= c dyn-c)
@@ -3041,37 +3247,34 @@
     (either (some args (partial = bottom-type))
             c))
 
+  (intersect-fn [y x]
+    (intersect y x))
+
   (intersect-param [c dyn-c]
     (mod-param dyn-c c))
 
   (intersect-typec [c tc]
-    (print-err 'calling-typec c "\n\n" 'tc tc)
+    (print-err 'calling-typec _FILE_ _LINE_ c "\n\n" 'tc tc)
     top-type)
 
   (intersect-multi [c mc]
-    (print-err 'calling-multi c "\n\n" 'mc mc)
+    (print-err 'calling-multi _FILE_ _LINE_ c "\n\n" 'mc mc)
     top-type))
 
 (extend-type FnConstraint
   Constraint
   (intersect [x y]
-    (cond (= y top-type)
-          x
-
-          (instance? FnConstraint y)
-          (either (or (identical x y)
-                      (and (empty? (.arities x))
-                           (maybe y))
-                      (and (empty? (.arities y))
-                           (maybe x)))
-                  (NoValues [x y]))
-
-          (instance? CallValue y)
-          (intersect y x)
-
-          (NoValues [x y])))
+    (intersect-fn y x))
 
   ConstraintOps
+  (intersect-fn [y x]
+    (either (or (=* x y)
+                (and (empty? (.arities x))
+                     (maybe y))
+                (and (empty? (.arities y))
+                     (maybe x)))
+            (NoValues [x y])))
+
   (is-bottom [c] c))
 
 (extend-type ParamConstraint
