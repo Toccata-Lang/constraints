@@ -996,7 +996,8 @@
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (TypeConstraint {VectorType {}} empty-list 'Vector nothing ""))
 (def list-constraint (TypeConstraint {ListType {}} empty-list 'List nothing ""))
-(def seq-constraint (TypeConstraint {ListType {} VectorType {}} empty-list 'Sequence nothing ""))
+(def seq-constraint (SumConstraint [vect-constraint list-constraint]
+                                   empty-list nothing ""))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
@@ -2930,6 +2931,9 @@
     (intersect-sum c sum-c))
 
   (intersect-agent [sum-c c]
+    (intersect-sum c sum-c))
+
+  (intersect-typec [sum-c c]
     (intersect-sum c sum-c))
 
   (extract-field [c fld]
