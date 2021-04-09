@@ -209,9 +209,8 @@
   (set-type-name [c new-name]
     c)
 
-  ;; This is only used for calls to seq and vec. And there's not enough benefit to
-  ;; implementing them with recursion schemes
-  (set-type [c tc]
+  ;; This is only used for calls to seq and vec.
+  (set-collection-type [c tc old-c]
     (trim (intersect c tc)))
 
   (satisfied-by [c info]
@@ -226,6 +225,11 @@
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
 
+(defn set-type [c tc]
+  (para (fn [c old-c]
+          (set-collection-type c tc old-c))
+        c))
+
 (defn extract-tail-constraint [c]
   (para (comp trim get-tail-constraint)
         ;; TODO: remove this trim evenutally
@@ -237,7 +241,8 @@
          ;; TODO: remove this trim evenutally
          (trim c)))
   ([c n]
-   (old-extract-items-constraints c n)))
+   (-> (trim c)
+       (old-extract-items-constraints n))))
 
 (defn update-type-name [c new-name]
   (cata (fn [c]
@@ -491,7 +496,7 @@
                        (.tail-constraint (.tail-constraint tail-c)))))
             ic))
 
-  (set-type [c tc]
+  (set-collection-type [c tc old-c]
     (-> c
         (.tail-constraint (set-type (.tail-constraint c) tc))
         (intersect tc)
@@ -506,6 +511,9 @@
   (format-path [x desired-len]
     (format-path* (cons ["Sequence from" ""] path)
                   desired-len)))
+
+;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
+(def empty-items-constraint)
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
   ;; TODO: change back to TypeMap
@@ -560,7 +568,7 @@
 
     Stringable
     (string-list [_]
-      (list "c/no-static-int"))
+      (list "c/no-int"))
 
     Hashable
     ;; TODO: remove these impls after HashMapConstraint is implented
@@ -748,7 +756,7 @@
 
   (get-type-sym [_] 'HashMap)
 
-  (set-type [c tc]
+  (set-collection-type [c tc old-c]
     ;; TODO: finish
     top-type))
 
@@ -1208,6 +1216,7 @@
              (maybe x)))))
 
 (def bottom-type (NoValues []))
+(def empty-items-constraint (ItemsConstraint [] bottom-type empty-list nothing ""))
 
 (deftype MultiConstraint [constraints]
   (assert (instance? Vector constraints))
@@ -1272,9 +1281,8 @@
                 first)
             []))
 
-  (set-type [c tc]
-    (trim (MultiConstraint (map constraints (fn [inner-c]
-                                              (set-type inner-c tc))))))
+  (set-collection-type [c tc old-c]
+    (trim c))
 
   (extract-var [_]
     (either (some constraints (fn [c]
@@ -1563,8 +1571,7 @@
     (collection-of x))
 
   (old-extract-items-constraints [c n]
-    (-> c
-        extract-items-constraints
+    (-> (extract-items-constraints c)
         (comp (repeat n top-type))
         (take n)))
 
@@ -2495,7 +2502,7 @@
     (Left (either (instance? StrConstraint c)
                   top-type)))
 
-  (set-type [c tc]
+  (set-collection-type [c tc old-c]
     ;; only used to switch ListType to VectorType or vice versa
     (either (or (and (= top-type tc)
                      (maybe c))
@@ -2614,8 +2621,8 @@
 
                   (either (map (.sym c) (partial .sym inner-c))
                           (.sym inner-c no-symbol)))))
-        (SumConstraint [(TypeConstraint {VectorType {} ListType {}}
-                                        empty-list 'Sequence nothing "")
+        (SumConstraint [list-constraint
+                        vect-constraint
                         bitmap-constraint
                         array-constraint
                         hash-coll-constraint
@@ -2862,13 +2869,8 @@
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
 
-  (set-type [c tc]
-    (-> c
-        (.alts (-> (.alts c)
-                   (map (fn [inner-c]
-                          (set-type inner-c tc)))
-                   (remove (partial = bottom-type))))
-        trim))
+  (set-collection-type [c tc old-c]
+    (trim c))
 
   (intersect [sc c]
     (intersect-sum c sc))
@@ -2896,6 +2898,9 @@
 
   (contents-constraint [c]
     (Right c))
+
+  (get-tail-constraint [c old-c]
+    (sum-type (.alts c)))
 
   ConstraintOps
   (is-bottom [c]
@@ -2983,7 +2988,7 @@
   (update-sym [x sym] (.sym x (maybe sym)))
   (update-var [x v] (.var x v))
   (collection-of [x] (Left top-type))
-  (set-type [c _] c)
+  (set-collection-type [c _ _] c)
 
   ConstraintOps
   (intersect-typec [c tc]
@@ -3032,8 +3037,8 @@
   (set-arity [c new-arity]
     (.arity c new-arity))
 
-  (set-type [c tc]
-    (mod-param c (SetType tc)))
+  (set-collection-type [c tc old-c]
+    (mod-param old-c (SetType tc)))
 
   (intersect [c1 c2]
     (intersect-param c2 c1))
