@@ -1575,15 +1575,19 @@
   (conj-multi [c mc]
     (assert (instance? MultiConstraint mc))))
 
-(defn conflicting-assertions [failing-constraint file-name line-number]
-  (apply print-err (list* "Conflicting assertions"
+(defn conflicting-assertions
+  ([failing-constraint loc]
+   (conflicting-assertions failing-constraint (.file loc) (.line loc)))
+
+  ([failing-constraint file-name line-number]
+   (apply print-err (list* "Conflicting assertions"
                            (either (= "" file-name)
                                    (str "at " file-name ": " line-number))
                            "\n"
                            (-> failing-constraint
                                ;; TODO: add file-name/line-number to empty paths
                                (format-path 0))))
-  nothing)
+   nothing))
 
 (defn apply-param-mods [c dyn-c]
   (assert (instance? ParamConstraint dyn-c))
@@ -2221,7 +2225,10 @@
     (mod-param dyn-c c))
 
   (is-bottom [c]
-    (either (some (.items c) (partial = bottom-type))
+    (either (or (some (.items c) (partial = bottom-type))
+                (flat-map (= bottom-type (.tail-c c))
+                          (fn [c]
+                            (first (.constraints c)))))
             c)))
 
 (extend-type MaybeConstraint
