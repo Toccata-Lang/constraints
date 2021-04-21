@@ -64,7 +64,7 @@
 (def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
 (def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
 (def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
-(def ItemsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ItemsConstraintType};"))
+;; TODO: add ListConstraintType VectorConstraintType, etc.
 (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
 (def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
     StaticLengthConstraintType};"))
@@ -298,7 +298,7 @@
 
 ;; TODO: constraints to add
 ;; number of args the target of a call takes
-;; min count (instead of ItemsConstraint)
+;; min count
 ;; keys required in a hash map
 
 (defn format-path* [path desired-len]
@@ -466,54 +466,8 @@
 
 (def coll-of-any (CollectionOf top-type empty-list nothing ""))
 
-(deftype ItemsConstraint [items-constraints tail-constraint path sym var]
-  (assert (instance? Vector items-constraints))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/ItemsConstraint\n[" (to-str (interpose items-constraints "\n"))
-          "]\n" (str tail-constraint) "\n(list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" "\")"))
-
-  Constraint
-  (get-type-num [c]
-    UnknownType)
-
-  (is-collection? [c]
-    (maybe c))
-
-  (trim [ic]
-    (either (map (instance? ItemsConstraint tail-constraint)
-                 (fn [tail-c]
-                   (-> ic
-                       (.items-constraints (comp items-constraints
-                                                 (.items-constraints tail-c)))
-                       (.tail-constraint (.tail-constraint tail-c)))))
-            ic))
-
-  (set-collection-type [c tc old-c]
-    (-> c
-        (.items-constraints (.items-constraints old-c))
-        (intersect tc)
-        trim))
-
-  (assertion-path [_] path)
-
-  (type-map [_ _]
-    (maybe {ListType {}}))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Sequence from" ""] path)
-                  desired-len)))
-
 ;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
-(def empty-items-constraint)
+(def empty-list-constraint)
 
 (deftype TypeConstraint [type-maps path type-sym sym var]
   ;; TODO: change back to TypeMap
@@ -795,6 +749,9 @@
                        (.tail-c (.tail-c tail-c)))))
             vc)))
 
+;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
+(def empty-list-constraint)
+
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
@@ -970,7 +927,6 @@
                            SubStrConstraint))
 
 (def SeqConstraint (any-of VectorConstraint
-                           ItemsConstraint
                            ListConstraint))
 
 (def CoreValConstraint (any-of IntegerConstraint
@@ -1075,8 +1031,8 @@
 
 (def fn-constraint (FnConstraint {} empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
-(def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
-(def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
+(def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
+(def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
 (def seq-constraint (SumConstraint [vect-constraint list-constraint]
                                    empty-list nothing ""))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
@@ -1253,7 +1209,6 @@
                                TypeConstraint
                                InferredInner
                                StaticConstraints
-                               ItemsConstraint
                                CollectionOf
                                SumConstraint
                                DynamicConstraint))
@@ -1298,7 +1253,8 @@
              (maybe x)))))
 
 (def bottom-type (NoValues []))
-(def empty-items-constraint (ItemsConstraint [] bottom-type empty-list nothing ""))
+(def empty-list-constraint (ListConstraint [] bottom-type empty-list nothing ""))
+(def empty-vector-constraint (VectorConstraint [] bottom-type empty-list nothing ""))
 
 (deftype MultiConstraint [constraints]
   (assert (instance? Vector constraints))
@@ -1500,13 +1456,6 @@
   (extract-field [c fld]
     (assert (instance? Field fld)))
 
-  (items-satisfied [info c]
-    (assert (instance? ValueConstraint info))
-    (assert (instance? ItemsConstraint c))
-    (assert-result r (instance? (maybe-of ValueConstraint) r))
-
-    nothing)
-
   (mult-satisfied [info c]
     (assert (instance? ValueConstraint info))
     (assert (instance? MultiConstraint c))
@@ -1604,16 +1553,6 @@
 
     (intersect (update-var c (extract-var ic)) ic))
 
-  (=-items-constraint [y x]
-    (assert (instance? ItemsConstraint x))
-    nothing)
-
-  (intersect-itemsc [c ic]
-    (assert (instance? ItemsConstraint ic))
-    (assert-result r (instance? Constraints r))
-
-    (intersect (update-var c (extract-var ic)) ic))
-
   (intersect-multi [c mc]
     (assert (instance? MultiConstraint mc))
     (assert-result r (instance? Constraints r))
@@ -1652,7 +1591,7 @@
     (map v trim))
 
   (intersect [v c]
-    (intersect (ItemsConstraint v coll-of-any empty-list nothing (extract-var c)) c)))
+    (intersect (vect-constraint v coll-of-any empty-list nothing (extract-var c)) c)))
 
 (extend-type Constraints
   Container
@@ -1732,7 +1671,6 @@
   (intersect-coll-of [c cc] cc)
   (intersect-static-len [c slc] slc)
   (intersect-inner [c ic] ic)
-  (intersect-itemsc [c ic] ic)
   (intersect-multi [c mc] mc)
   (conj-multi [c mc]
     (maybe mc)))
@@ -1944,9 +1882,6 @@
     (NoValues [c vect-c]))
 
   (intersect-inner [c ic]
-    (NoValues [c ic]))
-
-  (intersect-itemsc [c ic]
     (NoValues [c ic])))
 
 (extend-type IntegerConstraint
@@ -2252,12 +2187,6 @@
                     (either (= bottom-type new-tail)
                             new-ic)))))
 
-  (intersect-itemsc [c ic]
-    (assert (instance? ItemsConstraint ic))
-
-    (intersect-list c (ListConstraint (.items-constraints ic) (.tail-constraint ic)
-                                      (.path ic) no-symbol (.var ic))))
-
   ;; TODO: might bring something like this back in because 'get' called on a vector
   ;; (intersect-typec [c tc]
   ;;   (either (map (get-in tc [.type-maps UnknownType])
@@ -2429,12 +2358,6 @@
                     (either (= bottom-type new-tail)
                             new-ic)))))
 
-  (intersect-itemsc [c ic]
-    (assert (instance? ItemsConstraint ic))
-
-    (intersect-vector c (VectorConstraint (.items-constraints ic) (.tail-constraint ic)
-                                          (.path ic) no-symbol (.var ic))))
-
   ;; TODO: might bring something like this back in because 'get' called on a vector
   ;; (intersect-typec [c tc]
   ;;   (either (map (get-in tc [.type-maps UnknownType])
@@ -2572,162 +2495,6 @@
     (either (= bottom-type (.contents c))
               c)))
 
-(extend-type ItemsConstraint
-  Container
-  (map [x f]
-    (-> x
-        (.tail-constraint (f (.tail-constraint x)))
-        (.items-constraints (map (.items-constraints x) f))))
-
-  (map [x f embed]
-    (for [new-tail (f (.tail-constraint x))
-          new-items (map (.items-constraints x) f embed)]
-      (-> x
-          (.tail-constraint new-tail)
-          (.items-constraints new-items))))
-
-  Eq
-  (=* [x y]
-    (=-items-constraint y x))
-
-  ConstraintOps
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (or (some (.items-constraints c) (partial = bottom-type))
-                (= bottom-type (.tail-constraint c)))
-            c))
-
-  (items-satisfied [info c]
-    (let [c-items (.items-constraints c)
-          info-items (extract-items-constraints info (count c-items))]
-      (and (<= (count c-items) (count (.items-constraints info)))
-           (every (zip-lists c-items info-items)
-                  (fn [[c info]]
-                    (satisfied-by c info)))
-           (satisfied-by (.tail-constraint c) (.tail-constraint info))
-           (maybe info))))
-
-  (intersect-coll-of [c cc]
-    (let [new-items (map (.items-constraints c)
-                         (fn [c]
-                           (-> (.contents cc)
-                               (intersect c)
-                               (update-var (extract-var c)))))
-          new-tail (either (= (.tail-constraint c) bottom-type)
-                           (intersect cc (.tail-constraint c)))]
-      (either (or (some new-items (partial = bottom-type))
-                  (cond (= (.tail-constraint c) bottom-type)
-                        nothing
-                        (= new-tail bottom-type)))
-              (-> c
-                  (.items-constraints new-items)
-                  (.tail-constraint new-tail)))))
-
-  (intersect-static-len [c slc]
-    (let [items-count (count (extract-items-constraints c))]
-      (cond (or (< (.length slc) items-count)
-                (and (< items-count (.length slc))
-                     (= bottom-type (.tail-constraint c))))
-            (NoValues [slc c])
-            ;; TODO: return ItemsConstraint with correct number of items-constraints
-            ;; and NoValues tail
-            (MultiConstraint [slc c]))))
-
-  (intersect-inner [c ic]
-    (let [new-items (map (.items-constraints c)
-                         (fn [c]
-                           (-> (.contents ic)
-                               (intersect c)
-                               (update-var (extract-var c)))))
-          new-tail (either (= (.tail-constraint c) bottom-type)
-                           (intersect ic (.tail-constraint c)))]
-      (either (or (some new-items (partial = bottom-type))
-                  (cond (= (.tail-constraint c) bottom-type)
-                        nothing
-                        (= new-tail bottom-type)))
-              (-> c
-                  (.items-constraints new-items)
-                  (.tail-constraint new-tail)))))
-
-  (intersect-typec [c tc]
-    (either (for [types-map (extract-type-map tc)
-                  good-type-map (extract-type-map c)
-                  :let [new-map (select-keys types-map (keys good-type-map))]
-                  :when-not (empty? new-map)]
-              (MultiConstraint [(.type-maps tc new-map)
-                                (update-var c (extract-var tc))]))
-            (NoValues [c tc])))
-
-  (intersect-vector [c vect-c]
-    (intersect-itemsc vect-c c))
-
-  (intersect-list [c vect-c]
-    (intersect-itemsc vect-c c))
-
-  (intersect-itemsc [c ic]
-    (assert (instance? ItemsConstraint ic))
-
-    (let [c (cata trim c)
-          ic (cata trim ic)
-          cnt-ic (count (.items-constraints ic))
-          cnt-c (count (.items-constraints c))
-          max-cnt (either (> cnt-ic cnt-c)
-                          cnt-c)
-          constraints (map (zip-lists (extract-items-constraints ic max-cnt)
-                                      (extract-items-constraints c max-cnt))
-                           (fn [[c1 c2]]
-                             (intersect c1 c2)))
-          new-tail (intersect (.tail-constraint ic)
-                              (.tail-constraint c))
-          new-ic (-> ic
-                     (.tail-constraint new-tail)
-                     (.items-constraints (vec constraints)))]
-      (either (some constraints (fn [c]
-                                  (= c bottom-type)))
-              (cond (or (= bottom-type (.tail-constraint ic))
-                        (= bottom-type (.tail-constraint c)))
-                    new-ic
-
-                    (either (= bottom-type new-tail)
-                            new-ic)))))
-
-  (=-items-constraint [y x]
-    (and (= (.items-constraints y) (.items-constraints x))
-         (= (.tail-constraint y) (.tail-constraint x))
-         (maybe x)))
-
-  Constraint
-  (get-tail-constraint [c old-ic]
-    (.tail-constraint c))
-
-  (fixed-items-constraints [c old-ic]
-    (comp (.items-constraints old-ic)
-          (.tail-constraint c)))
-
-  (old-extract-items-constraints [c n]
-    (either (and (<= n 0)
-                 (maybe []))
-            (let [needed-tail-items (- n (count (.items-constraints c)))
-                  tail-items (-> c
-                                 .tail-constraint
-                                 (old-extract-items-constraints needed-tail-items))]
-              (-> c
-                  .items-constraints
-                  (comp tail-items)
-                  (take n)))))
-
-  (contents-constraint [c]
-    (Left (-> (.items-constraints c)
-              (conj (extract-contents-constraint (.tail-constraint c)))
-              sum-type)))
-
-  (satisfied-by [c info]
-    (items-satisfied info c))
-
-  (intersect [ic c]
-    (either (=-items-constraint c ic)
-            (intersect-itemsc c ic))))
-
 (extend-type MultiConstraint
   Container
   (map [x f]
@@ -2753,11 +2520,6 @@
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (some (.constraints c) (partial = bottom-type))
             c))
-
-  (items-satisfied [info c]
-    (flat-map (some (.constraints info) (partial instance? ItemsConstraint))
-              (fn [info-itemsc]
-                (items-satisfied info-itemsc c))))
 
   (=-multi [y x]
     (and (every (.constraints x)
@@ -2820,8 +2582,7 @@
     (Left (-> (.constraints mc)
               (filter (fn [c]
                         (or (instance? CollectionOf c)
-                            (instance? InferredInner c)
-                            (instance? ItemsConstraint c))))
+                            (instance? InferredInner c))))
               (map extract-contents-constraint)
               (reduce top-type intersect))))
 
@@ -2976,10 +2737,9 @@
                          maybe))
                 (and (instance? VectorConstraint old-c)
                      (= ListType (get-type-num tc))
-                     (-> empty-items-constraint
-                         (.items-constraints (extract-items-constraints old-c))
-                         (.tail-constraint (extract-tail-constraint old-c))
-                         (intersect list-constraint)
+                     (-> list-constraint
+                         (.items (extract-items-constraints old-c))
+                         (.tail-c (extract-tail-constraint old-c))
                          maybe)))
             top-type))
 
@@ -3178,20 +2938,13 @@
   Constraint
   (satisfied-by [c info]
     (and (or (and (instance? StaticLengthConstraint info)
-                  (<= (.length c) (.length info)))
-             (and (instance? ItemsConstraint info)
-                  (<= (.length c) (count (.items-constraints info)))))
+                  (<= (.length c) (.length info))))
          (maybe info)))
 
   (intersect [slc c]
     (intersect-static-len c slc))
 
   ConstraintOps
-  (items-satisfied [info c]
-    (and (every (extract-items-constraints c (.length info))
-                (partial = top-type))
-         (maybe info)))
-
   (intersect-coll-of [c cc]
     (MultiConstraint [cc (update-var c (extract-var cc))]))
 
@@ -3811,6 +3564,16 @@
 
           top-type))
 
+  ;; TODO: these two impls are totally bogus
+  (assertion-path [_]
+    (either (map (first args) assertion-path)
+            empty-list))
+
+  (format-path [_ desired-len]
+    (either (map (first args) (fn [x]
+                                (format-path x desired-len)))
+            empty-list))
+
   ConstraintOps
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
@@ -3910,7 +3673,6 @@
 ;; NoValues                  
 ;; InferredInner             
 ;; CollectionOf              
-;; ItemsConstraint           
 ;; TypeConstraint            extract-field
 ;; SumConstraint             extract-field
 ;; ParamConstraint           extract-field
