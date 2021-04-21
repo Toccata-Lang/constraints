@@ -831,6 +831,29 @@
 
   (get-type-sym [_] 'Agent))
 
+(deftype FutureConstraint [path sym var]
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/FutureConstraint " "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? FutureConstraint y)
+         (maybe x)))
+
+  Constraint
+  (get-type-num [c]
+    FutureType)
+
+  (get-type-sym [_] 'Future))
+
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
   ;; (assert (instance? (any-of Symbol
@@ -902,6 +925,7 @@
                                HashMapConstraint
                                MaybeConstraint
                                AgentConstraint
+                               FutureConstraint
                                PromiseConstraint
                                FnConstraint))
 
@@ -1015,7 +1039,7 @@
                                     empty-list 'HashSet  nothing ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
 (def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
-(def future-constraint (TypeConstraint {FutureType {}} empty-list 'Future nothing ""))
+(def future-constraint (FutureConstraint empty-list no-symbol ""))
 (def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
 (def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
 
@@ -2428,6 +2452,45 @@
     (either (= bottom-type (.contents c))
               c)))
 
+(extend-type FutureConstraint
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (instance? ParamConstraint y)
+          (mod-param y x)
+
+          (and (or (= y top-type)
+                   (instance? CollectionOf y)
+                   (instance? InferredInner y)))
+          x
+
+          (= y bottom-type)
+          y
+
+          (NoValues [x y])))
+
+  ConstraintOps
+  (intersect-inner [fc _]
+    fc)
+
+  (intersect-coll-of [fc _]
+    fc)
+
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c))
+
+  (is-bottom [c]
+    nothing))
+
 (extend-type MultiConstraint
   Container
   (map [x f]
@@ -2893,9 +2956,7 @@
             (vec (repeat n (.contents c)))))
 
   (type-map [c _]
-    (maybe {ListType {}
-            HashSetType {(Field 'set-map) hashmap-constraint}
-            FutureType {}}))
+    (maybe {HashSetType {(Field 'set-map) hashmap-constraint}}))
 
   (intersect [cc c]
     (intersect-coll-of c cc))
