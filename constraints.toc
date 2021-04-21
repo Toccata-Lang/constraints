@@ -66,8 +66,6 @@
 (def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
 ;; TODO: add ListConstraintType VectorConstraintType, etc.
 (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
-(def StaticLengthConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2,
-    StaticLengthConstraintType};"))
 (def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
 (def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
@@ -466,9 +464,6 @@
 
 (def coll-of-any (CollectionOf top-type empty-list nothing ""))
 
-;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
-(def empty-list-constraint)
-
 (deftype TypeConstraint [type-maps path type-sym sym var]
   ;; TODO: change back to TypeMap
   (assert (instance? HashMap type-maps))
@@ -750,6 +745,7 @@
             vc)))
 
 ;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
+;; (def empty-list-constraint (ListConstraint [] bottom-type empty-list nothing ""))
 (def empty-list-constraint)
 
 (deftype VectorConstraint [items tail-c path sym var]
@@ -883,37 +879,6 @@
     FunctionType)
 
   (get-type-sym [_] 'Fn))
-
-(deftype StaticLengthConstraint [length path sym var]
-  (assert (instance? Integer length))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? (maybe-of Symbol) sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [c]
-    (list "(c/StaticLengthConstraint " (str length) " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (get-type-num [c]
-    UnknownType)
-
-  (assertion-path [c] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "Length from") ""]
-                          (.path x))
-                    desired-len))
-
-  (type-map [_ _]
-    (maybe {ListType {}})))
-
-(def StaticConstraints (any-of StaticLengthConstraint
-                               ))
 
 (deftype NoFields []
   Stringable
@@ -1208,7 +1173,6 @@
 (def SymbolConstraints (any-of CoreValConstraint
                                TypeConstraint
                                InferredInner
-                               StaticConstraints
                                CollectionOf
                                SumConstraint
                                DynamicConstraint))
@@ -1519,15 +1483,6 @@
 
     nothing)
 
-  (=-static-len [y x]
-    nothing)
-
-  (intersect-static-len [c slc]
-    (assert (instance? StaticLengthConstraint slc))
-    (assert-result r (instance? Constraints r))
-
-    (intersect (update-var c (extract-var slc)) slc))
-
   (=-inferred-inner [y x]
     nothing)
 
@@ -1669,7 +1624,6 @@
   (intersect-result [c rc] rc)
   (intersect-typec [c tc] tc)
   (intersect-coll-of [c cc] cc)
-  (intersect-static-len [c slc] slc)
   (intersect-inner [c ic] ic)
   (intersect-multi [c mc] mc)
   (conj-multi [c mc]
@@ -1871,9 +1825,6 @@
 
   (intersect-coll-of [c cc]
     (NoValues [c cc]))
-
-  (intersect-static-len [c slc]
-    (NoValues [c slc]))
 
   (intersect-vector [c vect-c]
     (NoValues [c vect-c]))
@@ -2128,15 +2079,6 @@
                   (.items new-items)
                   (.tail-c new-tail)))))
 
-  (intersect-static-len [c slc]
-    (let [items-count (count (.items c))]
-      (cond (or (< (.length slc) items-count)
-                (and (< items-count (.length slc))
-                     (= bottom-type (.tail-c c))))
-            (NoValues [slc c])
-
-            c)))
-
   (intersect-inner [c ic]
     (let [new-items (map (.items c)
                          (fn [c]
@@ -2298,15 +2240,6 @@
               (-> c
                   (.items new-items)
                   (.tail-c new-tail)))))
-
-  (intersect-static-len [c slc]
-    (let [items-count (count (.items c))]
-      (cond (or (< (.length slc) items-count)
-                (and (< items-count (.length slc))
-                     (= bottom-type (.tail-c c))))
-            (NoValues [slc c])
-
-            c)))
 
   (intersect-inner [c ic]
     (let [new-items (map (.items c)
@@ -2602,22 +2535,17 @@
   (fixed-items-constraints [mc old-mc]
     (let [coll-c (-> old-mc
                      extract-coll-constraint
-                     extract-contents-constraint)
-          ics (either (-> (.constraints mc)
-                          (some (fn [v]
-                                  (and (first v)
-                                       (maybe v))))
-                          (map (fn [fixed-ic]
-                                 (map fixed-ic (fn [c]
-                                                 (-> c
-                                                     (intersect coll-c)
-                                                     (update-var (extract-var c))))))))
-                      [])]
-      (either (map (some (.constraints old-mc)
-                         (partial instance? StaticLengthConstraint))
-                   (fn [len-c]
-                     (take ics (.length len-c))))
-              ics)))
+                     extract-contents-constraint)]
+      (either (-> (.constraints mc)
+                  (some (fn [v]
+                          (and (first v)
+                               (maybe v))))
+                  (map (fn [fixed-ic]
+                         (map fixed-ic (fn [c]
+                                         (-> c
+                                             (intersect coll-c)
+                                             (update-var (extract-var c))))))))
+              [])))
 
   (old-extract-items-constraints [c n]
     (-> c
@@ -2918,9 +2846,6 @@
       (either (= new-inner bottom-type)
               (.contents cc new-inner))))
 
-  (intersect-static-len [c slc]
-    (MultiConstraint [slc c]))
-
   (=-inferred-inner [y x]
     (and (= (.contents x) (.contents y))
          (maybe x)))
@@ -2929,38 +2854,6 @@
     (let [new-c (intersect (.contents ic) (.contents c))]
       (either (= new-c bottom-type)
               (.contents ic new-c)))))
-
-(extend-type StaticLengthConstraint
-  Eq
-  (=* [x y]
-    (=-static-len y x))
-
-  Constraint
-  (satisfied-by [c info]
-    (and (or (and (instance? StaticLengthConstraint info)
-                  (<= (.length c) (.length info))))
-         (maybe info)))
-
-  (intersect [slc c]
-    (intersect-static-len c slc))
-
-  ConstraintOps
-  (intersect-coll-of [c cc]
-    (MultiConstraint [cc (update-var c (extract-var cc))]))
-
-  (intersect-vector [c vect-c]
-    (intersect-static-len vect-c c))
-
-  (intersect-list [c vect-c]
-    (intersect-static-len vect-c c))
-
-  (intersect-static-len [c slc]
-    (either (= slc c)
-            (NoValues [slc c])))
-
-  (=-static-len [y x]
-    (and (= (.length x) (.length y))
-         (maybe x))))
 
 (extend-type CollectionOf
   Container
@@ -3047,9 +2940,6 @@
     (let [new-c (intersect (.contents c) (.contents ic))]
       (either (= new-c bottom-type)
               (.contents c new-c))))
-
-  (intersect-static-len [c slc]
-    (MultiConstraint [slc c]))
 
   (intersect-coll-of [c cc]
     (let [new-cs (intersect (.contents cc) (.contents c))]
@@ -3677,7 +3567,6 @@
 ;; SumConstraint             extract-field
 ;; ParamConstraint           extract-field
 ;; MultiConstraint           
-;; StaticLengthConstraint
 ;; DynamicFields
 ;; ReifiedFields
 ;; GetField                  extract-field
