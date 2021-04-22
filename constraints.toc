@@ -464,6 +464,51 @@
 
 (def coll-of-any (CollectionOf top-type empty-list nothing ""))
 
+(deftype ReifiedConstraint [type-num fields type-sym path sym var]
+  (assert (instance? Integer type-num))
+  (assert (instance? HashMap fields))
+  (assert (instance? (list-of Vector) path))
+  ;; 'type-sym' has to be more relaxed so it can accept an ast/tagged-symbol
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
+          "\n"
+          ;; (str (cons 'list path))
+          (str " (symbol \"" type-sym "\")") 
+          " (list) " (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  ;; TODO: equality musth check the field maps as well
+  ;; verify this
+  (=* [x y]
+    (for [_ (instance? ReifiedConstraint y)
+          _ (= fields (.fields y))]
+      x))
+
+  Constraint
+  (get-type-sym [c]
+    type-sym)
+
+  (get-type-num [c]
+    type-num)
+
+  (set-type-name [c new-name]
+    (.type-sym c new-name))
+
+  (assertion-path [_] path)
+
+  (type-map [_ _]
+    (maybe {type-num fields}))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Type '" type-sym "' from") ""]
+                        path)
+                  desired-len)))
+
 (deftype TypeConstraint [type-maps path type-sym sym var]
   ;; TODO: change back to TypeMap
   (assert (instance? HashMap type-maps))
@@ -854,6 +899,29 @@
 
   (get-type-sym [_] 'Future))
 
+(deftype OpaqueConstraint [path sym var]
+  (assert (instance? (list-of Vector) path))
+  ;; (assert (instance? (any-of Symbol
+  ;;                            no-symbol) sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/OpaqueConstraint " "(list) "
+          ;; (str (cons 'list path))
+           (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? OpaqueConstraint y)
+         (maybe x)))
+
+  Constraint
+  (get-type-num [c]
+    OpaqueType)
+
+  (get-type-sym [_] 'Opaque))
+
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
   ;; (assert (instance? (any-of Symbol
@@ -926,6 +994,7 @@
                                MaybeConstraint
                                AgentConstraint
                                FutureConstraint
+                               OpaqueConstraint
                                PromiseConstraint
                                FnConstraint))
 
@@ -1035,13 +1104,13 @@
                                        empty-list nothing ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def set-constraint (TypeConstraint {HashSetType {(Field 'set-map) hashmap-constraint}}
-                                    empty-list 'HashSet  nothing ""))
+(def set-constraint (ReifiedConstraint HashSetType {(Field 'set-map) hashmap-constraint}
+                                       'HashSet empty-list no-symbol ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
 (def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
 (def future-constraint (FutureConstraint empty-list no-symbol ""))
-(def opaque-constraint (TypeConstraint {OpaqueType {}} empty-list 'Opaque nothing ""))
-(def arity-constraint (TypeConstraint {FnArityType {}} empty-list 'FnArity nothing ""))
+(def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
+(def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity empty-list no-symbol ""))
 
 (def core-type-constraints {'Integer int-constraint
                             'StringBuffer strbuff-constraint
@@ -1062,7 +1131,7 @@
                             'Opaque opaque-constraint})
 
 (deftype DynamicFields [type-c fields path sym var]
-  (assert (instance? TypeConstraint type-c))
+  (assert (instance? ReifiedConstraint type-c))
   (assert (instance? (vector-of Field) fields))
 
   Stringable
@@ -1195,6 +1264,7 @@
 ;;   (c/intersect-multi [c mc] mc))
 
 (def SymbolConstraints (any-of CoreValConstraint
+                               ReifiedConstraint
                                TypeConstraint
                                InferredInner
                                CollectionOf
@@ -1367,6 +1437,14 @@
                              MultiConstraint
                              AllValues))
 
+(deftype fn-arity [param-consts result-const]
+  (assert (instance? ListConstraint param-consts))
+  (assert (instance? ValueConstraint result-const))
+
+  Stringable
+  (string-list [_]
+    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
+
 (deftype ResultConstraint [assertion]
   Stringable
   (string-list [_] (list "(c/ResultConstraint " (str assertion) ")"))
@@ -1489,6 +1567,12 @@
     (assert (instance? TypeConstraint tc))
     (assert-result r (instance? Constraints r)))
 
+  (intersect-reified-val [c reified]
+    (assert (instance? ReifiedConstraint reified))
+    (assert-result r (instance? Constraints r))
+
+    (NoValues [c reified]))
+
   (=-contentsc [x y]
     nothing)
 
@@ -1549,6 +1633,7 @@
    (conflicting-assertions failing-constraint (.file loc) (.line loc)))
 
   ([failing-constraint file-name line-number]
+   (print-err 'failed failing-constraint)
    (apply print-err (list* "Conflicting assertions"
                            (either (= "" file-name)
                                    (str "at " file-name ": " line-number))
@@ -1622,6 +1707,7 @@
   (intersect-param [c _] c)
   (intersect-multi [c mc] c)
   (intersect-typec [c _] c)
+  (intersect-reified-val [c _] c)
   (conj-multi [c mc]
     (maybe c)))
 
@@ -1647,6 +1733,7 @@
   (intersect-sum [c sc] sc)
   (intersect-result [c rc] rc)
   (intersect-typec [c tc] tc)
+  (intersect-reified-val [c tc] tc)
   (intersect-coll-of [c cc] cc)
   (intersect-inner [c ic] ic)
   (intersect-multi [c mc] mc)
@@ -1827,9 +1914,7 @@
                   desired-len))
 
   (extract-sym [c]
-    (either (and (= (.sym c) no-symbol)
-                 (maybe nothing))
-            (maybe (.sym c))))
+    (instance? Symbol (.sym c)))
 
   (remove-sym [tc]
     (Left (.sym tc no-symbol)))
@@ -1985,6 +2070,9 @@
                                 (.kv-pairs new-kv)
                                 is-bottom)]
                            empty-list nothing ""))))
+
+  (intersect-reified-val [hmc rc]
+    (intersect-hash-map rc hmc))
 
   (intersect-typec [c tc]
     (either (map (get-in tc [.type-maps UnknownType])
@@ -2153,7 +2241,7 @@
                     (either (= bottom-type new-tail)
                             new-ic)))))
 
-  ;; TODO: might bring something like this back in because 'get' called on a vector
+  ;; TODO: might bring something like this back in because of 'get' called on a vector
   ;; (intersect-typec [c tc]
   ;;   (either (map (get-in tc [.type-maps UnknownType])
   ;;                (fn [field-map]
@@ -2315,7 +2403,7 @@
                     (either (= bottom-type new-tail)
                             new-ic)))))
 
-  ;; TODO: might bring something like this back in because 'get' called on a vector
+  ;; TODO: might bring something like this back in because of 'get' called on a vector
   ;; (intersect-typec [c tc]
   ;;   (either (map (get-in tc [.type-maps UnknownType])
   ;;                (fn [field-map]
@@ -2491,6 +2579,35 @@
   (is-bottom [c]
     nothing))
 
+(extend-type OpaqueConstraint
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= y top-type))
+          x
+
+          (instance? ParamConstraint y)
+          (mod-param y x)
+
+          (= y bottom-type)
+          y
+
+          (NoValues [x y])))
+
+  ConstraintOps
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c))
+
+  (is-bottom [c]
+    nothing))
+
 (extend-type MultiConstraint
   Container
   (map [x f]
@@ -2654,6 +2771,164 @@
   (intersect-result [c rc]
     (maybe (intersect (.assertion rc) (.assertion c)))))
 
+(extend-type ReifiedConstraint
+  Container
+  (map [tc f]
+    (.fields tc (-> (.fields tc)
+                    vec
+                    (map (fn [[fld fld-c]]
+                           [(f fld) (f fld-c)]))
+                    (reduce {} (fn [m [k v]]
+                                 (assoc m k v))))))
+
+  (map [tc f embed]
+    (map (-> (.fields tc)
+             vec
+             (map (fn [[fld fld-c]]
+                    (for [new-fld (f fld)
+                          new-c (f fld-c)]
+                      [new-fld new-c]))
+                  embed)
+             (map (fn [new-flds]
+                    (reduce new-flds {} (fn [m [k v]]
+                                          (assoc m k v))))))
+         (partial .fields tc)))
+
+  Constraint
+  (extract-sym [c]
+    (instance? Symbol (.sym c)))
+
+  (add-to-path [constraint file-name line-number]
+    (let [new-path (either (for [[top-file top-line] (first (.path constraint))
+                                 _ (and (= top-line line-number)
+                                        (= top-file file-name))]
+                             (.path constraint))
+                           (cons [file-name line-number] (.path constraint)))
+          fields (map-vals (.fields constraint)
+                           (fn [field-c]
+                             (add-to-path field-c file-name line-number)))]
+      (either (and (= "" file-name)
+                   (maybe constraint))
+              (-> constraint
+                  (.fields fields)
+                  (.path new-path)))))
+
+  (intersect [rc c]
+    (cond (and (empty? (.fields rc))
+               (= UnknownType (.type-num rc)))
+          c
+
+          (intersect-reified-val c rc)))
+
+  ;; (satisfied-by [c info]
+  ;;   (either (sum-c-satisfies info c)
+  ;;           (flat-map (extract-type-map info)
+  ;;                     (fn [value-type-map]
+  ;;                       (and (< 0 (count value-type-map))
+  ;;                            (every (keys value-type-map)
+  ;;                                   (partial get (.type-maps c)))
+  ;;                            (maybe info))))))
+
+  ConstraintOps
+  (intersect-str [rc str-c]
+    (cond (and (empty? (.fields rc))
+               (= UnknownType (.type-num rc)))
+          str-c
+
+          (NoValues [rc str-c])))
+
+  (intersect-hash-map [c map-c]
+    (cond (= UnknownType (.type-num c))
+          (-> map-c
+              (.kv-pairs (-> (.fields c)
+                             vec
+                             (reduce (.kv-pairs map-c)
+                                     (fn [m [k v]]
+                                       (let [new-k (intersect (.keys-c map-c) k)
+                                             new-v (intersect (.vals-c map-c) v)]
+                                         (either (for [static-key (get new-k .static-value)
+                                                       :when (or (= static-key no-symbol)
+                                                                 (= static-key no-string)
+                                                                 (= static-key no-int))
+                                                       curr-v (get m new-k)]
+                                                   (assoc m new-k (trim (sum-type [curr-v new-v]))))
+                                                 (assoc m new-k new-v)))))))
+              is-bottom)
+
+          (NoValues [c map-c])))
+
+  (intersect-reified-val [c reified]
+    (cond (= UnknownType (.type-num c) (.type-num reified))
+          (-> reified
+              (.fields (merge-with intersect (.fields reified) (.fields c)))
+              is-bottom)
+
+          (or (= (.type-num c) (.type-num reified))
+              (and (= UnknownType (.type-num c))
+                   (every (keys (.fields c))
+                          (partial get (.fields reified)))))
+          (-> reified
+              (.fields (merge-with intersect (.fields reified) (.fields c)))
+              is-bottom)
+
+          (and (= UnknownType (.type-num reified))
+               (every (keys (.fields reified))
+                      (partial get (.fields c))))
+          (-> c
+              (.fields (merge-with intersect (.fields reified) (.fields c)))
+              is-bottom)
+
+          (NoValues [reified c])))
+
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (some (vals (.fields c))
+                  (partial = bottom-type))
+            c))
+
+  (extract-field [c fld]
+    (either (get (.fields c) fld)
+            (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
+                                            (symbol (str "field '" (.sym fld) "' required"))
+                                            empty-list nothing "")])))
+
+  (conj-multi [c mc]
+    (intersect-multi c mc))
+
+  (intersect-multi [c mc]
+    (assert (instance? MultiConstraint mc))
+    (assert-result r (instance? Constraints r))
+
+    (either (or (= (reduce (.constraints mc) c
+                           (fn [x y]
+                             (either (= (intersect x y) bottom-type)
+                                     x)))
+                   bottom-type)
+                (flat-map (extract-type-map mc)
+                          (fn [new-map]
+                            (and (> (count new-map) 1)
+                                 (= (intersect-typec c (TypeConstraint new-map (.path c)
+                                                                       (symbol "<unknown>")
+                                                                       (instance? Symbol (.sym c))
+                                                                       (.var c)))
+                                    bottom-type))))
+                (and (some (.constraints mc) (partial = c))
+                     (maybe mc)))
+            (MultiConstraint (conj (.constraints mc) c))))
+
+  (intersect-coll-of [c ic]
+    (print-err 'kablooie _FILE_ _LINE_)
+    (abort)
+    ;; (MultiConstraint [ic (update-var c (extract-var ic))])
+    bottom-type)
+
+  (intersect-inner [c ic]
+    (print-err 'kablooie _FILE_ _LINE_)
+    (abort)
+    ;; (MultiConstraint [ic (update-var c (extract-var ic))])
+    bottom-type)
+  )
+
 (extend-type TypeConstraint
   Container
   (map [tc f]
@@ -2764,12 +3039,15 @@
                                                  (filter identity)))
                   :when-not (empty? alts)]
               (sum-type alts))
-            (NoValues [c (TypeConstraint {0 {fld top-type}} empty-list
-                                         (symbol (str "field '" (.sym fld) "' required"))
-                                         nothing "")])))
+            (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
+                                            (symbol (str "field '" (.sym fld) "' required"))
+                                            empty-list nothing "")])))
 
   (conj-multi [c mc]
     (intersect-multi c mc))
+
+  (intersect-reified-val [tc rc]
+    (intersect-typec rc tc))
 
   (intersect-hash-map [tc hmc]
     (intersect-typec hmc tc))
@@ -2875,6 +3153,9 @@
     (either (= (.contents c) bottom-type)
             c))
 
+  (intersect-reified-val [c rc]
+    rc)
+
   (intersect-vector [c vect-c]
     (intersect-inner vect-c c))
 
@@ -2962,6 +3243,9 @@
     (intersect-coll-of c cc))
 
   ConstraintOps
+  (intersect-reified-val [c rc]
+    rc)
+
   (intersect-vector [c vect-c]
     (intersect-coll-of vect-c c))
 
@@ -3113,6 +3397,9 @@
   (intersect-typec [sum-c c]
     (intersect-sum c sum-c))
 
+  (intersect-reified-val [sum-c rc]
+    (intersect-sum rc sum-c))
+
   (extract-field [c fld]
     (either (for [types-map (extract-type-map c)
                   alts (apply (maybe vector) (-> types-map
@@ -3122,9 +3409,8 @@
                                                  (filter identity)))
                   :when-not (empty? alts)]
               (sum-type alts))
-            (NoValues [c (TypeConstraint {0 {fld top-type}} empty-list
-                                         (symbol (str "field '" (.sym fld) "' required"))
-                                         nothing "")])))
+            (NoValues [c (ReifiedConstraint 0 {fld top-type} (symbol (str "field '" (.sym fld) "' required"))
+                                            empty-list no-symbol "")])))
 
   (mult-satisfied [c mult-c]
     (either (sum-c-satisfies c mult-c)
@@ -3152,6 +3438,7 @@
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
 
+;; TODO: maybe eliminate this whole thing or some impls
 (extend-type DynamicConstraint
   Constraint
   (assertion-path [c]
@@ -3174,6 +3461,9 @@
   ConstraintOps
   (intersect-typec [c tc]
     (MultiConstraint [c tc]))
+
+  (intersect-reified-val [c rc]
+    (MultiConstraint [c rc]))
 
   (intersect-multi [c mc]
     (either (and (some (.constraints mc) (partial = c))
@@ -3282,12 +3572,33 @@
   (intersect-sum [c cs]
     (mod-param c cs))
 
+  (intersect-reified-val [c rc]
+    (mod-param c rc))
+
   (intersect-typec [c tc]
     (mod-param c tc))
 
   (intersect-multi [c mc]
     (mod-param c mc)))
 
+(extend-type DynamicFields
+  Constraint
+  (intersect [c1 c2]
+    (either (or (and (= top-type c2)
+                     (maybe c1))
+                (= c1 c2)
+                (map (instance? ReifiedConstraint c2)
+                     (partial intersect-reified-val c1))
+                (map (instance? MultiConstraint c2)
+                     (partial intersect-multi c1)))
+            (MultiConstraint [c1 c2])))
+
+  
+  ConstraintOps
+  (intersect-reified-val [c tc]
+    (let [new-type (intersect-reified-val (.type-c c) tc)]
+      (either (= bottom-type new-type)
+              (.type-c c new-type)))))
 
 (extend-type DynamicResultConstraint
   Container
@@ -3403,21 +3714,13 @@
   (intersect-param [c dyn-c]
     (mod-param dyn-c c))
 
+  (intersect-reified-val [c reified]
+    (is-bottom (intersect-reified-val c (ReifiedConstraint UnknownType {fld top-type} no-symbol
+                                                           empty-list no-symbol ""))))
+
   (intersect-typec [c tc]
-    (let [new-tc (cond (instance? Field fld)
-                       (intersect tc (TypeConstraint {UnknownType {fld top-type}} empty-list
-                                                     (symbol (str fld)) nothing ""))
-                       tc)]
-      (either (= bottom-type new-tc)
-              (cata is-bottom (.type-maps tc (-> (.type-maps tc)
-                                                 (dissoc UnknownType)
-                                                 (map-vals (fn [fld-map]
-                                                             (either (and (or (instance? SymbolConstraints fld)
-                                                                              (and (instance? Field fld)
-                                                                                   (get fld-map fld)))
-                                                                          (-> (assoc fld-map fld fld-c)
-                                                                              maybe))
-                                                                     fld-map)))))))))
+    (is-bottom (intersect-reified-val c (ReifiedConstraint UnknownType {fld top-type} no-symbol
+                                                           empty-list no-symbol ""))))
 
   (intersect-multi [c mc]
     (cata is-bottom (-> (.constraints mc)
@@ -3457,6 +3760,9 @@
           (mod-param dyn-c c)
           dyn-c))
 
+  (intersect-typec [c rc]
+    (extract-field rc fld))
+
   (intersect-typec [c tc]
     ;; TODO handle case where 'fld' is a Constraint
     (cond (instance? Field fld)
@@ -3471,11 +3777,6 @@
 
 (defn get-field [fld]
   (GetField fld))
-
-(deftype fn-arity [param-consts result-const]
-  Stringable
-  (string-list [_]
-    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
 
 (deftype CallValue [args]
   Stringable
@@ -3537,6 +3838,10 @@
   (intersect-param [c dyn-c]
     (mod-param dyn-c c))
 
+  (intersect-reified-val [c tc]
+    (print-err 'calling-reified-val _FILE_ _LINE_ c "\n\n" 'tc tc)
+    top-type)
+
   (intersect-typec [c tc]
     (print-err 'calling-typec _FILE_ _LINE_ c "\n\n" 'tc tc)
     top-type)
@@ -3581,18 +3886,16 @@
                                                             (full-param-constraint mod)
 
                                                             (instance? SetField mod)
-                                                            (TypeConstraint
-                                                             {UnknownType {(.fld mod) top-type}}
-                                                             empty-list
+                                                            (ReifiedConstraint
+                                                             UnknownType {(.fld mod) top-type}
                                                              (symbol (str (.fld mod)))
-                                                             nothing "")
+                                                             empty-list no-symbol "")
 
                                                             (instance? GetField mod)
-                                                            (TypeConstraint
-                                                             {UnknownType {(.fld mod) c}}
-                                                             empty-list
+                                                            (ReifiedConstraint
+                                                             UnknownType {(.fld mod) c}
                                                              (symbol (str (.fld mod)))
-                                                             nothing "")
+                                                             empty-list no-symbol "")
 
                                                             (instance? SetType mod)
                                                             ;; TODO: needs completion
