@@ -55,7 +55,6 @@
 (def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, OpaqueType};"))
 (def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
 (def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
-(def MultiConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MultiConstraintType};"))
 (def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
 ;; TODO: add ListConstraintType VectorConstraintType, etc.
 (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
@@ -391,7 +390,9 @@
         (sha1-finalize ctxt)))))
 
 (defn sym-str [s]
-  (either (or (map (= no-symbol)
+  (either (or (and (instance? Symbol s)
+                   (maybe (str "'" s)))
+              (map (= no-symbol s)
                    str)
               (map s (fn [s]
                        (str "(maybe '" s ")"))))
@@ -551,7 +552,7 @@
     (list "(c/IntegerConstraint " (str static-value) " " (str max) " " (str min) " "
           "(list) "
           ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -1205,9 +1206,6 @@
 ;;   (c/extract-contents-constraint [_] c/top-type)
 ;;   (c/extract-coll-constraintraint [_] c/top-type)
 
-;;   c/ConstraintOps
-;;   (c/intersect-multi [c mc] mc))
-
 (def SymbolConstraints (any-of CoreValConstraint
                                ReifiedConstraint
                                InferredInner
@@ -1258,127 +1256,7 @@
 (def empty-list-constraint (ListConstraint [] bottom-type empty-list nothing ""))
 (def empty-vector-constraint (VectorConstraint [] bottom-type empty-list nothing ""))
 
-(deftype MultiConstraint [constraints]
-  (assert (instance? Vector constraints))
-
-  Stringable
-  (string-list [_]
-    (list "(c/MultiConstraint\n[" (to-str (interpose constraints "\n")) "])"))
-
-  Constraint
-  (is-collection? [c]
-    (some constraints is-collection?))
-
-  (trim [c]
-    (let [new-cs (-> constraints
-                     (flat-map (fn [c]
-                                 (either (map (instance? MultiConstraint c) .constraints)
-                                         [c])))
-                     ((fn [cs]
-                        (and (< 1 (filter cs (partial instance? DynamicConstraint)))
-                             (do
-                               ;; TODO: remove after it triggers and is analyzed
-                               (print-err 'BOOOOOMMMMM _LINE_ c)
-                               (abort)
-                               nothing))
-                        cs))
-                     (reduce {} (fn [m c]
-                                  (let [c-name (type-name c)
-                                        new-c (intersect c (either (get m c-name)
-                                                                   top-type))]
-                                    (assoc m c-name new-c))))
-                     vals
-                     (flat-map (fn [c]
-                                 (either (map (instance? MultiConstraint c) .constraints)
-                                         [c])))
-                     vec
-                     (remove (partial = top-type)))]
-      (either (or (some new-cs (partial = bottom-type))
-                  (map (some new-cs (partial instance? SumConstraint))
-                       (fn [sum-c]
-                         (reduce new-cs sum-c intersect)))
-                  (and (empty? new-cs)
-                       (maybe top-type))
-                  (apply = new-cs))
-              (.constraints c new-cs))))
-
-  (reified-field [c _]
-    (Right c))
-
-  (filter-reified-field [c]
-    (some constraints identity))
-
-  (reified-fields [c]
-    (Right c))
-
-  (filter-reified-fields [c]
-    (either (some constraints (partial instance? ReifiedFields))
-            top-type))
-
-  (dynamic-params [c]
-    (either (-> constraints
-                (remove empty?)
-                first)
-            []))
-
-  (set-collection-type [c tc old-c]
-    (trim c))
-
-  (extract-var [_]
-    (either (some constraints (fn [c]
-                                (let [var (extract-var c)]
-                                  (or (and (= "" var)
-                                           nothing)
-                                      (maybe var)))))
-            ""))
-
-  (extract-sym [c]
-    (some constraints extract-sym))
-
-  (type-map [mc old-mc]
-    ;; TODO: this might be a place to gain some performance back
-    (let [types-maps (-> mc
-                         .constraints
-                         (reduce [] (fn [types-maps types-map]
-                                      (either (map types-map (partial conj types-maps))
-                                              types-maps))))]
-      (for [types-map (first types-maps)]
-        (-> types-maps
-            rest
-            (reduce types-map (fn [types-map m]
-                                (select-keys types-map (keys m))))))))
-
-  (update-sym [mc sym]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-sym c sym)))))
-
-  (update-var [mc var]
-    (.constraints mc (map (.constraints mc)
-                          (fn [c]
-                            (update-var c var)))))
-
-  (format-path [_ n]
-    (let [max-len (reduce (map constraints (fn [o]
-                                             (either (map (get o .path)
-                                                          count)
-                                                     0)))
-                          n
-                          (fn [max-len path-len]
-                            (either (> max-len path-len)
-                                    path-len)))
-          paths (map constraints (fn [c]
-                                   (format-path c (inc max-len))))]
-      (-> paths
-          (list-zipper empty-list)
-          (map (fn [strs]
-                 (to-str (interpose strs "    ")))))))
-
-  (assertion-path [c]
-    (format-path c 0)))
-
 (def ValueConstraint (any-of SymbolConstraints
-                             MultiConstraint
                              AllValues))
 
 (deftype fn-arity [param-consts result-const]
@@ -1472,12 +1350,6 @@
 
     nothing)
 
-  (=-multi [y x]
-    (assert (instance? MultiConstraint x))
-    (assert-result r (instance? Maybe r))
-
-    nothing)
-
   (intersect-param [c dyn-c]
     (assert (instance? ParamConstraint dyn-c))
 
@@ -1538,19 +1410,7 @@
     (assert (instance? InferredInner ic))
     (assert-result r (instance? Constraints r))
 
-    (intersect (update-var c (extract-var ic)) ic))
-
-  (intersect-multi [c mc]
-    (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r))
-
-    ;; TODO: make sure that intersecting each type of constraint results
-    ;; in the smallest set of .constraints in the MultiConstraint
-    ;; applies to conj-multi as well.
-    )
-
-  (conj-multi [c mc]
-    (assert (instance? MultiConstraint mc))))
+    (intersect (update-var c (extract-var ic)) ic)))
 
 (defn conflicting-assertions
   ([failing-constraint loc]
@@ -1629,10 +1489,7 @@
   (intersect-fn [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
-  (intersect-multi [c mc] c)
-  (intersect-reified-val [c _] c)
-  (conj-multi [c mc]
-    (maybe c)))
+  (intersect-reified-val [c _] c))
 
 (extend-type AllValues
   Constraint
@@ -1657,10 +1514,7 @@
   (intersect-result [c rc] rc)
   (intersect-reified-val [c tc] tc)
   (intersect-coll-of [c cc] cc)
-  (intersect-inner [c ic] ic)
-  (intersect-multi [c mc] mc)
-  (conj-multi [c mc]
-    (maybe mc)))
+  (intersect-inner [c ic] ic))
 
 (extend-type SymbolConstraints
   Constraint
@@ -1699,25 +1553,7 @@
     (.var tc new-var))
 
   ConstraintOps
-  (is-bottom [c] c)
-
-  (intersect-multi [c mc]
-    (assert (instance? MultiConstraint mc))
-    (assert-result r (instance? Constraints r))
-
-    (either (or (-> (.constraints mc)
-                    (map (partial intersect c))
-                    (some (partial instance? NoValues)))
-                (and (some (.constraints mc) (partial = c))
-                     (maybe mc)))
-            (conj mc c)))
-
-  (conj-multi [c mc]
-    (assert (instance? MultiConstraint mc))
-
-    (either (and (some (.constraints mc) (partial = c))
-                 (maybe mc))
-            (MultiConstraint (conj (.constraints mc) c)))))
+  (is-bottom [c] c))
 
 (defn clear-vars [c]
   (cata clear-var c))
@@ -1763,12 +1599,6 @@
     (.sym tc new-sym))
 
   ConstraintOps
-  (intersect-multi [c mc]
-    (NoValues [c mc]))
-
-  (conj-multi [c mc]
-    (NoValues [c mc]))
-
   (intersect-coll-of [c cc]
     (NoValues [c cc]))
 
@@ -2427,115 +2257,6 @@
   (is-bottom [c]
     nothing))
 
-(extend-type MultiConstraint
-  Container
-  (map [x f]
-    (.constraints x (map (.constraints x) f)))
-
-  (map [x f embed]
-    (-> (.constraints x)
-        (map f embed)
-        (map (partial .constraints x))))
-
-  Eq
-  (=* [x y]
-    (=-multi y x))
-
-  Collection
-  (conj [mc c]
-    (assert (instance? SymbolConstraints c))
-
-    (conj-multi c mc))
-
-  ConstraintOps
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some (.constraints c) (partial = bottom-type))
-            c))
-
-  (=-multi [y x]
-    (and (every (.constraints x)
-                (fn [x]
-                  (some (.constraints y)
-                        (fn [y]
-                          (= x y)))))
-         (maybe x)))
-
-  (intersect-sum [c sc]
-    (either (= (reduce (.constraints c) sc
-                       (fn [x y]
-                         (either (= (intersect x y) bottom-type)
-                                 x)))
-               bottom-type)
-            (conj (update-var c (extract-var sc)) sc)))
-
-  (intersect-inner [c ic]
-    (either (= (reduce (.constraints c) ic
-                       (fn [x y]
-                         (either (= (intersect x y) bottom-type)
-                                 x)))
-               bottom-type)
-            (conj c ic)))
-
-  (conj-multi [c mc]
-    (reduce (.constraints c) mc conj))
-
-  (intersect-multi [c mc]
-    (reduce (.constraints c) mc
-            (fn [mc new-c]
-              (either (= mc bottom-type)
-                      (intersect mc new-c)))))
-
-  Constraint
-  (collection-of [c]
-    (Right c))
-
-  (intersect [mc c]
-    (intersect-multi c mc))
-
-  (contents-constraint [mc]
-    (Left (-> (.constraints mc)
-              (filter (fn [c]
-                        (or (instance? CollectionOf c)
-                            (instance? InferredInner c))))
-              (map extract-contents-constraint)
-              (reduce top-type intersect))))
-
-  (get-tail-constraint [mc old-mc]
-    (either (map (is-collection? old-mc)
-                 (fn [_]
-                   (-> (zip-lists (.constraints old-mc) (.constraints mc))
-                       (filter (fn [[old-c]]
-                                 (is-collection? old-c)))
-                       (reduce top-type (fn [final-c [_ curr-c]]
-                                          (intersect final-c curr-c))))))
-            bottom-type))
-
-  (fixed-items-constraints [mc old-mc]
-    (let [coll-c (-> old-mc
-                     extract-coll-constraint
-                     extract-contents-constraint)]
-      (either (-> (.constraints mc)
-                  (some (fn [v]
-                          (and (first v)
-                               (maybe v))))
-                  (map (fn [fixed-ic]
-                         (map fixed-ic (fn [c]
-                                         (-> c
-                                             (intersect coll-c)
-                                             (update-var (extract-var c))))))))
-              [])))
-
-  (old-extract-items-constraints [c n]
-    (-> c
-        .constraints
-        (map (fn [c]
-               (old-extract-items-constraints c n)))
-        ((partial apply zip-lists))
-        (map (fn [cs]
-               (reduce cs top-type intersect)))
-        vec)))
-
 (extend-type ResultConstraint
   Container
   (map [x f]
@@ -2691,9 +2412,6 @@
                                             (symbol (str "field '" (.sym fld) "' required"))
                                             empty-list nothing "")])))
 
-  (conj-multi [c mc]
-    (intersect-multi c mc))
-
   (intersect-coll-of [c ic]
     (print-err 'kablooie _FILE_ _LINE_)
     (abort)
@@ -2791,17 +2509,6 @@
   (intersect-maybe [c maybe-c]
     (intersect-inner maybe-c c))
 
-  (intersect-multi [c mc]
-    (let [new-c (intersect (.contents c)
-                           (extract-contents-constraint mc))]
-      (either (or (= new-c bottom-type)
-                  (and (= new-c top-type)
-                       (maybe mc)))
-              (-> mc
-                  (.constraints (remove (.constraints mc)
-                                        (partial instance? InferredInner)))
-                  (conj (.contents c new-c))))))
-
   (intersect-coll-of [c cc]
     (let [new-inner (intersect (.contents cc) (.contents c))]
       (either (= new-inner bottom-type)
@@ -2885,16 +2592,6 @@
   (is-bottom [c]
     (either (= (.contents c) bottom-type)
             c))
-
-  (intersect-multi [c mc]
-    (let [inters (map (.constraints mc) (partial intersect c))]
-      (either (some inters (partial instance? NoValues))
-              (-> mc
-                  (.constraints (remove (.constraints mc)
-                                        (partial instance? CollectionOf)))
-                  (conj (-> (.constraints mc)
-                            (filter (partial instance? CollectionOf))
-                            (reduce c intersect)))))))
 
   (intersect-inner [c ic]
     (let [new-c (intersect (.contents c) (.contents ic))]
@@ -3055,10 +2752,11 @@
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
                      (maybe c1))
-                (= c1 c2)
-                (map (instance? MultiConstraint c2)
-                     (partial intersect-multi c1)))
-            (MultiConstraint [c1 c2])))
+                (= c1 c2))
+            (do
+              (print-err 'kablooie _FILE_ _LINE_)
+              (abort)
+              top-type)))
 
   (satisfied-by [_ c] (maybe c))
   (update-sym [x sym] (.sym x (maybe sym)))
@@ -3068,12 +2766,10 @@
 
   ConstraintOps
   (intersect-reified-val [c rc]
-    (MultiConstraint [c rc]))
-
-  (intersect-multi [c mc]
-    (either (and (some (.constraints mc) (partial = c))
-                 (maybe mc))
-            (MultiConstraint (conj (.constraints mc) c)))))
+    (do
+      (print-err 'kablooie _FILE_ _LINE_)
+      (abort)
+      top-type)))
 
 (deftype SetType [tc]
   (assert (instance? (any-of VectorConstraint
@@ -3178,10 +2874,7 @@
     (mod-param c cs))
 
   (intersect-reified-val [c rc]
-    (mod-param c rc))
-
-  (intersect-multi [c mc]
-    (mod-param c mc)))
+    (mod-param c rc)))
 
 (extend-type DynamicFields
   Constraint
@@ -3190,10 +2883,11 @@
                      (maybe c1))
                 (= c1 c2)
                 (map (instance? ReifiedConstraint c2)
-                     (partial intersect-reified-val c1))
-                (map (instance? MultiConstraint c2)
-                     (partial intersect-multi c1)))
-            (MultiConstraint [c1 c2])))
+                     (partial intersect-reified-val c1)))
+            (do
+              (print-err 'kablooie _FILE_ _LINE_)
+              (abort)
+              top-type)))
 
   
   ConstraintOps
@@ -3251,15 +2945,7 @@
                   reified)))
 
   ConstraintOps
-  (is-bottom [c] c)
-
-  (intersect-multi [c mc]
-    ;; TODO: remove after it triggers and is analyzed
-    (print-err 'wut c)
-    (cond (some (.constraints mc) (partial = c))
-          (.constraints mc (.constraints mc))
-
-          (.constraints mc (conj (.constraints mc) c)))))
+  (is-bottom [c] c))
 
 (deftype SetField [fld fld-c]
   Stringable
@@ -3284,8 +2970,7 @@
 
   Constraint
   (intersect [c1 c2]
-    (cond (or (instance? MultiConstraint c2)
-              (instance? SumConstraint c2)
+    (cond (or (instance? SumConstraint c2)
               (instance? ParamConstraint c2)
               (instance? HashMapConstraint c2))
           (intersect c2 c1)
@@ -3317,12 +3002,7 @@
 
   (intersect-reified-val [c reified]
     (is-bottom (intersect-reified-val c (ReifiedConstraint UnknownType {fld top-type} no-symbol
-                                                           empty-list no-symbol ""))))
-
-  (intersect-multi [c mc]
-    (cata is-bottom (-> (.constraints mc)
-                        (map (partial intersect c))
-                        trim))))
+                                                           empty-list no-symbol "")))))
 
 (defn set-field [fld c]
   (SetField fld c))
@@ -3355,13 +3035,7 @@
     ;; TODO handle case where 'fld' is a Constraint
     (cond (instance? Field fld)
           (mod-param dyn-c c)
-          dyn-c))
-
-  (intersect-multi [c mc]
-    ;; TODO handle case where 'fld' is a Constraint
-    (cond (instance? Field fld)
-          (extract-field mc fld)
-          top-type)))
+          dyn-c)))
 
 (defn get-field [fld]
   (GetField fld))
@@ -3428,10 +3102,6 @@
 
   (intersect-reified-val [c tc]
     (print-err 'calling-reified-val _FILE_ _LINE_ c "\n\n" 'tc tc)
-    top-type)
-
-  (intersect-multi [c mc]
-    (print-err 'calling-multi _FILE_ _LINE_ c "\n\n" 'mc mc)
     top-type))
 
 (extend-type FnConstraint
@@ -3513,7 +3183,6 @@
 ;; CollectionOf              
 ;; SumConstraint             extract-field
 ;; ParamConstraint           extract-field
-;; MultiConstraint           
 ;; DynamicFields
 ;; ReifiedFields
 ;; GetField                  extract-field
