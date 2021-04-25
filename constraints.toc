@@ -367,7 +367,6 @@
   Stringable
   (string-list [_]
     (list "c/no-symbol")))
-
 (def no-symbol (NoSymbol))
 ;; (def no-symbol
 ;;   (reify
@@ -511,46 +510,52 @@
                         path)
                   desired-len)))
 
-(def no-int
-  (reify
-    Type
-    (type-name [_]
-      (str "<reified at " _FILE_ ": " _LINE_ ">"))
+;; TODO: change back to reified
+(deftype NoInt []
+  Stringable
+  (string-list [_]
+    (list "c/no-int")))
+(def no-int (NoInt))
+;; (def no-int
+;;   (reify
+;;     Type
+;;     (type-name [_]
+;;       (str "<reified at " _FILE_ ": " _LINE_ ">"))
 
-    Stringable
-    (string-list [_]
-      (list "c/no-int"))
+;;     Stringable
+;;     (string-list [_]
+;;       (list "c/no-int"))
 
-    Hashable
-    ;; TODO: remove these impls after HashMapConstraint is implented
-    (sha1-update [x ctxt]
-      (sha1-update-type x ctxt)
-      (sha1-update "no-symbol" ctxt))
+;;     Hashable
+;;     ;; TODO: remove these impls after HashMapConstraint is implented
+;;     (sha1-update [x ctxt]
+;;       (sha1-update-type x ctxt)
+;;       (sha1-update "no-symbol" ctxt))
 
-    (sha1 [x]
-      (let [ctxt (sha1-init)]
-        (sha1-update x ctxt)
-        (sha1-finalize ctxt)))
+;;     (sha1 [x]
+;;       (let [ctxt (sha1-init)]
+;;         (sha1-update x ctxt)
+;;         (sha1-finalize ctxt)))
 
-    Eq
-    (=* [x y]
-      (or (instance? Integer y)
-          (and (= (get-type x) (get-type y))
-               (maybe x))))
+;;     Eq
+;;     (=* [x y]
+;;       (or (instance? Integer y)
+;;           (and (= (get-type x) (get-type y))
+;;                (maybe x))))
 
-    Ord
-    (<* [x y]
-      (or (instance? Integer y)
-          (and (= (get-type x) (get-type y))
-               (maybe x))))))
+;;     Ord
+;;     (<* [x y]
+;;       (or (instance? Integer y)
+;;           (and (= (get-type x) (get-type y))
+;;                (maybe x))))))
 
 (deftype IntegerConstraint [static-value max min path sym var]
-  ;; (assert (instance? (any-of Integer
-  ;;                            no-int) static-value))
-  ;; (assert (instance? (any-of Integer
-  ;;                            no-max-int) max))
-  ;; (assert (instance? (any-of Integer
-  ;;                            no-min-int) min))
+  (assert (instance? (any-of Integer
+                             NoInt) static-value))
+  (assert (instance? (any-of Integer
+                             NoInt) max))
+  (assert (instance? (any-of Integer
+                             NoInt) min))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (any-of Symbol
                              NoSymbol) sym))
@@ -602,32 +607,38 @@
 
   (get-type-sym [_] 'Symbol))
 
-(def no-string
-  (reify
-    Stringable
-    (string-list [_]
-      (list "c/no-string"))
+;; TODO: change back to reified
+(deftype NoString []
+  Stringable
+  (string-list [_]
+    (list "c/no-str")))
+(def no-string (NoString))
+;; (def no-string
+;;   (reify
+;;     Stringable
+;;     (string-list [_]
+;;       (list "c/no-string"))
 
-    Eq
-    (=* [x y]
-      (or (instance? String y)
-          (and (= (get-type x) (get-type y))
-               (maybe x))))
+;;     Eq
+;;     (=* [x y]
+;;       (or (instance? String y)
+;;           (and (= (get-type x) (get-type y))
+;;                (maybe x))))
 
-    Hashable
-    ;; TODO: remove these impls after HashMapConstraint is implented
-    (sha1-update [x ctxt]
-      (sha1-update-type x ctxt)
-      (sha1-update "no-symbol" ctxt))
+;;     Hashable
+;;     ;; TODO: remove these impls after HashMapConstraint is implented
+;;     (sha1-update [x ctxt]
+;;       (sha1-update-type x ctxt)
+;;       (sha1-update "no-symbol" ctxt))
 
-    (sha1 [x]
-      (let [ctxt (sha1-init)]
-        (sha1-update x ctxt)
-        (sha1-finalize ctxt)))))
+;;     (sha1 [x]
+;;       (let [ctxt (sha1-init)]
+;;         (sha1-update x ctxt)
+;;         (sha1-finalize ctxt)))))
 
 (deftype StrBuffConstraint [static-value path sym var]
-  ;; (assert (instance? (any-of String
-  ;;                            no-string) static-value))
+  (assert (instance? (any-of String
+                             NoString) static-value))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (any-of Symbol
                              NoSymbol) sym))
@@ -653,8 +664,8 @@
   (get-type-sym [_] 'String))
 
 (deftype SubStrConstraint [static-value path sym var]
-  ;; (assert (instance? (any-of String
-  ;;                            no-string) static-value))
+  (assert (instance? (any-of String
+                             NoString) static-value))
   (assert (instance? (list-of Vector) path))
   (assert (instance? (any-of Symbol
                              NoSymbol) sym))
