@@ -29,6 +29,7 @@
 
 (def top-type)
 (def bottom-type)
+;; TODO: remove 'type-map'
 (def type-map)
 
 (def always-nothing -1)
@@ -465,6 +466,7 @@
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 
+;; TODO: add type field constraints
 (deftype ReifiedConstraint [type-num fields type-sym path sym var]
   (assert (instance? Integer type-num))
   (assert (instance? HashMap fields))
@@ -514,7 +516,19 @@
 (deftype NoInt []
   Stringable
   (string-list [_]
-    (list "c/no-int")))
+    (list "c/no-int"))
+
+  Eq
+  (=* [x y]
+    (or (instance? Integer y)
+        (and (= (get-type x) (get-type y))
+             (maybe x))))
+
+  Ord
+  (<* [x y]
+    (or (instance? Integer y)
+        (and (= (get-type x) (get-type y))
+             (maybe x)))))
 (def no-int (NoInt))
 ;; (def no-int
 ;;   (reify
@@ -611,7 +625,13 @@
 (deftype NoString []
   Stringable
   (string-list [_]
-    (list "c/no-str")))
+    (list "c/no-str"))
+
+  Eq
+  (=* [x y]
+    (or (instance? String y)
+        (and (= (get-type x) (get-type y))
+             (maybe x)))))
 (def no-string (NoString))
 ;; (def no-string
 ;;   (reify
@@ -2991,6 +3011,11 @@
               (instance? ParamConstraint c2)
               (instance? HashMapConstraint c2))
           (intersect c2 c1)
+
+          (and (instance? ReifiedConstraint c2)
+               (instance? Field fld))
+          (intersect-reified-val c1 c2)
+
           c2))
 
   ConstraintOps
@@ -3018,8 +3043,15 @@
     (mod-param dyn-c c))
 
   (intersect-reified-val [c reified]
-    (is-bottom (intersect-reified-val c (ReifiedConstraint UnknownType {fld top-type} no-symbol
-                                                           empty-list no-symbol "")))))
+    ;; TODO: verify that new value satisfies the type field constraint
+    (cond (instance? Field fld)
+          (either (for [_ (get-in reified [.fields fld])]
+                    (assoc-in reified [.fields fld] fld-c))
+                  (NoValues [(ReifiedConstraint UnknownType {fld top-type} no-symbol
+                                                empty-list (symbol (str "field '" (.sym fld) "' required")) "")
+                             reified]))
+
+          reified)))
 
 (defn set-field [fld c]
   (SetField fld c))
