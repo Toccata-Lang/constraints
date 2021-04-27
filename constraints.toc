@@ -901,8 +901,26 @@
 
   (get-type-sym [_] 'Promise))
 
+(deftype Variadic []
+  Stringable
+  (string-list [_] (list "c/variadic")))
+
+(def variadic (Variadic))
+
+(def ArityRank (any-of Integer
+                       Variadic))
+
+(deftype fn-arity [param-consts result-const]
+  (assert (instance? ListConstraint param-consts))
+  ;; TODO: need recursive types
+  ;; (assert (instance? ValueConstraint result-const))
+
+  Stringable
+  (string-list [_]
+    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
+
 (deftype FnConstraint [arities path sym var]
-  (assert (instance? HashMap arities))
+  (assert (instance? (map-of ArityRank fn-arity) arities))
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
@@ -1116,31 +1134,6 @@
 
   (.mods c (conj (.mods c) mod)))
 
-(deftype DynamicResultConstraint [arity invokable-c num-args path sym var]
-  (assert (instance? TypeSym sym))
-  Stringable
-  (string-list [_]
-    (list "(c/DynamicResultConstraint " (str arity) " " (str invokable-c) " " (str num-args)
-          (str " " (cons 'list path)) " " (sym-str sym)
-          " " (str "\"" var "\"") ")"))
-
-  Eq
-  (=* [x y]
-    (and (instance? DynamicResultConstraint y)
-         (= invokable-c (.invokable-c y))
-         (maybe x)))
-
-  Constraint
-  (get-type-num [c]
-    UnknownType)
-
-  (set-arity [c new-arity]
-    (.arity c new-arity))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Dynamic Result at" ""] path)
-                  desired-len)))
-
 (deftype ReifiedFields [field-cs path sym var]
   (assert (instance? TypeSym sym))
   (assert (instance? Vector field-cs))
@@ -1161,8 +1154,7 @@
 
 (def DynamicConstraint (any-of DynamicFields
                                ReifiedFields
-                               ParamConstraint
-                               DynamicResultConstraint))
+                               ParamConstraint))
 
 ;; Minimum Constraint Implementations
 ;; (deftype ParamConstraint [param-index]
@@ -1187,7 +1179,6 @@
                                InferredInner
                                CollectionOf
                                SumConstraint
-                               DynamicConstraint
                                ReifiedConstraint
                                InferredInner
                                CollectionOf
@@ -1239,14 +1230,6 @@
 
 (def ValueConstraint (any-of SymbolConstraints
                              AllValues))
-
-(deftype fn-arity [param-consts result-const]
-  (assert (instance? ListConstraint param-consts))
-  (assert (instance? ValueConstraint result-const))
-
-  Stringable
-  (string-list [_]
-    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
 
 (deftype ResultConstraint [assertion]
   Stringable
@@ -2700,33 +2683,6 @@
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
 
-;; TODO: maybe eliminate this whole thing or some impls
-(extend-type DynamicConstraint
-  Constraint
-  (assertion-path [c]
-    (.path c))
-
-  (intersect [c1 c2]
-    (either (or (and (= top-type c2)
-                     (maybe c1))
-                (= c1 c2))
-            (do
-              (print-err 'kablooie _FILE_ _LINE_)
-              (abort)
-              top-type)))
-
-  (satisfied-by [_ c] (maybe c))
-  (update-var [x v] (.var x v))
-  (collection-of [x] (Left top-type))
-  (set-collection-type [c _ _] c)
-
-  ConstraintOps
-  (intersect-reified-val [c rc]
-    (do
-      (print-err 'kablooie _FILE_ _LINE_)
-      (abort)
-      top-type)))
-
 (deftype SetType [tc]
   (assert (instance? (any-of VectorConstraint
                              ListConstraint)
@@ -2851,23 +2807,6 @@
     (let [new-type (intersect-reified-val (.type-c c) tc)]
       (either (= bottom-type new-type)
               (.type-c c new-type)))))
-
-(extend-type DynamicResultConstraint
-  Container
-  (map [x f]
-    (.invokable-c x (f (.invokable-c x))))
-
-  (map [x f embed]
-    (-> (.invokable-c x)
-        f
-        (map (partial .invokable-c x))))
-
-  Constraint
-  (set-arity [c new-arity]
-    (.arity c new-arity))
-
-  ConstraintOps
-  (is-bottom [c] c))
 
 (extend-type ReifiedFields
   Container
@@ -3032,9 +2971,8 @@
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
             (either (for [arity-info (or (get-in c2 [.arities (count args)])
-                                         ;; TODO: handle variadic
-                                         )]
-                      (let [checked-params (-> (zip-lists (extract-items-constraints (.param-consts arity-info))
+                                         (get-in c2 [.arities variadic]))]
+                      (let [checked-params (-> (zip-lists (extract-items-constraints (.param-consts arity-info) (count args))
                                                           args)
                                                (some (fn [[param arg]]
                                                        (= bottom-type (intersect param arg)))))]
