@@ -114,8 +114,7 @@
   (get-type-sym [c]
     (assert-result r (instance? TypeSym r)))
 
-  (set-path [c new-path]
-    (assert (instance? (list-of Vector) new-path))
+  (remove-sym [c]
     (assert-result r (instance? Either r))
 
     (Right c))
@@ -132,6 +131,7 @@
   ;; TODO: remove these two when old-reify-c is removed from toccata.toc
   (reified-fields [c]
     (Right top-type))
+
   (filter-reified-fields [c]
     c)
 
@@ -143,13 +143,14 @@
   (set-arity [c new-arity]
     c)
 
-  (add-to-path [constraint file-name line-number]
-    constraint)
-
-  (remove-sym [c]
+  (set-path [c new-path]
+    (assert (instance? (list-of Vector) new-path))
     (assert-result r (instance? Either r))
 
     (Right c))
+
+  (add-to-path [constraint file-name line-number]
+    constraint)
 
   (contents-constraint [_])
 
@@ -370,12 +371,11 @@
   (satisfied-by [_ c] (maybe c))
   (intersect [_ c] c)
   (update-sym [x _] x)
-  (add-to-path [x file line]
-    (either (for [[top-file top-line] (first (.path x))
-                  :when (and (= top-file file)
-                             (= top-line line))]
-              x)
-            (.path x (cons [file line] (.path x)))))
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some path (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c)))))
   (extract-var [_] var)
   (update-var [x v] (.var x v)))
 
@@ -414,7 +414,7 @@
   (assertion-path [_] path)
 
   (format-path [x desired-len]
-    (format-path* (cons ["Contents restriction from" ""] path)
+    (format-path* (cons ["Contents from" ""] path)
                   desired-len)))
 
 ;; CollectionOf is a stronger version of InferredInner
@@ -454,7 +454,6 @@
   (assert (instance? Integer type-num))
   (assert (instance? HashMap fields))
   (assert (instance? (list-of Vector) path))
-  ;; 'type-sym' has to be more relaxed so it can accept an ast/tagged-symbol
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
@@ -487,7 +486,7 @@
   (assertion-path [_] path)
 
   (format-path [x desired-len]
-    (format-path* (cons [(str "Type '" type-sym "' from") ""]
+    (format-path* (cons [(str type-sym "' from") ""]
                         path)
                   desired-len)))
 
@@ -1485,6 +1484,12 @@
   (set-path [c new-path]
     (Left (.path c new-path)))
 
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some (.path c) (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c)))))
+
   (extract-sym [c]
     (instance? Symbol (.sym c)))
 
@@ -1499,16 +1504,6 @@
 
   (extract-var [c]
     (.var c))
-
-  (add-to-path [constraint file-name line-number]
-    (let [new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))]
-      (either (and (= "" file-name)
-                   (maybe constraint))
-              (.path constraint new-path))))
 
   (update-var [tc new-var]
     (.var tc new-var))
@@ -2268,11 +2263,9 @@
 
   Constraint
   (add-to-path [constraint file-name line-number]
-    (let [new-path (either (for [[top-file top-line] (first (.path constraint))
-                                 _ (and (= top-line line-number)
-                                        (= top-file file-name))]
-                             (.path constraint))
-                           (cons [file-name line-number] (.path constraint)))
+    (let [new-path (cond (some (.path constraint) (partial = [file-name line-number]))
+                         (.path constraint)
+                         (cons [file-name line-number] (.path constraint)))
           fields (map-vals (.fields constraint)
                            (fn [field-c]
                              (add-to-path field-c file-name line-number)))]
@@ -2947,10 +2940,19 @@
 (defn get-field [fld]
   (GetField fld))
 
-(deftype CallValue [args]
+(deftype CallValue [args path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
   Stringable
   (string-list [_]
-    (list "(c/CallValue " (to-str (interpose args "\n")) ")"))
+    (list "(c/CallValue " (to-str (interpose args "\n")) ")"
+          ;; " (list)"
+          (str " " (cons 'list path))
+          " " (sym-str sym)
+          " " (str "\"" var "\"")
+          ")"))
 
   Container
   (map [x f]
@@ -2961,22 +2963,32 @@
          (partial .args x)))
 
   Constraint
+  (set-path [c new-path]
+    (Left (.path c new-path)))
+
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some path (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c)))))
+
   (intersect [c1 c2]
     (cond (instance? ParamConstraint c2)
           (intersect c2 c1)
 
           (instance? FnConstraint c2)
           (do
-            ;; (print-err "Intersecting CallValue")
-            ;; (print-err 'c1 c1)
-            ;; (print-err 'c2 c2)
+            (print-err "Intersecting CallValue")
+            (print-err 'c1 c1)
+            (print-err 'c2 c2)
             (either (for [arity-info (or (get-in c2 [.arities (count args)])
                                          (get-in c2 [.arities variadic]))]
-                      (let [checked-params (-> (zip-lists (extract-items-constraints (.param-consts arity-info) (count args))
-                                                          args)
+                      (let [checked-params (-> (.param-consts arity-info)
+                                               (extract-items-constraints (count args))
+                                               (zip-lists args)
                                                (some (fn [[param arg]]
                                                        (= bottom-type (intersect param arg)))))]
-                        ;; (print-err 'result (.result-const arity-info))
+                        (print-err 'result (.result-const arity-info))
                         (either (flat-map checked-params
                                           (partial = bottom-type))
                                 (.result-const arity-info))))
@@ -2990,9 +3002,8 @@
             empty-list))
 
   (format-path [_ desired-len]
-    (either (map (first args) (fn [x]
-                                (format-path x desired-len)))
-            empty-list))
+    (format-path* (cons ["Called at " ""] path)
+                  desired-len))
 
   ConstraintOps
   (is-bottom [c]
@@ -3012,6 +3023,10 @@
 
 (extend-type FnConstraint
   Constraint
+  (format-path [x desired-len]
+    (format-path* (cons ["Function defined at" ""] (.path x))
+                  desired-len))
+
   (intersect [x y]
     (intersect-fn y x))
 
