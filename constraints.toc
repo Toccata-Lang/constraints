@@ -29,8 +29,6 @@
 
 (def top-type)
 (def bottom-type)
-;; TODO: remove 'type-map'
-(def type-map)
 
 (def always-nothing -1)
 (def never-nothing -2)
@@ -66,19 +64,41 @@
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
-(deftype Field [sym]
-  (assert (instance? Symbol sym))
-
+;; TODO: only temporary
+(deftype NoSymbol []
   Stringable
   (string-list [_]
-    (list (str "(c/Field (symbol \"" sym "\"))")))
+    (list "c/no-symbol")))
+(def no-symbol (NoSymbol))
+;; (def no-symbol
+;;   (reify
+;;     Type
+;;     (type-name [_]
+;;       (str "<reified at " _FILE_ ": " _LINE_ ">"))
 
-  Container
-  (map [x _]
-    x)
+;;     Stringable
+;;     (string-list [_]
+;;       (list "c/no-symbol"))
 
-  (map [x _ embed]
-    (embed x)))
+;;     Eq
+;;     (=* [x y]
+;;       (or (instance? Symbol y)
+;;           (and (= (get-type x) (get-type y))
+;;                (maybe x))))
+
+;;     Hashable
+;;     ;; TODO: remove these impls after HashMapConstraint is implented
+;;     (sha1-update [x ctxt]
+;;       (sha1-update-type x ctxt)
+;;       (sha1-update "no-symbol" ctxt))
+
+;;     (sha1 [x]
+;;       (let [ctxt (sha1-init)]
+;;         (sha1-update x ctxt)
+;;         (sha1-finalize ctxt)))))
+
+(def TypeSym (any-of NoSymbol
+                     Symbol))
 
 ;; Public interface for Constraints
 (defprotocol Constraint
@@ -89,13 +109,10 @@
     c)
 
   (get-type-num [c]
-    (let [type-nums (either (map (para type-map c) keys)
-                            [])]
-      (either (and (first type-nums)
-                   (apply = type-nums))
-              UnknownType)))
+    (assert-result r (instance? Integer r)))
 
-  (get-type-sym [c])
+  (get-type-sym [c]
+    (assert-result r (instance? TypeSym r)))
 
   (set-path [c new-path]
     (assert (instance? (list-of Vector) new-path))
@@ -126,13 +143,6 @@
   (set-arity [c new-arity]
     c)
 
-  (type-map [new old]
-    (assert-result r (instance? (maybe-of HashMap) r))
-
-    ;; TODO: c-exprs from Toccata might show up here and we can extract constraint info from them
-    ;; but for noew, just ignore them
-    nothing)
-
   (add-to-path [constraint file-name line-number]
     constraint)
 
@@ -156,12 +166,6 @@
 
   (format-path [x n]
     (assert-result r (instance? (list-of String) r)))
-
-  (restrict-types [c types-map]
-    (either (map (para type-map c)
-                 (fn [c-type-map]
-                   (select-keys types-map (keys c-type-map))))
-            types-map))
 
   (is-collection? [c]
     nothing)
@@ -214,6 +218,24 @@
 ;;     (or (= x y)
 ;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
 ;;     y))
+
+(deftype Field [sym]
+  (assert (instance? Symbol sym))
+
+  Stringable
+  (string-list [_]
+    (list (str "(c/Field (symbol \"" sym "\"))")))
+
+  Container
+  (map [x _]
+    x)
+
+  (map [x _ embed]
+    (embed x))
+
+  Constraint
+  (get-type-num [_]
+    UnknownType))
 
 (defn set-type [c tc]
   (para (fn [c old-c]
@@ -278,10 +300,6 @@
 
 (defn clear-sym [c]
   (apo remove-sym c))
-
-(defn extract-type-map [c]
-  ;; TODO: remove need for this function
-  (para type-map c))
 
 (defn extract-dynamic-params [c]
   (cata dynamic-params c))
@@ -363,39 +381,6 @@
 
 (def top-type (AllValues empty-list ""))
 
-;; TODO: only temporary
-(deftype NoSymbol []
-  Stringable
-  (string-list [_]
-    (list "c/no-symbol")))
-(def no-symbol (NoSymbol))
-;; (def no-symbol
-;;   (reify
-;;     Type
-;;     (type-name [_]
-;;       (str "<reified at " _FILE_ ": " _LINE_ ">"))
-
-;;     Stringable
-;;     (string-list [_]
-;;       (list "c/no-symbol"))
-
-;;     Eq
-;;     (=* [x y]
-;;       (or (instance? Symbol y)
-;;           (and (= (get-type x) (get-type y))
-;;                (maybe x))))
-
-;;     Hashable
-;;     ;; TODO: remove these impls after HashMapConstraint is implented
-;;     (sha1-update [x ctxt]
-;;       (sha1-update-type x ctxt)
-;;       (sha1-update "no-symbol" ctxt))
-
-;;     (sha1 [x]
-;;       (let [ctxt (sha1-init)]
-;;         (sha1-update x ctxt)
-;;         (sha1-finalize ctxt)))))
-
 (defn sym-str [s]
   (either (or (and (instance? Symbol s)
                    (maybe (str "'" s)))
@@ -408,8 +393,7 @@
 ;; InferredInner is a weaker version of CollectionOf
 (deftype InferredInner [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -421,7 +405,7 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
-  (get-type-sym [c]
+  (get-type-num [c]
     UnknownType)
 
   (is-collection? [c]
@@ -436,8 +420,7 @@
 ;; CollectionOf is a stronger version of InferredInner
 (deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -472,8 +455,7 @@
   (assert (instance? HashMap fields))
   (assert (instance? (list-of Vector) path))
   ;; 'type-sym' has to be more relaxed so it can accept an ast/tagged-symbol
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -503,9 +485,6 @@
     (.type-sym c new-name))
 
   (assertion-path [_] path)
-
-  (type-map [_ _]
-    (maybe {type-num fields}))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Type '" type-sym "' from") ""]
@@ -571,8 +550,7 @@
   (assert (instance? (any-of Integer
                              NoInt) min))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -595,11 +573,9 @@
   (get-type-sym [_] 'Integer))
 
 (deftype SymbolConstraint [static-value path sym var]
-  (assert (instance? (any-of Symbol
-                             NoSymbol) static-value))
+  (assert (instance? TypeSym static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -660,8 +636,7 @@
   (assert (instance? (any-of String
                              NoString) static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -687,8 +662,7 @@
   (assert (instance? (any-of String
                              NoString) static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -712,8 +686,7 @@
 
 (deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -745,8 +718,7 @@
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -784,8 +756,7 @@
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -818,8 +789,7 @@
 
 (deftype MaybeConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -841,8 +811,7 @@
 
 (deftype AgentConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -866,8 +835,7 @@
 
 (deftype FutureConstraint [path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -889,8 +857,7 @@
 
 (deftype OpaqueConstraint [path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -912,8 +879,7 @@
 
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -938,8 +904,7 @@
 (deftype FnConstraint [arities path sym var]
   (assert (instance? HashMap arities))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -990,8 +955,7 @@
 (deftype SumConstraint [alts path sym var]
   (assert (instance? Vector alts))
   (assert (instance? (min-count 1) alts))
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? (list-of Vector) path))
   (assert (instance? String var))
 
@@ -1030,34 +994,6 @@
 
   (remove-sym [tc]
     (Right (.sym tc no-symbol)))
-
-  (type-map [c _]
-    (let [alt-maps (.alts c)]
-      (assert (instance? (vector-of (maybe-of HashMap)) alt-maps))
-
-      (flat-map (apply (maybe vector)
-                       (filter alt-maps identity))
-                (fn [alt-maps]
-                  (and (first alt-maps)
-                       (-> (reduce (for [[type-num fields] (flat-map alt-maps vec)
-                                         [field c] (either (and (empty? fields)
-                                                                (maybe [[no-fields top-type]]))
-                                                           (vec fields))]
-                                     [type-num field c])
-                                   {}
-                                   (fn [m [type-num field c]]
-                                     (either (update-in m [type-num field] (fn [cs]
-                                                                             (conj cs c)))
-                                             (assoc-in m [type-num field] [c]))))
-                           (map-vals (fn [fields]
-                                       (either (and (get fields no-fields)
-                                                    (maybe {}))
-                                               (map-vals fields (fn [alts]
-                                                                  ;; TODO: what if 'alts' has NoValues in it?
-                                                                  ;; what if it's empty?
-                                                                  (either (some alts (partial = top-type))
-                                                                          (SumConstraint alts path sym var)))))))
-                           maybe))))))
 
   (extract-var [c]
     var)
@@ -1122,8 +1058,7 @@
                             'Opaque opaque-constraint})
 
 (deftype DynamicFields [type-c fields path sym var]
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? ReifiedConstraint type-c))
   (assert (instance? (vector-of Field) fields))
 
@@ -1142,8 +1077,7 @@
          (maybe x))))
 
 (deftype ParamConstraint [arity param-index item-indices mods path sym var]
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? Vector item-indices))
 
   Stringable
@@ -1183,8 +1117,7 @@
   (.mods c (conj (.mods c) mod)))
 
 (deftype DynamicResultConstraint [arity invokable-c num-args path sym var]
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   Stringable
   (string-list [_]
     (list "(c/DynamicResultConstraint " (str arity) " " (str invokable-c) " " (str num-args)
@@ -1209,8 +1142,7 @@
                   desired-len)))
 
 (deftype ReifiedFields [field-cs path sym var]
-  (assert (instance? (any-of Symbol
-                             NoSymbol) sym))
+  (assert (instance? TypeSym sym))
   (assert (instance? Vector field-cs))
 
   Stringable
@@ -1326,11 +1258,7 @@
     (ResultConstraint (update-var assertion new-var)))
 
   (update-sym [_ new-sym]
-    (ResultConstraint (update-sym assertion new-sym)))
-
-  (type-map [c _]
-    ;; TODO: if this is just a bare 'assertion', the types conflict
-    (.assertion c)))
+    (ResultConstraint (update-sym assertion new-sym))))
 
 (def Constraints (any-of ValueConstraint
                          NoValues
@@ -2499,9 +2427,7 @@
 
   Constraint
   (old-extract-items-constraints [c n]
-    (either (and (flat-map (extract-type-map c) empty?)
-                 (maybe []))
-            (vec (repeat n (.contents c)))))
+    (vec (repeat n (.contents c))))
 
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
@@ -2594,12 +2520,7 @@
     (Left x))
 
   (old-extract-items-constraints [c n]
-    (either (and (flat-map (extract-type-map c) empty?)
-                 (maybe []))
-            (vec (repeat n (.contents c)))))
-
-  (type-map [c _]
-    (maybe {HashSetType {(Field 'set-map) hashmap-constraint}}))
+    (vec (repeat n (.contents c))))
 
   (intersect [cc c]
     (intersect-coll-of c cc))
@@ -2748,16 +2669,14 @@
     (intersect-sum rc sum-c))
 
   (extract-field [c fld]
-    (either (for [types-map (extract-type-map c)
-                  alts (apply (maybe vector) (-> types-map
-                                                 vals
-                                                 (map (fn [fields]
-                                                        (get fields fld)))
-                                                 (filter identity)))
-                  :when-not (empty? alts)]
-              (sum-type alts))
+    (let [alt-fields (-> (.alts c)
+                         (map (fn [alt]
+                                (extract-field alt fld)))
+                         (remove (partial = bottom-type)))]
+      (cond (empty? alt-fields)
             (NoValues [c (ReifiedConstraint 0 {fld top-type} (symbol (str "field '" (.sym fld) "' required"))
-                                            empty-list no-symbol "")])))
+                                            empty-list no-symbol "")])
+            (sum-type alt-fields))))
 
   (sum-c-satisfies [info c]
     (maybe (and (every (.alts info) (partial satisfied-by c))
