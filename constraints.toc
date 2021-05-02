@@ -4,6 +4,10 @@
 ;; TODO: really bad error if this is in there
 ;; (def int-max)
 
+(add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
+                           "state-error.toc"
+                           :sha "a1bad99"))
+
 (def SymbolOrString (any-of Symbol
                             String))
 
@@ -103,6 +107,9 @@
 ;; Public interface for Constraints
 (defprotocol Constraint
   (assertion-path [x])
+
+  (reify-c [c arity loc]
+    (se/state-error (Right c)))
 
   ;; Ensure constraint is as small as possible
   (trim [c]
@@ -205,8 +212,8 @@
     c)
 
   ;; This is only used for calls to seq and vec.
-  (set-collection-type [c tc old-c]
-    (trim (intersect c tc)))
+  (set-collection-type [c tc]
+    (Left (trim (intersect c tc))))
 
   (satisfied-by [c info]
     (assert-result r (instance? Maybe r))
@@ -239,8 +246,8 @@
     UnknownType))
 
 (defn set-type [c tc]
-  (para (fn [c old-c]
-          (set-collection-type c tc old-c))
+  (apo (fn [c]
+         (set-collection-type c tc))
         c))
 
 (defn extract-tail-constraint [c]
@@ -710,9 +717,9 @@
 
   (get-type-sym [_] 'HashMap)
 
-  (set-collection-type [c tc old-c]
+  (set-collection-type [c tc]
     ;; TODO: finish
-    top-type))
+    (Left tc)))
 
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
@@ -761,9 +768,9 @@
   Stringable
   (string-list [_]
     (list "(c/VectorConstraint " (str items) " " (str tail-c) " "
-          "(list) "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          ;; "(list) "
+          (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -909,7 +916,8 @@
 (def ArityRank (any-of Integer
                        Variadic))
 
-(deftype fn-arity [param-consts result-const]
+(deftype fn-arity [arity-id param-consts result-const]
+  (assert (instance? Symbol arity-id))
   (assert (instance? ListConstraint param-consts))
   ;; TODO: need recursive types
   ;; (assert (instance? ValueConstraint result-const))
@@ -1100,7 +1108,7 @@
   Stringable
   (string-list [_]
     (list "(c/ParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
-          "\n[" (to-str (interpose mods "\n"))
+          "\n[" (to-str (interpose mods "\n "))
           "]\n(list)"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
@@ -1131,7 +1139,10 @@
 (defn mod-param [c mod]
   (assert (instance? ParamConstraint c))
 
-  (.mods c (conj (.mods c) mod)))
+  (cond (flat-map (last (.mods c)) (partial = mod))
+        c
+
+        (.mods c (conj (.mods c) mod))))
 
 (deftype ReifiedFields [field-cs path sym var]
   (assert (instance? TypeSym sym))
@@ -1245,6 +1256,35 @@
 (def Constraints (any-of ValueConstraint
                          NoValues
                          ResultConstraint))
+
+(defn reify-type-constraint [c arity param-cs loc]
+  (assert (instance? Constraints c))
+
+  ;; (or (= (.file loc) 'core)
+  ;;     (= (.line loc) 0)
+  ;;     (do
+  ;;       (print-err 'reifying loc arity "\n"
+  ;;                  c "\n\n"
+  ;;                  'params param-cs)
+  ;;       nothing))
+  (let [r (either (first ((se/try
+                            (comp (map (apo (fn [c]
+                                              (reify-c c arity loc))
+                                            c
+                                            se/state-error)
+                                       (partial cata trim))
+                                  (se/state-error top-type))
+                            (fn [_]
+                              (se/state-error top-type)))
+                          param-cs))
+                  c)]
+    ;; (or (= (.file loc) 'core)
+    ;;     (= (.line loc) 0)
+    ;;     (do
+    ;;       (print-err 'reified loc arity "\n"
+    ;;                  r)
+    ;;       nothing))
+    r))
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
@@ -1717,17 +1757,18 @@
 
 
   Constraint
-  (set-collection-type [c tc old-c]
+  (set-collection-type [c tc]
     (let [new-type-num (get-type-num tc)]
       (cond (or (instance? ListConstraint tc)
                 (= tc top-type))
-            old-c
+            (Left c)
 
             (instance? VectorConstraint tc)
             (-> tc
-                (.items (.items old-c))
-                (.tail-c (.tail-c old-c))
-                (.path (.path old-c)))
+                (.items (.items c))
+                (.tail-c (.tail-c c))
+                (.path (.path c))
+                Left)
 
             top-type)))
 
@@ -1879,17 +1920,18 @@
 
 
   Constraint
-  (set-collection-type [c tc old-c]
+  (set-collection-type [c tc]
     (let [new-type-num (get-type-num tc)]
       (cond (or (instance? VectorConstraint tc)
                 (= tc top-type))
-            old-c
+            (Left c)
 
             (instance? ListConstraint tc)
             (-> tc
-                (.items (.items old-c))
-                (.tail-c (.tail-c old-c))
-                (.path (.path old-c)))
+                (.items (.items c))
+                (.tail-c (.tail-c c))
+                (.path (.path c))
+                Left)
 
             top-type)))
 
@@ -1932,6 +1974,15 @@
   ;;                   (satisfied-by c info)))
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
+
+  (extract-field [c fld]
+    (print-err 'ka-blooie _FILE_ _LINE_)
+    (print-err 'c c)
+    (print-err 'fld fld)
+    (abort)
+    (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
+                                    (symbol (str "field '" (.sym fld) "' required"))
+                                    empty-list no-symbol "")]))
 
   (intersect-coll-of [c cc]
     (let [new-items (map (.items c)
@@ -2354,18 +2405,11 @@
                                             (symbol (str "field '" (.sym fld) "' required"))
                                             empty-list no-symbol "")])))
 
-  (intersect-coll-of [c ic]
-    (print-err 'kablooie _FILE_ _LINE_)
-    (abort)
-    ;; (MultiConstraint [ic (update-var c (extract-var ic))])
-    bottom-type)
+  (intersect-coll-of [c _]
+    c)
 
-  (intersect-inner [c ic]
-    (print-err 'kablooie _FILE_ _LINE_)
-    (abort)
-    ;; (MultiConstraint [ic (update-var c (extract-var ic))])
-    bottom-type)
-  )
+  (intersect-inner [c _]
+    c))
 
 (defn core-containers [c]
   (cata (fn [inner-c]
@@ -2572,8 +2616,8 @@
   (dynamic-params [c]
     (comp* [] (seq (.alts c))))
 
-  (set-collection-type [c tc old-c]
-    (trim c))
+  (set-collection-type [c tc]
+    (Right (trim c)))
 
   (intersect [sc c]
     (intersect-sum c sc))
@@ -2706,6 +2750,25 @@
            (.mods x new-mods))))
 
   Constraint
+  (reify-c [c arity loc]
+    (cond (= (.arity c) arity)
+          (comp (for [new-mods (se/traverse (.mods c)
+                                            (fn [mod]
+                                              (apo (fn [c]
+                                                     (reify-c c arity loc))
+                                                   mod
+                                                   se/state-error)))
+                      param-c (se/get-val (.param-index c))]
+                  (Left (apply-param-mods param-c (.mods c new-mods))))
+                (map (se/state-error '_)
+                     (fn [_]
+                       (print-err "Missing impl" _FILE_ _LINE_
+                                  "\nat: " loc
+                                  "\n\n" 'param-c c)
+                       (Left top-type))))
+
+          (se/state-error (Right c))))
+
   (reified-field [c indices]
     (-> c
         (.item-indices (comp (.item-indices c)
@@ -2716,8 +2779,8 @@
   (set-arity [c new-arity]
     (.arity c new-arity))
 
-  (set-collection-type [c tc old-c]
-    (mod-param old-c (SetType tc)))
+  (set-collection-type [c tc]
+    (Left (mod-param c (SetType tc))))
 
   (intersect [c1 c2]
     (intersect-param c2 c1))
@@ -2759,21 +2822,36 @@
     (mod-param pc agent-c))
 
   (intersect-param [c dyn-c]
-    (either (or (= c dyn-c)
-                (and (= (.arity c) (.arity dyn-c))
-                     (= (.param-index c) (.param-index dyn-c))
-                     (cond (empty? (.mods c))
-                           (maybe dyn-c)
+    (cond (= c dyn-c)
+          c
 
-                           (and (empty? (.mods dyn-c))
-                                (maybe c)))))
-            (do
-              ;; TODO: this should only be called when two params have the same
-              ;; symbol in a function. Replace the old paramconstraint instead of intersecting
-              ;; (print-err 'intersecting-at _FILE_ _LINE_
-              ;;            "\n" 'c c
-              ;;            "\n\n" 'dyn-c dyn-c)
-              (mod-param dyn-c c))))
+          (or (= (.sym c) no-symbol)
+              (= (.sym dyn-c) no-symbol))
+          (do
+            (print-err 'kablooie _FILE_ _LINE_)
+            (print-err 'c c)
+            (print-err 'dyn-c dyn-c)
+            (abort))
+
+          (= (.sym c) (.sym dyn-c))
+          (cond (every (zip-lists (.mods c) (.mods dyn-c))
+                       (fn [[c1 c2]]
+                         (= c1 c2)))
+                (cond (< (count (.mods c)) (count (.mods dyn-c)))
+                      dyn-c
+
+                      c)
+                (do
+                  (print-err 'kablooie _FILE_ _LINE_)
+                  (print-err 'c c)
+                  (print-err 'dyn-c dyn-c)
+                  (abort)))
+
+          (do
+            (print-err 'kablooie _FILE_ _LINE_)
+            (print-err 'c c)
+            (print-err 'dyn-c c)
+            (abort))))
 
   (intersect-sum [c cs]
     (mod-param c cs))
@@ -2783,6 +2861,19 @@
 
 (extend-type DynamicFields
   Constraint
+  (reify-c [c arity loc]
+    (for [param-cs (se/update-state identity)]
+      (let [fields (-> (zip-lists (.fields c) param-cs)
+                       (reduce {} (fn [m [k v]]
+                                    (assoc m k v))))]
+        (-> (.type-c c)
+            (.fields fields)
+            (.path (.path c))
+            (.sym (.sym c))
+            (.var (.var c))
+            (update-path loc)
+            Left))))
+
   (intersect [c1 c2]
     (either (or (and (= top-type c2)
                      (maybe c1))
@@ -2947,9 +3038,9 @@
 
   Stringable
   (string-list [_]
-    (list "(c/CallValue " (to-str (interpose args "\n")) ")"
-          ;; " (list)"
-          (str " " (cons 'list path))
+    (list "(c/CallValue " "\n[" (to-str (interpose args "\n")) "]"
+          " (list)"
+          ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -2978,20 +3069,20 @@
 
           (instance? FnConstraint c2)
           (do
-            (print-err "Intersecting CallValue")
-            (print-err 'c1 c1)
-            (print-err 'c2 c2)
+            ;; (print-err "Intersecting CallValue")
+            ;; (print-err 'c1 c1)
+            ;; (print-err 'c2 c2)
             (either (for [arity-info (or (get-in c2 [.arities (count args)])
                                          (get-in c2 [.arities variadic]))]
-                      (let [checked-params (-> (.param-consts arity-info)
-                                               (extract-items-constraints (count args))
-                                               (zip-lists args)
-                                               (some (fn [[param arg]]
-                                                       (= bottom-type (intersect param arg)))))]
-                        (print-err 'result (.result-const arity-info))
-                        (either (flat-map checked-params
-                                          (partial = bottom-type))
-                                (.result-const arity-info))))
+                      (let [params-failed (-> (.param-consts arity-info)
+                                              (extract-items-constraints (count args))
+                                              (zip-lists args)
+                                              (some (fn [[param arg]]
+                                                      (= bottom-type (intersect param arg)))))
+                            ]
+                        (either params-failed
+                                (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                       args (Location "WTF" 21304)))))
                     (NoValues [c1 c2])))
 
           top-type))
@@ -3050,7 +3141,7 @@
   ConstraintOps
   (is-bottom [x] x))
 
-(defn full-param-constraint [c]
+(defn full-param-constraint [outer-c]
   (trim (cata (fn [c]
                 (either (map (instance? ParamConstraint c)
                              (fn [dyn-c]
@@ -3078,7 +3169,7 @@
 
                                                             (intersect mod c)))))))
                         c))
-              c)))
+              outer-c)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
