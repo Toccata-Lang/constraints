@@ -1393,15 +1393,16 @@
   (intersect-sum [c cs]
     (assert (instance? SumConstraint cs))
 
-    (let [goods (-> (.alts cs)
-                    (map (partial intersect (update-var c (extract-var cs))))
+    (let [inters (map (.alts cs) (partial intersect (update-var c (extract-var cs))))
+          goods (-> inters
                     (remove (partial instance? NoValues))
                     (reduce [] (fn [goods c]
                                  (either (and (some goods (partial = c))
                                               (maybe goods))
                                          (conj goods c)))))]
       (either (or (and (empty? goods)
-                       (maybe (NoValues [c cs])))
+                       (or (apply = inters)
+                           (maybe (NoValues [c cs]))))
                   (and (= (count goods) 1)
                        (first goods)))
               (.alts cs goods))))
@@ -1417,7 +1418,7 @@
    (conflicting-assertions failing-constraint (.file loc) (.line loc)))
 
   ([failing-constraint file-name line-number]
-   (print-err 'failed failing-constraint)
+   ;; (print-err 'failed failing-constraint)
    (apply print-err (list* "Conflicting assertions"
                            (either (= "" file-name)
                                    (str "at " file-name ": " line-number))
@@ -1698,6 +1699,11 @@
     (intersect-hash-map y x))
 
   ConstraintOps
+  (extract-field [c fld]
+    (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
+                                    (symbol (str "field '" (.sym fld) "' required"))
+                                    empty-list no-symbol "")]))
+
   (intersect-hash-map [y x]
     (let [new-keys (intersect (.keys-c x) (.keys-c y))
           new-vals (intersect (.vals-c x) (.vals-c y))
@@ -1827,6 +1833,25 @@
               (-> c
                   (.items new-items)
                   (.tail-c new-tail)))))
+
+  (intersect-sum [c cs]
+    (assert (instance? SumConstraint cs))
+
+    (let [list-alts (filter (.alts cs) (partial instance? ListConstraint))
+          inters (map (.alts cs) (partial intersect (update-var c (extract-var cs))))
+          goods (-> inters
+                    (remove (partial instance? NoValues))
+                    (reduce [] (fn [goods c]
+                                 (either (and (some goods (partial = c))
+                                              (maybe goods))
+                                         (conj goods c)))))]
+      (either (or (and (empty? goods)
+                       (or (and (first list-alts)
+                                (apply = (map list-alts (partial intersect (update-var c (extract-var cs))))))
+                           (maybe (NoValues [c cs]))))
+                  (and (= (count goods) 1)
+                       (first goods)))
+              (.alts cs goods))))
 
   (intersect-inner [c ic]
     (let [new-items (map (.items c)
@@ -1983,6 +2008,25 @@
     (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
                                     (symbol (str "field '" (.sym fld) "' required"))
                                     empty-list no-symbol "")]))
+
+  (intersect-sum [c cs]
+    (assert (instance? SumConstraint cs))
+
+    (let [vect-alts (filter (.alts cs) (partial instance? VectorConstraint))
+          inters (map (.alts cs) (partial intersect (update-var c (extract-var cs))))
+          goods (-> inters
+                    (remove (partial instance? NoValues))
+                    (reduce [] (fn [goods c]
+                                 (either (and (some goods (partial = c))
+                                              (maybe goods))
+                                         (conj goods c)))))]
+      (either (or (and (empty? goods)
+                       (or (and (first vect-alts)
+                                (apply = (map vect-alts (partial intersect (update-var c (extract-var cs))))))
+                           (maybe (NoValues [c cs]))))
+                  (and (= (count goods) 1)
+                       (first goods)))
+              (.alts cs goods))))
 
   (intersect-coll-of [c cc]
     (let [new-items (map (.items c)
