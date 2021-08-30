@@ -924,7 +924,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/fn-arity " (str param-consts) "\n" (str result-const) ")")))
+    (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")")))
 
 (deftype FnConstraint [arities path sym var]
   (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -2136,6 +2136,9 @@
   (intersect [x y]
     (intersect-maybe y x))
 
+  (contents-constraint [c]
+    (Left (.contents c)))
+
   ConstraintOps
   (intersect-coll-of [x y]
     (let [contents (intersect (.contents x) (.contents y))]
@@ -2895,6 +2898,7 @@
             (print-err 'kablooie _FILE_ _LINE_)
             (print-err 'c c)
             (print-err 'dyn-c c)
+            (print-err 'sym-c (.sym c) 'sym-dyn (.sym dyn-c) (= (.sym c) (.sym dyn-c)))
             (abort))))
 
   (intersect-sum [c cs]
