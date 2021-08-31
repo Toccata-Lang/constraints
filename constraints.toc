@@ -1090,6 +1090,8 @@
   Stringable
   (string-list [_]
     (list "(c/DynamicFields "
+          (str type-c) "\n"
+          (str fields) "\n"
           (str " " "(list)" ;; (cons 'list path)
                )
           " " (sym-str sym)
@@ -2911,7 +2913,7 @@
   Constraint
   (reify-c [c arity loc]
     (for [param-cs (se/update-state identity)]
-      (let [fields (-> (zip-lists (.fields c) param-cs)
+      (let [fields (-> (zip-lists (.fields c) (rest param-cs))
                        (reduce {} (fn [m [k v]]
                                     (assoc m k v))))]
         (-> (.type-c c)
