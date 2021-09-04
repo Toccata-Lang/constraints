@@ -456,47 +456,6 @@
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 
-;; TODO: add type field constraints
-(deftype ReifiedConstraint [type-num fields type-sym path sym var]
-  (assert (instance? Integer type-num))
-  (assert (instance? HashMap fields))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
-          "\n"
-          ;; (str (cons 'list path))
-          (str " (symbol \"" type-sym "\")") 
-          " (list) " (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  ;; TODO: equality musth check the field maps as well
-  ;; verify this
-  (=* [x y]
-    (for [_ (instance? ReifiedConstraint y)
-          _ (= fields (.fields y))]
-      x))
-
-  Constraint
-  (get-type-sym [c]
-    type-sym)
-
-  (get-type-num [c]
-    type-num)
-
-  (set-type-name [c new-name]
-    (.type-sym c new-name))
-
-  (assertion-path [_] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str type-sym "' from") ""]
-                        path)
-                  desired-len)))
-
 ;; TODO: change back to reified
 (deftype NoInt []
   Stringable
@@ -949,6 +908,48 @@
 
   (get-type-sym [_] 'Fn))
 
+;; TODO: add type field constraints
+(deftype ReifiedConstraint [type-num fields type-sym invoke-arities path sym var]
+  (assert (instance? Integer type-num))
+  (assert (instance? HashMap fields))
+  (assert (instance? (map-of ArityRank fn-arity) invoke-arities))
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
+          "\n"
+          ;; (str (cons 'list path))
+          (str " (symbol \"" type-sym "\")") 
+          " (list) " (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  ;; TODO: equality musth check the field maps as well
+  ;; verify this
+  (=* [x y]
+    (for [_ (instance? ReifiedConstraint y)
+          _ (= fields (.fields y))]
+      x))
+
+  Constraint
+  (get-type-sym [c]
+    type-sym)
+
+  (get-type-num [c]
+    type-num)
+
+  (set-type-name [c new-name]
+    (.type-sym c new-name))
+
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str type-sym "' from") ""]
+                        path)
+                  desired-len)))
+
 (deftype NoFields []
   Stringable
   (string-list [_]
@@ -1057,12 +1058,12 @@
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
 (def set-constraint (ReifiedConstraint HashSetType {(Field 'set-map) hashmap-constraint}
-                                       'HashSet empty-list no-symbol ""))
+                                       'HashSet {} empty-list no-symbol ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
 (def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
 (def future-constraint (FutureConstraint empty-list no-symbol ""))
 (def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
-(def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity empty-list no-symbol ""))
+(def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity {} empty-list no-symbol ""))
 
 (def core-type-constraints {'Integer int-constraint
                             'StringBuffer strbuff-constraint
@@ -1704,7 +1705,7 @@
   (extract-field [c fld]
     (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
                                     (symbol (str "field '" (.sym fld) "' required"))
-                                    empty-list no-symbol "")]))
+                                    {} empty-list no-symbol "")]))
 
   (intersect-hash-map [y x]
     (let [new-keys (intersect (.keys-c x) (.keys-c y))
@@ -2009,7 +2010,7 @@
     (abort)
     (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
                                     (symbol (str "field '" (.sym fld) "' required"))
-                                    empty-list no-symbol "")]))
+                                    {} empty-list no-symbol "")]))
 
   (intersect-sum [c cs]
     (assert (instance? SumConstraint cs))
@@ -2452,7 +2453,7 @@
     (either (get (.fields c) fld)
             (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
                                             (symbol (str "field '" (.sym fld) "' required"))
-                                            empty-list no-symbol "")])))
+                                            {} empty-list no-symbol "")])))
 
   (intersect-coll-of [c _]
     c)
@@ -2744,7 +2745,7 @@
                          (remove (partial = bottom-type)))]
       (cond (empty? alt-fields)
             (NoValues [c (ReifiedConstraint 0 {fld top-type} (symbol (str "field '" (.sym fld) "' required"))
-                                            empty-list no-symbol "")])
+                                            {} empty-list no-symbol "")])
             (sum-type alt-fields))))
 
   (sum-c-satisfies [info c]
@@ -2769,14 +2770,14 @@
                   (update-var (extract-var c2))
                   (.alts new-alts))))))
 
-(deftype SetType [tc]
+(deftype SetCollectionType [tc]
   (assert (instance? (any-of VectorConstraint
                              ListConstraint)
                      tc))
 
   Stringable
   (string-list [_]
-    (list "(c/SetType " (str tc) ")"))
+    (list "(c/SetCollectionType " (str tc) ")"))
 
   Container
   (map [x f]
@@ -2829,7 +2830,7 @@
     (.arity c new-arity))
 
   (set-collection-type [c tc]
-    (Left (mod-param c (SetType tc))))
+    (Left (mod-param c (SetCollectionType tc))))
 
   (intersect [c1 c2]
     (intersect-param c2 c1))
@@ -3040,7 +3041,7 @@
           (either (for [_ (get-in reified [.fields fld])]
                     (assoc-in reified [.fields fld] fld-c))
                   (NoValues [(ReifiedConstraint UnknownType {fld top-type} no-symbol
-                                                empty-list (symbol (str "field '" (.sym fld) "' required")) "")
+                                                {} empty-list (symbol (str "field '" (.sym fld) "' required")) "")
                              reified]))
 
           reified)))
@@ -3128,8 +3129,7 @@
                                               (extract-items-constraints (count args))
                                               (zip-lists args)
                                               (some (fn [[param arg]]
-                                                      (= bottom-type (intersect param arg)))))
-                            ]
+                                                      (= bottom-type (intersect param arg)))))]
                         (either params-failed
                                 (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
                                                        args (Location "WTF" 21304)))))
@@ -3205,17 +3205,20 @@
                                                             (ReifiedConstraint
                                                              UnknownType {(.fld mod) top-type}
                                                              (symbol (str (.fld mod)))
-                                                             empty-list no-symbol "")
+                                                             {} empty-list no-symbol "")
 
                                                             (instance? GetField mod)
                                                             (ReifiedConstraint
                                                              UnknownType {(.fld mod) c}
                                                              (symbol (str (.fld mod)))
-                                                             empty-list no-symbol "")
+                                                             {} empty-list no-symbol "")
 
-                                                            (instance? SetType mod)
+                                                            (instance? SetCollectionType mod)
                                                             ;; TODO: needs completion
                                                             top-type
+
+                                                            (instance? CallValue c)
+                                                            mod
 
                                                             (intersect mod c)))))))
                         c))
