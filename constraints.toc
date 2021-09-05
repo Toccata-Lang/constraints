@@ -1433,12 +1433,6 @@
                                (format-path 0))))
    nothing))
 
-(defn apply-param-mods [c dyn-c]
-  (assert (instance? ParamConstraint dyn-c))
-
-  (reduce (.mods dyn-c) c (fn [c mod]
-                            (intersect mod c))))
-
 (extend-type Vector
   Constraint
   (trim [v]
@@ -2811,12 +2805,14 @@
                                                    mod
                                                    se/state-error)))
                       param-c (se/get-val (.param-index c))]
-                  (Left (apply-param-mods param-c (.mods c new-mods))))
-                (map (se/state-error '_)
-                     (fn [_]
+                  (Left (reduce new-mods param-c (fn [c mod]
+                                                   (intersect mod c)))))
+                (map (se/update-state identity)
+                     (fn [params]
                        (print-err "Missing impl" _FILE_ _LINE_
-                                  "\nat: " loc
-                                  "\n\n" 'param-c c)
+                                  "\nat: " loc 'arity-id arity
+                                  "\n\n" 'param-c c
+                                  "\n\n" 'params params)
                        (Left top-type))))
 
           (se/state-error (Right c))))
@@ -3143,15 +3139,15 @@
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
             (either (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
-                      (let [_ (print-err 'c2-arity arity-info)
-                            params-failed (-> (.param-consts arity-info)
+                      (let [params-failed (-> (.param-consts arity-info)
                                               (extract-items-constraints (count args))
                                               (zip-lists args)
                                               (some (fn [[param arg]]
                                                       (= bottom-type (intersect param arg)))))]
                         (either params-failed
                                 (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                       args (Location "WTF" 21304)))))
+                                                       (comp [c2] args)
+                                                       (Location "WTF" 21305)))))
                     (NoValues [c1 c2])))
 
           top-type))
