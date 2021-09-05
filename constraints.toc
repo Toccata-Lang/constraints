@@ -566,13 +566,14 @@
 (deftype NoString []
   Stringable
   (string-list [_]
-    (list "c/no-str"))
+    (list "c/no-string"))
 
   Eq
   (=* [x y]
     (or (instance? String y)
         (and (= (get-type x) (get-type y))
              (maybe x)))))
+
 (def no-string (NoString))
 ;; (def no-string
 ;;   (reify
@@ -923,6 +924,7 @@
           "\n"
           ;; (str (cons 'list path))
           (str " (symbol \"" type-sym "\")") 
+          "\n" (str invoke-arities)
           " (list) " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -3135,6 +3137,23 @@
                                                        args (Location "WTF" 21304)))))
                     (NoValues [c1 c2])))
 
+          (instance? ReifiedConstraint c2)
+          (do
+            ;; (print-err "Intersecting CallValue")
+            ;; (print-err 'c1 c1)
+            ;; (print-err 'c2 c2)
+            (either (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
+                      (let [_ (print-err 'c2-arity arity-info)
+                            params-failed (-> (.param-consts arity-info)
+                                              (extract-items-constraints (count args))
+                                              (zip-lists args)
+                                              (some (fn [[param arg]]
+                                                      (= bottom-type (intersect param arg)))))]
+                        (either params-failed
+                                (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                       args (Location "WTF" 21304)))))
+                    (NoValues [c1 c2])))
+
           top-type))
 
   ;; TODO: these two impls are totally bogus
@@ -3217,8 +3236,10 @@
                                                             ;; TODO: needs completion
                                                             top-type
 
-                                                            (instance? CallValue c)
-                                                            mod
+                                                            (instance? CallValue mod)
+                                                            ;; TODO: there might be an opportunity to capture
+                                                            ;; the needed return value ('c') and propogate that info
+                                                            top-type
 
                                                             (intersect mod c)))))))
                         c))
