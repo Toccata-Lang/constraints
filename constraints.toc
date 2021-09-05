@@ -234,6 +234,12 @@
   (string-list [_]
     (list (str "(c/Field (symbol \"" sym "\"))")))
 
+  Eq
+  (=* [x y]
+    (and (instance? Field y)
+         (= sym (.sym y))
+         (maybe x)))
+
   Container
   (map [x _]
     x)
@@ -928,7 +934,7 @@
           " (list) " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
-  ;; TODO: equality musth check the field maps as well
+  ;; TODO: equality must check the field maps as well
   ;; verify this
   (=* [x y]
     (for [_ (instance? ReifiedConstraint y)
@@ -2884,7 +2890,14 @@
           (= (.sym c) (.sym dyn-c))
           (cond (every (zip-lists (.mods c) (.mods dyn-c))
                        (fn [[c1 c2]]
-                         (= c1 c2)))
+                         (cond (= c1 c2)
+                               (maybe c1)
+
+                               (do
+                                 (print-err 'kablooie _FILE_ _LINE_)
+                                 (print-err 'c1 c1)
+                                 (print-err 'c2 c2)
+                                 nothing))))
                 (cond (< (count (.mods c)) (count (.mods dyn-c)))
                       dyn-c
 
@@ -2976,6 +2989,13 @@
   (is-bottom [c] c))
 
 (deftype SetField [fld fld-c]
+  Eq
+  (=* [x y]
+    (and (instance? SetField y)
+         (= fld (.fld y))
+         (= fld-c (.fld-c y))
+         (maybe x)))
+
   Stringable
   (string-list [_]
     (list "(c/SetField " (str fld) " " (str fld-c) ")"))
@@ -3052,6 +3072,12 @@
   (string-list [_]
     (list "(c/GetField " (str fld) ")"))
 
+  Eq
+  (=* [x y]
+    (and (instance? GetField y)
+         (= fld (.fld y))
+         (maybe x)))
+
   Container
   (map [x f]
     x)
@@ -3093,6 +3119,12 @@
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? CallValue y)
+         (= args (.args y))
+         (maybe x)))
 
   Container
   (map [x f]
