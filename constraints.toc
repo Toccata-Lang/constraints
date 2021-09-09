@@ -907,7 +907,9 @@
 
   Eq
   (=* [x y]
-    (identical x y))
+    (and (instance? FnConstraint y)
+         (=* arities (.arities y))
+         (maybe x)))
 
   Constraint
   (get-type-num [c]
@@ -2812,6 +2814,12 @@
                                                    se/state-error)))
                       param-c (se/get-val (.param-index c))]
                   (Left (reduce new-mods param-c (fn [c mod]
+                                                   (and (instance? ParamConstraint mod)
+                                                        (do
+                                                          (print-err 'boomerity _FILE_ _LINE_)
+                                                          (print-err 'c c)
+                                                          (print-err 'mod mod)
+                                                          (abort)))
                                                    (intersect mod c)))))
                 (map (se/update-state identity)
                      (fn [params]
@@ -2890,30 +2898,15 @@
           (= (.sym c) (.sym dyn-c))
           (cond (every (zip-lists (.mods c) (.mods dyn-c))
                        (fn [[c1 c2]]
-                         (cond (= c1 c2)
-                               (maybe c1)
-
-                               (do
-                                 (print-err 'kablooie _FILE_ _LINE_)
-                                 (print-err 'c1 c1)
-                                 (print-err 'c2 c2)
-                                 nothing))))
+                         (= c1 c2)))
                 (cond (< (count (.mods c)) (count (.mods dyn-c)))
                       dyn-c
 
                       c)
-                (do
-                  (print-err 'kablooie _FILE_ _LINE_)
-                  (print-err 'c c)
-                  (print-err 'dyn-c dyn-c)
-                  (abort)))
 
-          (do
-            (print-err 'kablooie _FILE_ _LINE_)
-            (print-err 'c c)
-            (print-err 'dyn-c c)
-            (print-err 'sym-c (.sym c) 'sym-dyn (.sym dyn-c) (= (.sym c) (.sym dyn-c)))
-            (abort))))
+                (.mods dyn-c (conj (.mods dyn-c) c)))
+
+          (.mods dyn-c (conj (.mods dyn-c) c))))
 
   (intersect-sum [c cs]
     (mod-param c cs))
@@ -3246,7 +3239,9 @@
                                    reverse
                                    (reduce top-type (fn [c mod]
                                                       (cond (instance? ParamConstraint mod)
-                                                            (full-param-constraint mod)
+                                                            (do
+                                                              (print-err 'boomity _FILE_ _LINE_)
+                                                              (full-param-constraint mod))
 
                                                             (instance? SetField mod)
                                                             (ReifiedConstraint
