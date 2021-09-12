@@ -66,6 +66,7 @@
 (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
 (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
+(def TypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeOfConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: only temporary
@@ -542,6 +543,116 @@
   Constraint
   (get-type-num [_] IntegerType)
   (get-type-sym [_] 'Integer))
+
+(deftype TypeOfConstraint [path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/TypeOfConstraint "
+          "(list) "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? TypeOfConstraint y)
+         (= sym (.sym y))
+         (maybe x)))
+
+  Constraint
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Type of value from" ""] path)
+                  desired-len))
+
+  (reify-c [c arity loc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  ;; (trim [c]
+  ;;   (print-err "Missing impl at: " _FILE_ _LINE_)
+  ;;   (abort))
+
+  (remove-sym [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
+
+  (reified-field [c indices]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
+
+  (filter-reified-field [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (reified-fields [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (filter-reified-fields [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (dynamic-params [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    [])
+
+  (set-arity [c new-arity]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-path [c new-path]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
+
+  ;; (add-to-path [constraint file-name line-number]
+  ;;   (print-err "Missing impl at: " _FILE_ _LINE_)
+  ;;   (abort))
+
+  (is-collection? [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (get-tail-constraint [c x]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (fixed-items-constraints [c x]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    [])
+
+  (extract-sym [tc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (clear-var [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (update-var [c new-var]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-type-name [c new-name]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-collection-type [c tc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (satisfied-by [c info]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)))
 
 (deftype SymbolConstraint [static-value path sym var]
   (assert (instance? TypeSym static-value))
@@ -1051,6 +1162,7 @@
                      (satisfied-by c info))))))
 
 (def fn-constraint (FnConstraint {} empty-list no-symbol ""))
+(def type-of-constraint (TypeOfConstraint empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
@@ -1179,25 +1291,6 @@
                                ReifiedFields
                                ParamConstraint))
 
-;; Minimum Constraint Implementations
-;; (deftype ParamConstraint [param-index]
-;;   Stringable
-;;   (string-list [_]
-;;     (list "(ParamConstraint " (str param-index ")")))
-
-;;   c/Constraint
-;;   (c/intersect [c1 c2] c2)
-;;   (c/satisfied-by [_ c] (maybe c))
-;;   (c/intersect [_ c] c)
-;;   (c/old-clear-sym [x] x)
-;;   (c/update-sym [x _] x)
-;;   (c/update-var [x v] x)
-;;   (c/extract-collection-of [x] c/top-type)
-;;   (c/old-extract-type-map [_] nothing)
-;;   (c/extract-contents-constraint [_] c/top-type)
-;;   (c/extract-coll-constraintraint [_] c/top-type))
-
-
 (def SymbolConstraints (any-of CoreValConstraint
                                InferredInner
                                CollectionOf
@@ -1266,9 +1359,12 @@
   (update-sym [_ new-sym]
     (ResultConstraint (update-sym assertion new-sym))))
 
+(def TypeLevelConstraints (any-of TypeOfConstraint))
+
 (def Constraints (any-of ValueConstraint
                          NoValues
-                         ResultConstraint))
+                         ResultConstraint
+                         TypeLevelConstraints))
 
 (defn reify-type-constraint [c arity param-cs loc]
   (assert (instance? Constraints c))
@@ -3230,6 +3326,11 @@
 (extend-type Field
   ConstraintOps
   (is-bottom [x] x))
+
+(extend-type TypeOfConstraint
+  Constraint
+  (intersect [c1 c2]
+    (NoValues [c1 c2])))
 
 (defn full-param-constraint [outer-c]
   (trim (cata (fn [c]
