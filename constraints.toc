@@ -1042,7 +1042,7 @@
     (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
           "\n"
           ;; (str (cons 'list path))
-          (str " (symbol \"" type-sym "\")") 
+          (str " (symbol \"" type-sym "\")")
           "\n" (str invoke-arities)
           " (list) " (sym-str sym) " \"" (str var) "\")" ))
 
@@ -3036,7 +3036,7 @@
               (abort)
               top-type)))
 
-  
+
   ConstraintOps
   (intersect-reified-val [c tc]
     (let [new-type (intersect-reified-val (.type-c c) tc)]
@@ -3388,9 +3388,9 @@
 
 
 ;; AllValues                 extract-field
-;; NoValues                  
-;; InferredInner             
-;; CollectionOf              
+;; NoValues
+;; InferredInner
+;; CollectionOf
 ;; SumConstraint             extract-field
 ;; ParamConstraint           extract-field
 ;; DynamicFields
