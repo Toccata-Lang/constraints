@@ -67,6 +67,7 @@
 (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
 (def TypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeOfConstraintType};"))
+(def InnerTypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InnerTypeOfConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: only temporary
@@ -160,7 +161,8 @@
   (add-to-path [constraint file-name line-number]
     constraint)
 
-  (contents-constraint [_])
+  (contents-constraint [_]
+    (assert-result r (instance? Either r)))
 
   (collection-of [_]
     ;; extract CollectionOf constraint
@@ -616,6 +618,111 @@
   ;; (add-to-path [constraint file-name line-number]
   ;;   (print-err "Missing impl at: " _FILE_ _LINE_)
   ;;   (abort))
+
+  (is-collection? [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (get-tail-constraint [c x]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (fixed-items-constraints [c x]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    [])
+
+  (extract-sym [tc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (clear-var [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (update-var [c new-var]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-type-name [c new-name]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-collection-type [c tc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (satisfied-by [c info]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)))
+
+(deftype InnerTypeOfConstraint [param-sym path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/InnerTypeOfConstraint " (str "'" param-sym) " "
+          "(list) "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? InnerTypeOfConstraint y)
+         (= param-sym (.param-sym y))
+         (maybe x)))
+
+  Constraint
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Type of value from" ""] path)
+                  desired-len))
+
+  (reify-c [c arity loc]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (remove-sym [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
+
+  (update-sym [tc new-sym]
+    (.sym tc new-sym))
+
+  (reified-field [c indices]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
+
+  (filter-reified-field [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (reified-fields [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (filter-reified-fields [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (dynamic-params [c]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    [])
+
+  (set-arity [c new-arity]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort))
+
+  (set-path [c new-path]
+    (print-err "Missing impl at: " _FILE_ _LINE_)
+    (abort)
+    (Left c))
 
   (is-collection? [c]
     (print-err "Missing impl at: " _FILE_ _LINE_)
@@ -1163,6 +1270,7 @@
 
 (def fn-constraint (FnConstraint {} empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint empty-list no-symbol ""))
+(def inner-type-of-constraint (InnerTypeOfConstraint 'no-sym empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
@@ -1241,9 +1349,6 @@
           ")"))
 
   Constraint
-  (get-type-num [c]
-    UnknownType)
-
   (format-path [x desired-len]
     (format-path* (cons ["Parameter from" ""] path)
                   desired-len))
@@ -1299,6 +1404,7 @@
                                InferredInner
                                CollectionOf
                                SumConstraint
+                               InnerTypeOfConstraint
                                DynamicConstraint))
 
 (deftype NoValues [constraints]
@@ -2913,6 +3019,7 @@
                                                    (and (instance? ParamConstraint mod)
                                                         (do
                                                           (print-err 'boomerity _FILE_ _LINE_)
+                                                          (print-err 'loc loc)
                                                           (print-err 'c c)
                                                           (print-err 'mod mod)
                                                           (abort)))
@@ -3195,6 +3302,30 @@
 (defn get-field [fld]
   (GetField fld))
 
+(deftype GetInnerType []
+  Stringable
+  (string-list [_]
+    (list "(c/GetInnerType)"))
+
+  Eq
+  (=* [x y]
+    (and (instance? GetInnerType y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (update-sym [c _]
+    c)
+
+  (intersect [c1 c2]
+    (extract-contents-constraint c2)))
+
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
@@ -3318,19 +3449,13 @@
 
   (is-bottom [c] c))
 
-(extend-type ParamConstraint
+(extend-type GetInnerType
   ConstraintOps
-  (extract-field [dyn-c fld]
-    (mod-param dyn-c (GetField fld))))
+  (is-bottom [c]
+    c)
 
-(extend-type Field
-  ConstraintOps
-  (is-bottom [x] x))
-
-(extend-type TypeOfConstraint
-  Constraint
-  (intersect [c1 c2]
-    (NoValues [c1 c2])))
+  (intersect-param [c dyn-c]
+    (mod-param dyn-c c)))
 
 (defn full-param-constraint [outer-c]
   (trim (cata (fn [c]
@@ -3368,6 +3493,64 @@
                                                             (intersect mod c)))))))
                         c))
               outer-c)))
+
+(extend-type ParamConstraint
+  Constraint
+  ;; TODO: suspicious about this proto impl
+  (get-type-num [outer-c]
+    (-> (cata (fn [c]
+                (either (map (instance? ParamConstraint c)
+                             (fn [dyn-c]
+                               (-> (.mods dyn-c)
+                                   (reduce top-type (fn [c mod]
+                                                      (cond (instance? ParamConstraint mod)
+                                                            (do
+                                                              (print-err 'boomity _FILE_ _LINE_)
+                                                              ;; TODO: wrong. recurse into the mod
+                                                              top-type)
+
+                                                            (instance? SetField mod)
+                                                            c
+
+                                                            (instance? GetField mod)
+                                                            top-type
+
+                                                            (instance? SetCollectionType mod)
+                                                            (.tc mod)
+
+                                                            (instance? CallValue mod)
+                                                            top-type
+
+                                                            (intersect mod c)))))))
+                        c))
+              outer-c)
+        trim
+        get-type-num))
+
+  (contents-constraint [c]
+    (Left (mod-param c (GetInnerType))))
+
+  ConstraintOps
+  (extract-field [dyn-c fld]
+    (mod-param dyn-c (GetField fld))))
+
+(extend-type Field
+  ConstraintOps
+  (is-bottom [x] x))
+
+(extend-type TypeOfConstraint
+  Constraint
+  (intersect [c1 c2]
+    (NoValues [c1 c2])))
+
+(extend-type InnerTypeOfConstraint
+  Constraint
+  (intersect [c1 c2]
+    (cond (or (=* c1 c2)
+              (instance? AllValues c2))
+          c1
+
+          (NoValues [c1 c2]))))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
