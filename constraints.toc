@@ -3541,7 +3541,11 @@
 (extend-type TypeOfConstraint
   Constraint
   (intersect [c1 c2]
-    (NoValues [c1 c2])))
+    (cond (or (=* c1 c2)
+              (instance? AllValues c2))
+          c1
+
+          (NoValues [c1 c2]))))
 
 (extend-type InnerTypeOfConstraint
   Constraint
