@@ -2384,6 +2384,9 @@
   (intersect [x y]
     (intersect-promise y x))
 
+  (contents-constraint [c]
+    (Right (.contents c)))
+
   ConstraintOps
   (intersect-coll-of [x y]
     (let [contents (intersect (.contents x) (.contents y))]
@@ -2419,6 +2422,9 @@
   Constraint
   (intersect [x y]
     (intersect-agent y x))
+
+  (contents-constraint [c]
+    (Right (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
