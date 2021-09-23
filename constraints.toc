@@ -1,6 +1,4 @@
 
-;; TODO: add a Hole constraint to print information
-
 ;; TODO: really bad error if this is in there
 ;; (def int-max)
 
@@ -68,6 +66,7 @@
 (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
 (def TypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeOfConstraintType};"))
 (def InnerTypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InnerTypeOfConstraintType};"))
+(def DebugConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, DebugConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; TODO: only temporary
@@ -108,6 +107,9 @@
 
 ;; Public interface for Constraints
 (defprotocol Constraint
+  (show-full [c]
+    (assert-result b (instance? (list-of String) b)))
+
   (assertion-path [x])
 
   (reify-c [c arity loc]
@@ -378,6 +380,12 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (list "<Unknown Type>"))
+
   (get-type-num [c]
     UnknownType)
 
@@ -421,6 +429,12 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["----"]
+          (map contents (partial str "  "))
+          ["===="]))
+
   (get-type-num [c]
     UnknownType)
 
@@ -448,6 +462,12 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["----"]
+          (map contents (partial str "  "))
+          ["===="]))
+
   (get-type-num [c]
     UnknownType)
 
@@ -546,14 +566,14 @@
   (get-type-num [_] IntegerType)
   (get-type-sym [_] 'Integer))
 
-(deftype TypeOfConstraint [path sym var]
+(deftype TypeOfConstraint [param-sym path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(c/TypeOfConstraint "
+    (list "(c/TypeOfConstraint " (sym-str param-sym)
           "(list) "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -561,7 +581,7 @@
   Eq
   (=* [x y]
     (and (instance? TypeOfConstraint y)
-         (= sym (.sym y))
+         (= param-sym (.param-sym y))
          (maybe x)))
 
   Constraint
@@ -655,6 +675,55 @@
   (satisfied-by [c info]
     (print-err "Missing impl at: " _FILE_ _LINE_)
     (abort)))
+
+(deftype DebugConstraint [constraint path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/DebugConstraint " (str constraint)
+          "(list) "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Container
+  (map [x f]
+    (.constraint x (f constraint)))
+
+  (map [x f embed]
+    (map (f constraint)
+         (fn [new-c]
+           (.constraint x new-c))))
+
+  Eq
+  (=* [x y]
+    (and (instance? DebugConstraint y)
+         (= sym (.sym y))
+         (maybe x)))
+
+  Constraint
+  (intersect [c1 c2]
+    (.constraint c1 (intersect constraint c2)))
+
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str  "Type of " sym) ""] path)
+                  desired-len))
+
+  (remove-sym [c]
+    (Right constraint))
+
+  (reified-field [c indices]
+    (Right constraint))
+
+  (set-path [c new-path]
+    (Left (.constraint c (set-path constraint new-path))))
+
+  (add-to-path [c file-name line-number]
+    (.constraint c (add-to-path constraint file-name line-number))))
 
 (deftype InnerTypeOfConstraint [param-sym path sym var]
   (assert (instance? (list-of Vector) path))
@@ -834,7 +903,7 @@
     (list "(c/StrBuffConstraint " (str static-value) " "
           "(list) "
           ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -860,7 +929,7 @@
     (list "(c/SubStrConstraint " (str static-value) " "
           "(list) "
           ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -926,6 +995,18 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (map (.items c) (fn [item-strs]
+                            (-> (map item-strs (partial str "  "))
+                                (interpose "\n")
+                                to-str )
+                            (partial str "  ")))
+          ["--tail--"]
+          (map tail-c (partial str "  "))
+          ["===="]))
+
   (get-type-num [c]
     ListType)
 
@@ -964,6 +1045,18 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (map (.items c) (fn [item-strs]
+                            (-> (map item-strs (partial str "  "))
+                                (interpose "\n")
+                                to-str )
+                            (partial str "  ")))
+          ["--tail--"]
+          (map tail-c (partial str "  "))
+          ["===="]))
+
   (get-type-num [c]
     VectorType)
 
@@ -996,6 +1089,12 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["----"]
+          (map contents (partial str "  "))
+          ["===="]))
+
   (get-type-num [c] MaybeType)
   (get-type-sym [_] 'Maybe))
 
@@ -1231,6 +1330,17 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["----"]
+          (-> (.alts c)
+              (map (fn [alt-strs]
+                     (-> (map alt-strs (partial str "  "))
+                         (interpose "\n")
+                         to-str)))
+              (interpose "----"))
+          ["===="]))
+
   (assertion-path [x] path)
 
   (format-path [c n]
@@ -1269,7 +1379,7 @@
                      (satisfied-by c info))))))
 
 (def fn-constraint (FnConstraint {} empty-list no-symbol ""))
-(def type-of-constraint (TypeOfConstraint empty-list no-symbol ""))
+(def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
 (def inner-type-of-constraint (InnerTypeOfConstraint 'no-sym empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
@@ -1349,8 +1459,15 @@
           ")"))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          ["----"]
+          (map (.mods c) (fn [mod-strs]
+                           (to-str (map mod-strs (partial str "  ")))))
+          ["===="]))
+
   (format-path [x desired-len]
-    (format-path* (cons ["Parameter from" ""] path)
+    (format-path* (cons [(str "Parameter " param-index " from") ""] path)
                   desired-len))
 
   (dynamic-params [c]
@@ -1405,6 +1522,8 @@
                                CollectionOf
                                SumConstraint
                                InnerTypeOfConstraint
+                               TypeOfConstraint
+                               DebugConstraint
                                DynamicConstraint))
 
 (deftype NoValues [constraints]
@@ -1416,6 +1535,12 @@
   (intersect [nv _] nv)
   (update-sym [x _] x)
   (update-var [x _] x)
+
+  (show-full [c]
+    (comp (list "Conflicting types")
+          ["----"]
+          (map constraints (partial str "  "))
+          ["===="]))
 
   (trim [c]
     (.constraints c (comp (remove constraints (partial instance? NoValues))
@@ -1465,12 +1590,9 @@
   (update-sym [_ new-sym]
     (ResultConstraint (update-sym assertion new-sym))))
 
-(def TypeLevelConstraints (any-of TypeOfConstraint))
-
 (def Constraints (any-of ValueConstraint
                          NoValues
-                         ResultConstraint
-                         TypeLevelConstraints))
+                         ResultConstraint))
 
 (defn reify-type-constraint [c arity param-cs loc]
   (assert (instance? Constraints c))
@@ -1813,6 +1935,13 @@
   (intersect [x y]
     (intersect-int y x))
 
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [c desired-len]
+    (format-path* (cons [(str "Integer " (.static-value c) " from:") ""] (.path c))
+                  desired-len))
+
   ConstraintOps
   (intersect-int [y x]
     (let [new-min (either (> (.min x) (.min y))
@@ -1838,6 +1967,16 @@
 
 (extend-type SymbolConstraint
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Symbol " (either (= no-symbol (.static-value x))
+                                                (str "'" (.static-value x)))
+                              " from:") ""]
+                        (.path x))
+                  desired-len))
+
   (intersect [x y]
     (intersect-sym y x))
 
@@ -1854,6 +1993,16 @@
 
 (extend-type StrConstraint
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "String " (either (= no-string (.static-value x))
+                                                (str "\"" (.static-value x) "\""))
+                              " from:") ""]
+                        (.path x))
+                  desired-len))
+
   (intersect [x y]
     (intersect-str y x))
 
@@ -2030,9 +2179,10 @@
   (intersect-coll-of [c cc]
     (let [new-items (map (.items c)
                          (fn [c]
-                           (-> (.contents cc)
-                               (intersect c)
-                               (update-var (extract-var c)))))
+                           (let [new-c (-> (.contents cc)
+                                           (intersect c))]
+                             (either (instance? NoValues new-c)
+                                     (update-var new-c (extract-var c))))))
           new-tail (either (= (.tail-c c) bottom-type)
                            (intersect cc (.tail-c c)))]
       (either (or (some new-items (partial = bottom-type))
@@ -2240,9 +2390,10 @@
   (intersect-coll-of [c cc]
     (let [new-items (map (.items c)
                          (fn [c]
-                           (-> (.contents cc)
-                               (intersect c)
-                               (update-var (extract-var c)))))
+                           (let [new-c (-> (.contents cc)
+                                           (intersect c))]
+                             (either (instance? NoValues new-c)
+                                     (update-var new-c (extract-var c))))))
           new-tail (either (= (.tail-c c) bottom-type)
                            (intersect cc (.tail-c c)))]
       (either (or (some new-items (partial = bottom-type))
@@ -3361,6 +3512,16 @@
          (partial .args x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path* (cons ["Called with args at\n" ""] path)
+                        0)
+          ["--args--\n"]
+          (map (.args c) (fn [arg-strs]
+                           (-> (map arg-strs (partial str "  "))
+                               (interpose "\n")
+                               to-str )))
+          ["\n===="]))
+
   (set-path [c new-path]
     (Left (.path c new-path)))
 
@@ -3561,6 +3722,23 @@
           c1
 
           (NoValues [c1 c2]))))
+
+(extend-type DebugConstraint
+  Constraint
+  (reify-c [c arity loc]
+    (for [full-reified (apo (fn [c]
+                                (reify-c c arity loc))
+                              (.constraint c)
+                              se/state-error)]
+      (do
+        (print-err (to-str (list* "Type of:" (.sym c) "\n"
+                                  (-> (cata show-full full-reified)
+                                      (interpose  "\n ")))))
+        (Right (.constraint c)))))
+
+  ConstraintOps
+  (intersect-maybe [c maybe-c]
+    (intersect c maybe-c)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
