@@ -253,6 +253,9 @@
     (embed x))
 
   Constraint
+  (show-full [c]
+    (list "Field " (str sym)))
+
   (get-type-num [_]
     UnknownType))
 
@@ -431,9 +434,7 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
-          (map contents (partial str "  "))
-          ["===="]))
+          (map contents (partial str "  "))))
 
   (get-type-num [c]
     UnknownType)
@@ -464,9 +465,7 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
-          (map contents (partial str "  "))
-          ["===="]))
+          (map contents (partial str "  "))))
 
   (get-type-num [c]
     UnknownType)
@@ -965,6 +964,9 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (list "hash-map (finish this)"))
+
   (get-type-num [c]
     type-num)
 
@@ -998,11 +1000,10 @@
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
-          (map (.items c) (fn [item-strs]
-                            (-> (map item-strs (partial str "  "))
-                                (interpose "\n")
-                                to-str )
-                            (partial str "  ")))
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
           ["--tail--"]
           (map tail-c (partial str "  "))
           ["===="]))
@@ -1048,11 +1049,10 @@
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
-          (map (.items c) (fn [item-strs]
-                            (-> (map item-strs (partial str "  "))
-                                (interpose "\n")
-                                to-str )
-                            (partial str "  ")))
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
           ["--tail--"]
           (map tail-c (partial str "  "))
           ["===="]))
@@ -1091,9 +1091,7 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
-          (map contents (partial str "  "))
-          ["===="]))
+          (map contents (partial str "  "))))
 
   (get-type-num [c] MaybeType)
   (get-type-sym [_] 'Maybe))
@@ -1261,6 +1259,9 @@
       x))
 
   Constraint
+  (show-full [c]
+    (list "Type " (str type-sym)))
+
   (get-type-sym [c]
     type-sym)
 
@@ -1332,14 +1333,10 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
           (-> (.alts c)
-              (map (fn [alt-strs]
-                     (-> (map alt-strs (partial str "  "))
-                         (interpose "\n")
-                         to-str)))
-              (interpose "----"))
-          ["===="]))
+              (interpose ["----"])
+              (flat-map (fn [alt-strs]
+                          (map alt-strs (partial str "  ")))))))
 
   (assertion-path [x] path)
 
@@ -1452,8 +1449,9 @@
   (string-list [_]
     (list "(c/ParamConstraint " (str "'" arity) " " (str param-index) " " (str item-indices)
           "\n[" (to-str (interpose mods "\n "))
-          "]\n(list)"
-          ;; (str " " (cons 'list path))
+          "]\n"
+          ;;  "(list)"
+          (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -1461,10 +1459,8 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
-          (map (.mods c) (fn [mod-strs]
-                           (to-str (map mod-strs (partial str "  ")))))
-          ["===="]))
+          (flat-map (.mods c) (fn [mod-strs]
+                                (map mod-strs (partial str "  "))))))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Parameter " param-index " from") ""] path)
@@ -1538,9 +1534,7 @@
 
   (show-full [c]
     (comp (list "Conflicting types")
-          ["----"]
-          (map constraints (partial str "  "))
-          ["===="]))
+          (map constraints (partial str "  "))))
 
   (trim [c]
     (.constraints c (comp (remove constraints (partial instance? NoValues))
@@ -3477,6 +3471,9 @@
     (embed x))
 
   Constraint
+  (show-full [c]
+    (list "GetInnerType"))
+
   (update-sym [c _]
     c)
 
@@ -3513,14 +3510,12 @@
 
   Constraint
   (show-full [c]
-    (comp (format-path* (cons ["Called with args at\n" ""] path)
+    (comp (format-path* (cons ["Called with args at" ""] path)
                         0)
-          ["--args--\n"]
-          (map (.args c) (fn [arg-strs]
-                           (-> (map arg-strs (partial str "  "))
-                               (interpose "\n")
-                               to-str )))
-          ["\n===="]))
+          ["--args--"]
+          (flat-map (.args c) (fn [arg-strs]
+                                (map arg-strs (partial str "  "))))
+          ["===="]))
 
   (set-path [c new-path]
     (Left (.path c new-path)))
@@ -3731,9 +3726,9 @@
                               (.constraint c)
                               se/state-error)]
       (do
-        (print-err (to-str (list* "Type of:" (.sym c) "\n"
-                                  (-> (cata show-full full-reified)
-                                      (interpose  "\n ")))))
+        (apply print-err (list* "Type of:" (.sym c) "\n"
+                                (-> (cata show-full full-reified)
+                                    (interpose  "\n "))))
         (Right (.constraint c)))))
 
   ConstraintOps
