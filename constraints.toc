@@ -1672,15 +1672,6 @@
 
     (NoValues [c vect-c]))
 
-  (extract-field [c fld]
-    (assert (instance? Field fld)))
-
-  (sum-c-satisfies [info c]
-    (assert (instance? ValueConstraint c))
-    (assert-result r (instance? (maybe-of (maybe-of ValueConstraint)) r))
-
-    nothing)
-
   (intersect-param [c dyn-c]
     (assert (instance? ParamConstraint dyn-c))
 
@@ -1690,8 +1681,26 @@
     (assert (instance? ResultConstraint rc))
     nothing)
 
+  (extract-field [c fld]
+    (assert (instance? Field fld)))
+
+  (sum-c-satisfies [info c]
+    (assert (instance? ValueConstraint c))
+    (assert-result r (instance? (maybe-of (maybe-of ValueConstraint)) r))
+
+    nothing)
+
   (=-result-constraint [y x]
     (assert (instance? ResultConstraint x))
+    nothing)
+
+  (=-contentsc [x y]
+    nothing)
+
+  (=-static-str [y x]
+    nothing)
+
+  (=-inferred-inner [y x]
     nothing)
 
   (intersect-reified-val [c reified]
@@ -1700,25 +1709,16 @@
 
     (NoValues [c reified]))
 
-  (=-contentsc [x y]
-    nothing)
-
   (intersect-coll-of [c cc]
     (assert (instance? CollectionOf cc))
     (assert-result r (instance? Constraints r))
 
     (intersect (update-var c (extract-var cc)) cc))
 
-  (=-static-str [y x]
-    nothing)
-
   (intersect-reified [c reified]
     (assert (instance? ReifiedFields reified))
     (assert-result r (instance? Maybe r))
 
-    nothing)
-
-  (=-inferred-inner [y x]
     nothing)
 
   (intersect-sum [c cs]
@@ -3719,21 +3719,59 @@
           (NoValues [c1 c2]))))
 
 (extend-type DebugConstraint
+  Stringable
+  (show* [c indent]
+    (list* "Type of:" (.sym c)
+           (map (cata show-full (.constraint c))
+                (partial str  "\n  "))))
+
   Constraint
   (reify-c [c arity loc]
     (for [full-reified (apo (fn [c]
                                 (reify-c c arity loc))
                               (.constraint c)
                               se/state-error)]
-      (do
-        (apply print-err (list* "Type of:" (.sym c) "\n"
-                                (-> (cata show-full full-reified)
-                                    (interpose  "\n "))))
-        (Right (.constraint c)))))
+      (Right (.constraint c))))
 
   ConstraintOps
+  (intersect-fn [c fn-c]
+    (intersect c fn-c))
+
+  (intersect-int [c int-c]
+    (intersect c int-c))
+
+  (intersect-promise [c promise-c]
+    (intersect c promise-c))
+
+  (intersect-agent [c agent-c]
+    (intersect c agent-c))
+
+  (intersect-sym [c sym-c]
+    (intersect c sym-c))
+
+  (intersect-hash-map [c map-c]
+    (intersect c map-c))
+
+  (intersect-list [c list-c]
+    (intersect c list-c))
+
+  (intersect-str [c vect-c]
+    (intersect c vect-c))
+
+  (intersect-vector [c vect-c]
+    (intersect c vect-c))
+
   (intersect-maybe [c maybe-c]
-    (intersect c maybe-c)))
+    (intersect c maybe-c))
+
+  (intersect-reified [c rc]
+    (intersect c rc))
+
+  (intersect-reified-val [c rc]
+    (intersect c rc))
+
+  (intersect-sum [c sum-c]
+    (intersect c sum-c)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
