@@ -2155,7 +2155,8 @@
 
   (contents-constraint [c]
     (Left (-> (.items c)
-              (conj (extract-contents-constraint (.tail-c c)))
+              (conj (either (= bottom-type (.tail-c c))
+                            (extract-contents-constraint (.tail-c c))))
               sum-type)))
 
   ConstraintOps
