@@ -1245,10 +1245,11 @@
   (string-list [_]
     (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
           "\n"
-          ;; (str (cons 'list path))
           (str " (symbol \"" type-sym "\")")
           "\n" (str invoke-arities)
-          " (list) " (sym-str sym) " \"" (str var) "\")" ))
+          ;; (str (interpose (cons 'list path) " "))
+          " (list) "
+          " " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   ;; TODO: equality must check the field maps as well
@@ -2736,7 +2737,10 @@
                   (.path new-path)))))
 
   (intersect [rc c]
-    (cond (and (empty? (.fields rc))
+    (cond (= top-type c)
+          rc
+
+          (and (empty? (.fields rc))
                (= UnknownType (.type-num rc)))
           c
 
