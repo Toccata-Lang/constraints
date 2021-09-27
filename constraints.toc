@@ -2087,9 +2087,6 @@
   (intersect-reified-val [hmc rc]
     (intersect-hash-map rc hmc))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     (either (or (= bottom-type (.keys-c c))
                 (= bottom-type (.vals-c c))
@@ -2276,9 +2273,6 @@
   ;;                                                     (assoc m new-k new-v))))))
   ;;                      is-bottom)))
   ;;           (NoValues [c tc])))
-
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
 
   (is-bottom [c]
     (either (some (.items c) (partial = bottom-type))
@@ -2470,9 +2464,6 @@
   ;;                      is-bottom)))
   ;;           (NoValues [c tc])))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     (either (or (some (.items c) (partial = bottom-type))
                 (flat-map (= bottom-type (.tail-c c))
@@ -2512,9 +2503,6 @@
       (either (= bottom-type contents)
               (.contents x contents))))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     (either (= bottom-type (.contents c))
               c)))
@@ -2551,9 +2539,6 @@
       (either (= bottom-type contents)
               (.contents x contents))))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     (either (= bottom-type (.contents c))
               c)))
@@ -2589,9 +2574,6 @@
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
               (.contents x contents))))
-
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
 
   (is-bottom [c]
     (either (= bottom-type (.contents c))
@@ -2630,9 +2612,6 @@
   (intersect-coll-of [fc _]
     fc)
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     nothing))
 
@@ -2659,9 +2638,6 @@
           (NoValues [x y])))
 
   ConstraintOps
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (is-bottom [c]
     nothing))
 
@@ -3403,9 +3379,6 @@
           (.kv-pairs (assoc (.kv-pairs c) new-k new-v))
           is-bottom)))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (intersect-reified-val [c reified]
     ;; TODO: verify that new value satisfies the type field constraint
     (cond (instance? Field fld)
@@ -3590,9 +3563,6 @@
   (intersect-fn [y x]
     (intersect y x))
 
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c))
-
   (intersect-reified-val [c tc]
     (print-err 'calling-reified-val _FILE_ _LINE_ c "\n\n" 'tc tc)
     top-type))
@@ -3620,10 +3590,7 @@
 (extend-type GetInnerType
   ConstraintOps
   (is-bottom [c]
-    c)
-
-  (intersect-param [c dyn-c]
-    (mod-param dyn-c c)))
+    c))
 
 (defn full-param-constraint [outer-c]
   (trim (cata (fn [c]
@@ -3740,6 +3707,9 @@
       (Right (.constraint c))))
 
   ConstraintOps
+  (intersect-param [c dyn-c]
+    (intersect c dyn-c))
+
   (intersect-fn [c fn-c]
     (intersect c fn-c))
 
