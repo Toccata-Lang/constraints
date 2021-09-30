@@ -899,7 +899,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/StrBuffConstraint " (str static-value) " "
+    (list "(c/StrBuffConstraint " (either (= static-value no-string)
+                                          (str "\"" static-value "\"")) " "
           "(list) "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -925,7 +926,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/SubStrConstraint " (str static-value) " "
+    (list "(c/SubStrConstraint " (either (= static-value no-string)
+                                         (str "\"" static-value "\"")) " "
           "(list) "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -1060,15 +1062,7 @@
   (get-type-num [c]
     VectorType)
 
-  (get-type-sym [_] 'Vector)
-
-  (trim [vc]
-    (either (map (instance? VectorConstraint tail-c)
-                 (fn [tail-c]
-                   (-> vc
-                       (.items (comp items (.items tail-c)))
-                       (.tail-c (.tail-c tail-c)))))
-            vc)))
+  (get-type-sym [_] 'Vector))
 
 (deftype MaybeConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
@@ -1460,8 +1454,10 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          (flat-map (.mods c) (fn [mod-strs]
-                                (map mod-strs (partial str "  "))))))
+          (-> (.mods c) 
+              ;; (interpose "---\n")
+              (flat-map (fn [mod-strs]
+                          (map mod-strs (partial str "  ")))))))
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Parameter " param-index " from") ""] path)
@@ -1517,7 +1513,6 @@
                                ReifiedConstraint
                                InferredInner
                                CollectionOf
-                               SumConstraint
                                InnerTypeOfConstraint
                                TypeOfConstraint
                                DebugConstraint
@@ -2294,6 +2289,14 @@
 
 
   Constraint
+  (trim [vc]
+    (either (map (instance? SeqConstraint (.tail-c vc))
+                 (fn [tail-c]
+                   (-> vc
+                       (.items (comp (.items vc) (.items tail-c)))
+                       (.tail-c (.tail-c tail-c)))))
+            vc))
+
   (set-collection-type [c tc]
     (let [new-type-num (get-type-num tc)]
       (cond (or (instance? VectorConstraint tc)
@@ -2989,8 +2992,8 @@
   Constraint
   (trim [c]
     (let [all-alts (flat-map (.alts c) (fn [c]
-                                         (either (map (instance? SumConstraint c) .alts)
-                                                 [c])))
+                                         (trim (either (map (instance? SumConstraint c) .alts)
+                                                       [c]))))
           trimmed (-> (sum-type all-alts)
                       (update-var (.var c))
                       ((fn [new-c]
@@ -3149,13 +3152,13 @@
                                                    se/state-error)))
                       param-c (se/get-val (.param-index c))]
                   (Left (reduce new-mods param-c (fn [c mod]
-                                                   (and (instance? ParamConstraint mod)
-                                                        (do
-                                                          (print-err 'boomerity _FILE_ _LINE_)
-                                                          (print-err 'loc loc)
-                                                          (print-err 'c c)
-                                                          (print-err 'mod mod)
-                                                          (abort)))
+                                                   ;; (and (instance? ParamConstraint mod)
+                                                   ;;      (do
+                                                   ;;        (print-err 'boomerity _FILE_ _LINE_)
+                                                   ;;        (print-err 'loc loc)
+                                                   ;;        (print-err 'c c)
+                                                   ;;        (print-err 'mod mod)
+                                                   ;;        (abort)))
                                                    (intersect mod c)))))
                 (map (se/update-state identity)
                      (fn [params]
