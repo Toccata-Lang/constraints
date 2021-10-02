@@ -690,6 +690,9 @@
          (maybe x)))
 
   Constraint
+  (get-type-num [c]
+    (get-type-num constraint))
+
   (intersect [c1 c2]
     (.constraint c1 (intersect constraint c2)))
 
@@ -1737,10 +1740,7 @@
 (extend-type Vector
   Constraint
   (trim [v]
-    (map v trim))
-
-  (intersect [v c]
-    (intersect (vect-constraint v coll-of-any empty-list nothing (extract-var c)) c)))
+    (map v trim)))
 
 (extend-type Constraints
   Container
