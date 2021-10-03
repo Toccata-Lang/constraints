@@ -1203,6 +1203,9 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
   (get-type-num [c]
     FunctionType)
 
