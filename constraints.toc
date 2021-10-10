@@ -387,7 +387,6 @@
     (.var c ""))
 
   (satisfied-by [_ c] (maybe c))
-  (intersect [_ c] c)
   (update-sym [x _] x)
   (add-to-path [c file line]
     (cond (or (= file "")
@@ -579,88 +578,7 @@
 
   (format-path [x desired-len]
     (format-path* (cons ["Type of value from" ""] path)
-                  desired-len))
-
-  (reify-c [c arity loc]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  ;; (trim [c]
-  ;;   (print-err "Missing impl at: " _FILE_ _LINE_)
-  ;;   (abort))
-
-  (remove-sym [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
-  (reified-field [c indices]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
-  (filter-reified-field [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (reified-fields [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (filter-reified-fields [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (dynamic-params [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    [])
-
-  (set-arity [c new-arity]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (set-path [c new-path]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
-  ;; (add-to-path [constraint file-name line-number]
-  ;;   (print-err "Missing impl at: " _FILE_ _LINE_)
-  ;;   (abort))
-
-  (is-collection? [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (get-tail-constraint [c x]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (fixed-items-constraints [c x]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    [])
-
-  (extract-sym [tc]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (clear-var [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (update-var [c new-var]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (set-type-name [c new-name]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (satisfied-by [c info]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)))
+                  desired-len)))
 
 (deftype DebugConstraint [constraint path sym var]
   (assert (instance? (list-of Vector) path))
@@ -690,6 +608,9 @@
          (maybe x)))
 
   Constraint
+  (show-full [_]
+    (show-full constraint))
+
   (get-type-num [c]
     (get-type-num constraint))
 
@@ -739,81 +660,8 @@
     (format-path* (cons ["Type of value from" ""] path)
                   desired-len))
 
-  (reify-c [c arity loc]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (remove-sym [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
   (update-sym [tc new-sym]
-    (.sym tc new-sym))
-
-  (reified-field [c indices]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
-  (filter-reified-field [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (reified-fields [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (filter-reified-fields [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (dynamic-params [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    [])
-
-  (set-arity [c new-arity]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (set-path [c new-path]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    (Left c))
-
-  (is-collection? [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (get-tail-constraint [c x]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (fixed-items-constraints [c x]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)
-    [])
-
-  (extract-sym [tc]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (clear-var [c]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (update-var [c new-var]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (set-type-name [c new-name]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort))
-
-  (satisfied-by [c info]
-    (print-err "Missing impl at: " _FILE_ _LINE_)
-    (abort)))
+    (.sym tc new-sym)))
 
 (deftype SymbolConstraint [static-value path sym var]
   (assert (instance? TypeSym static-value))
@@ -1009,6 +857,7 @@
 ;; (def empty-list-constraint (ListConstraint [] bottom-type empty-list nothing ""))
 (def empty-list-constraint)
 
+;; TODO: add tail-items to track conj additions
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
@@ -1509,7 +1358,12 @@
     (list "(c/NoValues\n[" (to-str (interpose constraints "\n")) "])"))
 
   Constraint
-  (intersect [nv _] nv)
+  (intersect [nv c]
+    (cond (instance? DebugConstraint c)
+          (intersect c nv)
+
+          nv))
+
   (update-sym [x _] x)
   (update-var [x _] x)
 
@@ -1763,7 +1617,7 @@
         (take n)))
 
   (contents-constraint [_]
-    (Right top-type)))
+    (Left top-type)))
 
 (extend-type NoValues
   ;; TODO: this is wrong and in the wrong place
@@ -1793,6 +1647,7 @@
   (intersect-fn [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
+  (intersect-reified [c _] (maybe c))
   (intersect-reified-val [c _] c))
 
 (extend-type AllValues
@@ -2498,7 +2353,7 @@
     (intersect-promise y x))
 
   (contents-constraint [c]
-    (Right (.contents c)))
+    (Left (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
@@ -2534,7 +2389,7 @@
     (intersect-agent y x))
 
   (contents-constraint [c]
-    (Right (.contents c)))
+    (Left (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
@@ -3181,7 +3036,8 @@
             (print-err 'kablooie _FILE_ _LINE_)
             (print-err 'c c)
             (print-err 'dyn-c dyn-c)
-            (abort))
+            ;; (abort)
+            )
 
           (= (.sym c) (.sym dyn-c))
           (cond (every (zip-lists (.mods c) (.mods dyn-c))
@@ -3218,15 +3074,24 @@
             Left))))
 
   (intersect [c1 c2]
-    (either (or (and (= top-type c2)
-                     (maybe c1))
-                (= c1 c2)
-                (map (instance? ReifiedConstraint c2)
-                     (partial intersect-reified-val c1)))
-            (do
+    (cond (= top-type c2)
+          c1
+
+          (= bottom-type c2)
+          c2
+
+          (= c1 c2)
+          c1
+
+          (instance? ReifiedConstraint c2)
+          (intersect-reified-val c1 c2)
+
+          (do
               (print-err 'kablooie _FILE_ _LINE_)
-              (abort)
-              top-type)))
+              (print-err 'c1 c1)
+              (print-err 'c2 c2)
+              ;; (abort)
+              (NoValues [c1 c2]))))
 
 
   ConstraintOps
@@ -3262,6 +3127,9 @@
   (intersect [reified c]
     (cond (instance? ReifiedFields c)
           top-type
+
+          (instance? CoreValConstraint c)
+          (NoValues [reified c])
 
           (either (intersect-reified c reified)
                   reified)))
@@ -3304,9 +3172,15 @@
               (instance? HashMapConstraint c2))
           (intersect c2 c1)
 
+          (= bottom-type c2)
+          c2
+
           (and (instance? ReifiedConstraint c2)
                (instance? Field fld))
           (intersect-reified-val c1 c2)
+
+          (instance? CoreValConstraint c2)
+          (NoValues [c1 c2])
 
           c2))
 
@@ -3368,6 +3242,13 @@
     ;; TODO handle case where 'fld' is a Constraint
     (cond (instance? Field fld)
           (extract-field c2 fld)
+
+          (= bottom-type c2)
+          c2
+
+          (instance? CoreValConstraint c2)
+          (NoValues [c1 c2])
+
           top-type))
 
   ConstraintOps
@@ -3384,7 +3265,7 @@
 (defn get-field [fld]
   (GetField fld))
 
-(deftype GetInnerType []
+(deftype GetInnerType [path]
   Stringable
   (string-list [_]
     (list "(c/GetInnerType)"))
@@ -3402,6 +3283,12 @@
     (embed x))
 
   Constraint
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Inner type required from" ""] path)
+                  desired-len))
+
   (show-full [c]
     (list "GetInnerType"))
 
@@ -3409,7 +3296,16 @@
     c)
 
   (intersect [c1 c2]
-    (extract-contents-constraint c2)))
+    (cond (= bottom-type c2)
+          c2
+
+          (or (instance? IntegerConstraint c2)
+              (instance? SymbolConstraint c2)
+              (instance? FnConstraint c2)
+              (instance? OpaqueConstraint c2))
+          (NoValues [c1 c2])
+
+          (extract-contents-constraint c2))))
 
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
@@ -3461,22 +3357,8 @@
     (cond (instance? ParamConstraint c2)
           (intersect c2 c1)
 
-          (instance? FnConstraint c2)
-          (do
-            ;; (print-err "Intersecting CallValue")
-            ;; (print-err 'c1 c1)
-            ;; (print-err 'c2 c2)
-            (either (for [arity-info (or (get-in c2 [.arities (count args)])
-                                         (get-in c2 [.arities variadic]))]
-                      (let [params-failed (-> (.param-consts arity-info)
-                                              (extract-items-constraints (count args))
-                                              (zip-lists args)
-                                              (some (fn [[param arg]]
-                                                      (= bottom-type (intersect param arg)))))]
-                        (either params-failed
-                                (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                       args (Location "WTF" 21304)))))
-                    (NoValues [c1 c2])))
+          (= bottom-type c2)
+          c2
 
           (instance? ReifiedConstraint c2)
           (do
@@ -3494,6 +3376,29 @@
                                                        (comp [c2] args)
                                                        (Location "WTF" 21305)))))
                     (NoValues [c1 c2])))
+
+          ;; TODO: the need for this nested cond *must* be fixed ASAP
+          (instance? CoreValConstraint c2)
+          (cond (instance? FnConstraint c2)
+                (do
+                  ;; (print-err "Intersecting CallValue")
+                  ;; (print-err 'c1 c1)
+                  ;; (print-err 'c2 c2)
+                  (either (for [arity-info (or (get-in c2 [.arities (count args)])
+                                               (get-in c2 [.arities variadic]))]
+                            (let [params-failed (-> (.param-consts arity-info)
+                                                    (extract-items-constraints (count args))
+                                                    (zip-lists args)
+                                                    (some (fn [[param arg]]
+                                                            (= bottom-type (intersect param arg)))))]
+                              (either params-failed
+                                      (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                             args (Location "WTF" 21304)))))
+                          (NoValues [c1 c2])))
+
+                (do
+                  (print-err 'c2 c2 (instance? FnConstraint c2))
+                  (NoValues [c1 c2])))
 
           top-type))
 
@@ -3542,7 +3447,27 @@
 (extend-type GetInnerType
   ConstraintOps
   (is-bottom [c]
-    c))
+    c)
+
+  (intersect-str [c str-c]
+    (extract-contents-constraint str-c))
+
+  (intersect-vector [c vect-c]
+    (extract-contents-constraint vect-c))
+
+  (intersect-list [c list-c]
+    (extract-contents-constraint list-c)))
+
+(extend-type AllValues
+  Constraint
+  (intersect [c1 c2]
+    (cond (or (instance? SetField c2)
+              (instance? GetField c2)
+              (instance? GetInnerType c2)
+              (instance? CallValue c2))
+          c1
+
+          c2)))
 
 (defn full-param-constraint [outer-c]
   (trim (cata (fn [c]
@@ -3608,7 +3533,7 @@
         get-type-num))
 
   (contents-constraint [c]
-    (Left (mod-param c (GetInnerType))))
+    (Left (mod-param c (GetInnerType empty-list))))
 
   ConstraintOps
   (extract-field [dyn-c fld]
@@ -3625,6 +3550,9 @@
               (instance? AllValues c2))
           c1
 
+          (instance? DebugConstraint c2)
+          (intersect c2 c1)
+
           (NoValues [c1 c2]))))
 
 (extend-type InnerTypeOfConstraint
@@ -3633,6 +3561,12 @@
     (cond (or (=* c1 c2)
               (instance? AllValues c2))
           c1
+
+          (instance? ParamConstraint c2)
+          (mod-param c2 (GetInnerType (.path c1)))
+
+          (instance? DebugConstraint c2)
+          (intersect c2 c1)
 
           (NoValues [c1 c2]))))
 
