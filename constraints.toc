@@ -779,6 +779,8 @@
   (get-type-sym [_] 'String))
 
 (deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
+  ;; (assert (instance? Constraint keys-c))
+  ;; (assert (instance? Constraint vals-c))
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
@@ -1223,7 +1225,8 @@
                                        empty-list no-symbol ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def set-constraint (ReifiedConstraint HashSetType {(Field 'set-map) hashmap-constraint}
+(def set-constraint (ReifiedConstraint HashSetType {(SymbolConstraint 'set-map empty-list no-symbol "")
+                                                    hashmap-constraint}
                                        'HashSet {} empty-list no-symbol ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
 (def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
@@ -1552,9 +1555,8 @@
 
   (intersect-reified [c reified]
     (assert (instance? ReifiedFields reified))
-    (assert-result r (instance? Maybe r))
 
-    nothing)
+    reified)
 
   (intersect-sum [c cs]
     (assert (instance? SumConstraint cs))
@@ -1647,7 +1649,7 @@
   (intersect-fn [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
-  (intersect-reified [c _] (maybe c))
+  (intersect-reified [c _] c)
   (intersect-reified-val [c _] c))
 
 (extend-type AllValues
@@ -1745,6 +1747,9 @@
                   desired-len))
 
   ConstraintOps
+  (intersect-reified [c reified]
+    (NoValues [c reified]))
+
   (intersect-coll-of [c cc]
     (NoValues [c cc]))
 
@@ -1845,7 +1850,11 @@
                      (= (.static-value y) (.static-value x)))
                  ;; TODO: use the path from the most restrictive constraint
                  ;; determined by satisfied-by
-                 (partial .static-value x))
+                 (fn [stat-val]
+                   (cond (instance? StrBuffConstraint y)
+                         (.static-value y stat-val)
+
+                         (.static-value x stat-val))))
             (NoValues [x y])))
 
   (is-bottom [c] c))
@@ -2424,6 +2433,9 @@
     (cond (=* x y)
           x
 
+          (instance? DebugConstraint y)
+          (intersect y x)
+
           (instance? ParamConstraint y)
           (mod-param y x)
 
@@ -2460,6 +2472,9 @@
     (cond (or (=* x y)
               (= y top-type))
           x
+
+          (instance? DebugConstraint y)
+          (intersect y x)
 
           (instance? ParamConstraint y)
           (mod-param y x)
@@ -2873,6 +2888,9 @@
     (either (some (.alts c) (partial = bottom-type))
             c))
 
+  (intersect-reified [sum-c reified]
+    (intersect-sum reified sum-c))
+
   (intersect-int [sum-c c]
     (intersect-sum c sum-c))
 
@@ -3086,6 +3104,9 @@
           (instance? ReifiedConstraint c2)
           (intersect-reified-val c1 c2)
 
+          (instance? DebugConstraint c2)
+          (intersect c2 c1)
+
           (do
               (print-err 'kablooie _FILE_ _LINE_)
               (print-err 'c1 c1)
@@ -3131,8 +3152,7 @@
           (instance? CoreValConstraint c)
           (NoValues [reified c])
 
-          (either (intersect-reified c reified)
-                  reified)))
+          (intersect-reified c reified)))
 
   ConstraintOps
   (is-bottom [c] c))
@@ -3183,6 +3203,9 @@
           (NoValues [c1 c2])
 
           c2))
+
+  (contents-constraint [_]
+    (Left top-type))
 
   ConstraintOps
   (is-bottom [c]
@@ -3240,16 +3263,23 @@
   Constraint
   (intersect [c1 c2]
     ;; TODO handle case where 'fld' is a Constraint
-    (cond (instance? Field fld)
+    (cond (instance? Field c2)
           (extract-field c2 fld)
 
           (= bottom-type c2)
           c2
 
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
+          (intersect c2 c1)
+
           (instance? CoreValConstraint c2)
           (NoValues [c1 c2])
 
           top-type))
+
+  (contents-constraint [_]
+    (Left top-type))
 
   ConstraintOps
   (is-bottom [c]
@@ -3295,6 +3325,9 @@
   (update-sym [c _]
     c)
 
+  (contents-constraint [_]
+    (Left top-type))
+
   (intersect [c1 c2]
     (cond (= bottom-type c2)
           c2
@@ -3302,8 +3335,13 @@
           (or (instance? IntegerConstraint c2)
               (instance? SymbolConstraint c2)
               (instance? FnConstraint c2)
+              (instance? FutureConstraint c2)
               (instance? OpaqueConstraint c2))
           (NoValues [c1 c2])
+
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
+          (intersect c2 c1)
 
           (extract-contents-constraint c2))))
 
@@ -3353,6 +3391,9 @@
           c
           (.path c (cons [file line] (.path c)))))
 
+  (contents-constraint [_]
+    (Left top-type))
+
   (intersect [c1 c2]
     (cond (instance? ParamConstraint c2)
           (intersect c2 c1)
@@ -3396,9 +3437,11 @@
                                                              args (Location "WTF" 21304)))))
                           (NoValues [c1 c2])))
 
-                (do
-                  (print-err 'c2 c2 (instance? FnConstraint c2))
-                  (NoValues [c1 c2])))
+                (NoValues [c1 c2]))
+
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
+          (intersect c2 c1)
 
           top-type))
 
@@ -3448,6 +3491,18 @@
   ConstraintOps
   (is-bottom [c]
     c)
+
+  (intersect-maybe [c maybe-c]
+    (extract-contents-constraint maybe-c))
+
+  (intersect-hash-map [c hm-c]
+    (extract-contents-constraint hm-c))
+
+  (intersect-agent [c agent-c]
+    (extract-contents-constraint agent-c))
+
+  (intersect-promise [c promise-c]
+    (extract-contents-constraint promise-c))
 
   (intersect-str [c str-c]
     (extract-contents-constraint str-c))
@@ -3550,7 +3605,8 @@
               (instance? AllValues c2))
           c1
 
-          (instance? DebugConstraint c2)
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
           (intersect c2 c1)
 
           (NoValues [c1 c2]))))
@@ -3565,7 +3621,8 @@
           (instance? ParamConstraint c2)
           (mod-param c2 (GetInnerType (.path c1)))
 
-          (instance? DebugConstraint c2)
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
           (intersect c2 c1)
 
           (NoValues [c1 c2]))))
