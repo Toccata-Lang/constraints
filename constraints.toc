@@ -1109,6 +1109,14 @@
                         path)
                   desired-len)))
 
+(def not-container (ReifiedConstraint UnknownType {}
+                                      (symbol "Can not contain other values")
+                                      {} empty-list no-symbol ""))
+
+(defn required-field [fld]
+  (ReifiedConstraint UnknownType {fld top-type} no-symbol
+                     {} empty-list (symbol (str "field '" (.sym fld) "' required")) ""))
+
 (deftype NoFields []
   Stringable
   (string-list [_]
@@ -1520,7 +1528,9 @@
     nothing)
 
   (extract-field [c fld]
-    (assert (instance? Field fld)))
+    (assert (instance? Field fld))
+
+    (NoValues [c (required-field fld)]))
 
   (sum-c-satisfies [info c]
     (assert (instance? ValueConstraint c))
@@ -1635,6 +1645,9 @@
   Constraint
   (collection-of [x]
     (Left x))
+
+  (contents-constraint [c]
+    (Left c))
 
   ConstraintOps
   (intersect-str [c _] c)
@@ -1774,6 +1787,9 @@
     (format-path* (cons [(str "Integer " (.static-value c) " from:") ""] (.path c))
                   desired-len))
 
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
+
   ConstraintOps
   (intersect-int [y x]
     (let [new-min (either (> (.min x) (.min y))
@@ -1811,6 +1827,9 @@
 
   (intersect [x y]
     (intersect-sym y x))
+
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-sym [x y]
@@ -2180,15 +2199,6 @@
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
 
-  (extract-field [c fld]
-    (print-err 'ka-blooie _FILE_ _LINE_)
-    (print-err 'c c)
-    (print-err 'fld fld)
-    (abort)
-    (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
-                                    (symbol (str "field '" (.sym fld) "' required"))
-                                    {} empty-list no-symbol "")]))
-
   (intersect-sum [c cs]
     (assert (instance? SumConstraint cs))
 
@@ -2449,6 +2459,9 @@
 
           (NoValues [x y])))
 
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
+
   ConstraintOps
   (intersect-inner [fc _]
     fc)
@@ -2483,6 +2496,9 @@
           y
 
           (NoValues [x y])))
+
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
 
   ConstraintOps
   (is-bottom [c]
@@ -2578,6 +2594,9 @@
   ;;                                   (partial get (.type-maps c)))
   ;;                            (maybe info))))))
 
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
+
   ConstraintOps
   (intersect-str [rc str-c]
     (cond (and (empty? (.fields rc))
@@ -2637,9 +2656,7 @@
 
   (extract-field [c fld]
     (either (get (.fields c) fld)
-            (NoValues [c (ReifiedConstraint UnknownType {fld top-type}
-                                            (symbol (str "field '" (.sym fld) "' required"))
-                                            {} empty-list no-symbol "")])))
+            (NoValues [c (required-field fld)])))
 
   (intersect-coll-of [c _]
     c)
@@ -2930,8 +2947,7 @@
                                 (extract-field alt fld)))
                          (remove (partial = bottom-type)))]
       (cond (empty? alt-fields)
-            (NoValues [c (ReifiedConstraint 0 {fld top-type} (symbol (str "field '" (.sym fld) "' required"))
-                                            {} empty-list no-symbol "")])
+            (NoValues [c (required-field fld)])
             (sum-type alt-fields))))
 
   (sum-c-satisfies [info c]
@@ -3186,26 +3202,8 @@
                 new-c)))
 
   Constraint
-  (intersect [c1 c2]
-    (cond (or (instance? SumConstraint c2)
-              (instance? ParamConstraint c2)
-              (instance? HashMapConstraint c2))
-          (intersect c2 c1)
-
-          (= bottom-type c2)
-          c2
-
-          (and (instance? ReifiedConstraint c2)
-               (instance? Field fld))
-          (intersect-reified-val c1 c2)
-
-          (instance? CoreValConstraint c2)
-          (NoValues [c1 c2])
-
-          c2))
-
-  (contents-constraint [_]
-    (Left top-type))
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
 
   ConstraintOps
   (is-bottom [c]
@@ -3233,9 +3231,7 @@
     (cond (instance? Field fld)
           (either (for [_ (get-in reified [.fields fld])]
                     (assoc-in reified [.fields fld] fld-c))
-                  (NoValues [(ReifiedConstraint UnknownType {fld top-type} no-symbol
-                                                {} empty-list (symbol (str "field '" (.sym fld) "' required")) "")
-                             reified]))
+                  (NoValues [(required-field fld) reified]))
 
           reified)))
 
@@ -3263,25 +3259,15 @@
   Constraint
   (intersect [c1 c2]
     ;; TODO handle case where 'fld' is a Constraint
-    (cond (instance? Field c2)
-          (extract-field c2 fld)
+    (extract-field c2 fld))
 
-          (= bottom-type c2)
-          c2
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          (instance? CoreValConstraint c2)
-          (NoValues [c1 c2])
-
-          top-type))
-
-  (contents-constraint [_]
-    (Left top-type))
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
 
   ConstraintOps
+  (extract-field [c other-fld]
+    top-type)
+
   (is-bottom [c]
     (either (= (.fld c) bottom-type)
             c))
@@ -3329,21 +3315,11 @@
     (Left top-type))
 
   (intersect [c1 c2]
-    (cond (= bottom-type c2)
-          c2
+    (let [inner-c (extract-contents-constraint c2)]
+      (cond (= bottom-type inner-c)
+            (NoValues [c1 c2])
 
-          (or (instance? IntegerConstraint c2)
-              (instance? SymbolConstraint c2)
-              (instance? FnConstraint c2)
-              (instance? FutureConstraint c2)
-              (instance? OpaqueConstraint c2))
-          (NoValues [c1 c2])
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          (extract-contents-constraint c2))))
+            inner-c))))
 
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
@@ -3439,6 +3415,10 @@
 
                 (NoValues [c1 c2]))
 
+          (or (instance? GetField c2)
+              (instance? SetField c2))
+          (NoValues [c1 c2])
+
           (or (instance? DebugConstraint c2)
               (instance? SumConstraint c2))
           (intersect c2 c1)
@@ -3467,6 +3447,29 @@
     (print-err 'calling-reified-val _FILE_ _LINE_ c "\n\n" 'tc tc)
     top-type))
 
+(extend-type SetField
+  Constraint
+  (intersect [c1 c2]
+    (cond (or (instance? SumConstraint c2)
+              (instance? ParamConstraint c2)
+              (instance? HashMapConstraint c2))
+          (intersect c2 c1)
+
+          (= bottom-type c2)
+          c2
+
+          (and (instance? ReifiedConstraint c2)
+               (instance? Field (.fld c1)))
+          (intersect-reified-val c1 c2)
+
+          (or (instance? CoreValConstraint c2)
+              (instance? GetField c2)
+              (instance? GetInnerType c2)
+              (instance? CallValue c2))
+          (NoValues [c1 c2])
+
+          c2)))
+
 (extend-type FnConstraint
   Constraint
   (format-path [x desired-len]
@@ -3475,6 +3478,9 @@
 
   (intersect [x y]
     (intersect-fn y x))
+
+  (contents-constraint [c]
+    (Left (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-fn [y x]
@@ -3491,6 +3497,9 @@
   ConstraintOps
   (is-bottom [c]
     c)
+
+  (intersect-sum [c sum-c]
+    (extract-contents-constraint sum-c))
 
   (intersect-maybe [c maybe-c]
     (extract-contents-constraint maybe-c))
@@ -3642,7 +3651,13 @@
                               se/state-error)]
       (Right (.constraint c))))
 
+  (contents-constraint [c]
+    (Right c))
+
   ConstraintOps
+  (extract-field [c fld]
+    (.constraint c (extract-field (.constraint c) fld)))
+
   (intersect-param [c dyn-c]
     (intersect c dyn-c))
 
