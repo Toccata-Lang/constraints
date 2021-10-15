@@ -1407,6 +1407,9 @@
   (is-bottom [c]
     )
 
+  (set-collection-type [c tc]
+    (NoValues [c tc]))
+
   (intersect-fn [c fn-c]
     (assert (instance? FnConstraint fn-c))
 
@@ -1619,7 +1622,8 @@
   (intersect-result [c rc] rc)
   (intersect-reified-val [c tc] tc)
   (intersect-coll-of [c cc] cc)
-  (intersect-inner [c ic] ic))
+  (intersect-inner [c ic] ic)
+  (set-collection-type [c tc] c))
 
 (extend-type SymbolConstraints
   Constraint
@@ -1948,6 +1952,20 @@
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
 
+  (set-collection-type [c tc]
+    (let [new-type-num (get-type-num tc)]
+      (cond (or (instance? ListConstraint tc)
+                (= tc top-type))
+            c
+
+            (instance? VectorConstraint tc)
+            (-> tc
+                (.items (.items c))
+                (.tail-c (.tail-c c))
+                (.path (comp (.path tc) (.path c))))
+
+            top-type)))
+
   (extract-field [c idx]
     (either (flat-map (instance? Integer idx)
                       (fn [_]
@@ -2140,6 +2158,20 @@
   ;;                   (satisfied-by c info)))
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
+
+  (set-collection-type [c tc]
+    (let [new-type-num (get-type-num tc)]
+      (cond (or (instance? VectorConstraint tc)
+                (= tc top-type))
+            c
+
+            (instance? ListConstraint tc)
+            (-> tc
+                (.items (.items c))
+                (.tail-c (.tail-c c))
+                (.path (comp (.path tc) (.path c))))
+
+            top-type)))
 
   (extract-field [c idx]
     (either (flat-map (instance? Integer idx)
@@ -2787,6 +2819,39 @@
     (and (= (.contents x) (.contents y))
          (maybe x))))
 
+(deftype SetCollectionType [tc]
+  (assert (instance? (any-of VectorConstraint
+                             ListConstraint)
+                     tc))
+
+  Stringable
+  (string-list [_]
+    (list "(c/SetCollectionType " (str tc) ")"))
+
+  Container
+  (map [x f]
+    (SetCollectionType (f tc)))
+
+  (map [x f embed]
+    (map (f tc) SetCollectionType))
+
+  Constraint
+  (intersect [_ c]
+    (set-collection-type c tc))
+
+  (contents-constraint [c]
+    (Left top-type))
+
+  ConstraintOps
+  (intersect-param [c pc]
+    (mod-param pc c))
+
+  (intersect-vector [_ vc]
+    (set-collection-type vc tc))
+
+  (intersect-list [_ lc]
+    (set-collection-type lc tc)))
+
 (extend-type SumConstraint
   Container
   (map [x f]
@@ -2847,6 +2912,9 @@
     (sum-type (.alts c)))
 
   ConstraintOps
+  (set-collection-type [c tc]
+    (intersect-sum (SetCollectionType tc) c))
+
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (some (.alts c) (partial = bottom-type))
@@ -2962,6 +3030,9 @@
     (intersect-param c2 c1))
 
   ConstraintOps
+  (set-collection-type [c tc]
+    (mod-param c (SetCollectionType tc)))
+
   (is-bottom [c]
     ;; TODO: need this?
     ;; (either (some (.mods c) (partial = bottom-type)))
@@ -3062,6 +3133,9 @@
     (Left (NoValues [c not-container])))
 
   ConstraintOps
+  (set-collection-type [c tc]
+    (NoValues [c tc]))
+
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (or (= (.fld c) bottom-type)
@@ -3290,6 +3364,9 @@
                   desired-len))
 
   ConstraintOps
+  (set-collection-type [c tc]
+    top-type)
+
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (some args (partial = bottom-type))
@@ -3306,7 +3383,8 @@
   (intersect [c1 c2]
     (cond (or (instance? SumConstraint c2)
               (instance? ParamConstraint c2)
-              (instance? HashMapConstraint c2))
+              (instance? HashMapConstraint c2)
+              (instance? SetCollectionType c2))
           (intersect c2 c1)
 
           (= bottom-type c2)
@@ -3349,6 +3427,9 @@
 
 (extend-type GetInnerType
   ConstraintOps
+  (set-collection-type [c tc]
+    top-type)
+
   (is-bottom [c]
     c)
 
@@ -3382,6 +3463,7 @@
     (cond (or (instance? SetField c2)
               (instance? GetField c2)
               (instance? GetInnerType c2)
+              (instance? SetCollectionType c2)
               (instance? CallValue c2))
           c1
 
@@ -3509,6 +3591,9 @@
     (Right c))
 
   ConstraintOps
+  (set-collection-type [c tc]
+    (intersect c (SetCollectionType tc)))
+
   (extract-field [c fld]
     (let [new-c (extract-field (.constraint c) fld)]
       (either (= bottom-type new-c)
