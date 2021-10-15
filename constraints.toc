@@ -1216,7 +1216,7 @@
                                        empty-list no-symbol ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def set-constraint (ReifiedConstraint HashSetType {(symbol ".set-map")
+(def set-constraint (ReifiedConstraint HashSetType {(Field (symbol ".set-map"))
                                                     hashmap-constraint}
                                        'HashSet {} empty-list no-symbol ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
@@ -1953,7 +1953,8 @@
                       (fn [_]
                         (nth (extract-items-constraints c (inc idx)) idx)))
 
-            (NoValues [c (required-field (inc idx))])))
+            (NoValues [c (required-field (either (map (instance? Integer idx) inc)
+                                                 idx))])))
 
   (intersect-coll-of [c cc]
     (let [new-items (map (.items c)
@@ -2145,7 +2146,8 @@
                       (fn [_]
                         (nth (extract-items-constraints c idx) idx)))
 
-            (NoValues [c (required-field idx)])))
+            (NoValues [c (required-field (either (map (instance? Integer idx) inc)
+                                                 idx))])))
 
   (intersect-sum [c cs]
     (assert (instance? SumConstraint cs))
@@ -2524,10 +2526,7 @@
                   (.path new-path)))))
 
   (intersect [rc c]
-    (cond (= top-type c)
-          rc
-
-          (and (empty? (.fields rc))
+    (cond (and (empty? (.fields rc))
                (= UnknownType (.type-num rc)))
           c
 
@@ -3121,6 +3120,9 @@
     (Left (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-reified-val [c rc]
+    (extract-field rc fld))
+
   (extract-field [c other-fld]
     top-type)
 
@@ -3129,10 +3131,7 @@
             c))
 
   (intersect-param [c dyn-c]
-    ;; TODO handle case where 'fld' is a Constraint
-    (cond (instance? Field fld)
-          (mod-param dyn-c c)
-          dyn-c)))
+    (mod-param dyn-c c)))
 
 (defn get-field [fld]
   (GetField fld))
@@ -3300,7 +3299,6 @@
     (intersect y x))
 
   (intersect-reified-val [c tc]
-    (print-err 'calling-reified-val _FILE_ _LINE_ c "\n\n" 'tc tc)
     top-type))
 
 (extend-type SetField
