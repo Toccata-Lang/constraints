@@ -587,7 +587,7 @@
 
   Constraint
   (show-full [_]
-    (show-full constraint))
+    (cata show-full constraint))
 
   (get-type-num [c]
     (get-type-num constraint))
@@ -1114,6 +1114,22 @@
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
 
+(defn set-items [c items]
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (Left (.items c items))
+
+               (Right c)))
+       c))
+
+(defn set-tail [c tail]
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (Left (.tail-c c tail))
+
+               (Right c)))
+       c))
+
 (def CoreValConstraint (any-of IntegerConstraint
                                SymbolConstraint
                                VectorConstraint
@@ -1290,6 +1306,35 @@
 
         (.mods c (conj (.mods c) mod))))
 
+(deftype SetCollectionType [tc base-sym path sym var]
+  (assert (instance? Symbol base-sym))
+
+  Stringable
+  (string-list [_]
+    (list "(c/SetCollectionType " (str tc) " " (str "'" base-sym) " "
+          "(list) "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Container
+  (map [x f]
+    (SetCollectionType (f tc) base-sym path sym var))
+
+  (map [x f embed]
+    (map (f tc) (fn [new-tc]
+                  (SetCollectionType new-tc base-sym path sym var))))
+
+  Constraint
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Convert sequence type from:" ""] (.path x))
+                  desired-len))
+
+  (contents-constraint [c]
+    (Left top-type)))
+
 (def SymbolConstraints (any-of CoreValConstraint
                                InferredInner
                                CollectionOf
@@ -1299,6 +1344,7 @@
                                CollectionOf
                                InnerTypeOfConstraint
                                TypeOfConstraint
+                               SetCollectionType
                                DebugConstraint
                                ParamConstraint))
 
@@ -1408,6 +1454,8 @@
     )
 
   (set-collection-type [c tc]
+    (assert (instance? SetCollectionType tc))
+
     (NoValues [c tc]))
 
   (intersect-fn [c fn-c]
@@ -1540,6 +1588,21 @@
                                ;; TODO: add file-name/line-number to empty paths
                                (format-path 0))))
    nothing))
+
+(extend-type SetCollectionType
+  Constraint
+  (intersect [c other-c]
+    (set-collection-type other-c c))
+
+  ConstraintOps
+  (intersect-param [c pc]
+    (mod-param pc c))
+
+  (intersect-vector [c vc]
+    (set-collection-type vc c))
+
+  (intersect-vector [c vc]
+    (set-collection-type vc c)))
 
 (extend-type Vector
   Constraint
@@ -1952,8 +2015,9 @@
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
 
-  (set-collection-type [c tc]
-    (let [new-type-num (get-type-num tc)]
+  (set-collection-type [c coll-c]
+    (let [tc (.tc coll-c)
+          new-type-num (get-type-num tc)]
       (cond (or (instance? ListConstraint tc)
                 (= tc top-type))
             c
@@ -2159,8 +2223,9 @@
   ;;          (satisfied-by (.tail-constraint c) (.tail-constraint info))
   ;;          (maybe info))))
 
-  (set-collection-type [c tc]
-    (let [new-type-num (get-type-num tc)]
+  (set-collection-type [c coll-c]
+    (let [tc (.tc coll-c)
+          new-type-num (get-type-num tc)]
       (cond (or (instance? VectorConstraint tc)
                 (= tc top-type))
             c
@@ -2819,39 +2884,6 @@
     (and (= (.contents x) (.contents y))
          (maybe x))))
 
-(deftype SetCollectionType [tc]
-  (assert (instance? (any-of VectorConstraint
-                             ListConstraint)
-                     tc))
-
-  Stringable
-  (string-list [_]
-    (list "(c/SetCollectionType " (str tc) ")"))
-
-  Container
-  (map [x f]
-    (SetCollectionType (f tc)))
-
-  (map [x f embed]
-    (map (f tc) SetCollectionType))
-
-  Constraint
-  (intersect [_ c]
-    (set-collection-type c tc))
-
-  (contents-constraint [c]
-    (Left top-type))
-
-  ConstraintOps
-  (intersect-param [c pc]
-    (mod-param pc c))
-
-  (intersect-vector [_ vc]
-    (set-collection-type vc tc))
-
-  (intersect-list [_ lc]
-    (set-collection-type lc tc)))
-
 (extend-type SumConstraint
   Container
   (map [x f]
@@ -2913,7 +2945,7 @@
 
   ConstraintOps
   (set-collection-type [c tc]
-    (intersect-sum (SetCollectionType tc) c))
+    (intersect-sum tc c))
 
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
@@ -3031,7 +3063,7 @@
 
   ConstraintOps
   (set-collection-type [c tc]
-    (mod-param c (SetCollectionType tc)))
+    (mod-param c tc))
 
   (is-bottom [c]
     ;; TODO: need this?
@@ -3129,13 +3161,13 @@
                 new-c)))
 
   Constraint
+  (show-full [c]
+    (string-list c))
+
   (contents-constraint [c]
     (Left (NoValues [c not-container])))
 
   ConstraintOps
-  (set-collection-type [c tc]
-    (NoValues [c tc]))
-
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (or (= (.fld c) bottom-type)
@@ -3187,6 +3219,9 @@
     (embed x))
 
   Constraint
+  (show-full [c]
+    (string-list c))
+
   (intersect [c1 c2]
     (extract-field c2 fld))
 
@@ -3493,6 +3528,19 @@
                                                              (symbol (str (.fld mod)))
                                                              {} empty-list no-symbol "")
 
+                                                            (instance? SetCollectionType mod)
+                                                            ;; TODO: horrible error message with this mistake
+                                                            ;; SeqConstraint is invalid here
+                                                            ;; (intersect c (replace-path SeqConstraint
+                                                            ;;                            (.path mod)))
+                                                            (either (map (instance? SeqConstraint c)
+                                                                         (fn [c]
+                                                                           (-> seq-constraint
+                                                                               (set-items (.items c))
+                                                                               (set-tail (.tail-c c)))))
+                                                                    (intersect c (replace-path seq-constraint
+                                                                                               (.path mod))))
+
                                                             (instance? CallValue mod)
                                                             ;; TODO: there might be an opportunity to capture
                                                             ;; the needed return value ('c') and propogate that info
@@ -3592,7 +3640,7 @@
 
   ConstraintOps
   (set-collection-type [c tc]
-    (intersect c (SetCollectionType tc)))
+    (intersect c tc))
 
   (extract-field [c fld]
     (let [new-c (extract-field (.constraint c) fld)]
