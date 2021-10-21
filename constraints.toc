@@ -917,6 +917,10 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          (map contents (partial str "  "))))
+
   (get-type-num [c]
     AgentType)
 
@@ -939,6 +943,9 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
   (get-type-num [c]
     FutureType)
 
@@ -966,6 +973,7 @@
 
   (get-type-sym [_] 'Opaque))
 
+;; TODO: does it even make sense to have contents for Promise, Agent, Future?
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
@@ -985,6 +993,10 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (comp (format-path c 0)
+          (map contents (partial str "  "))))
+
   (get-type-num [c]
     PromiseType)
 
@@ -1306,23 +1318,45 @@
 
         (.mods c (conj (.mods c) mod))))
 
-(deftype SetCollectionType [tc base-sym path sym var]
+(def VectFrom (reify
+                Stringable
+                (string-list [_]
+                  (list "c/VectFrom"))
+
+                Eq
+                (=* [x y]
+                  (and (= (get-type x) (get-type y))
+                       (maybe x)))))
+
+(def ListFrom (reify
+                Stringable
+                (string-list [_]
+                  (list "c/ListFrom"))
+
+                Eq
+                (=* [x y]
+                  (and (= (get-type x) (get-type y))
+                       (maybe x)))))
+
+;; TODO: enum doesn't work
+;; (def SeqTypeOps (enum ListFrom VectFrom FirstOf LastOf RestOf ButLastOf))
+
+(deftype ModSeqType [op base-sym path sym var]
   (assert (instance? Symbol base-sym))
 
   Stringable
   (string-list [_]
-    (list "(c/SetCollectionType " (str tc) " " (str "'" base-sym) " "
+    (list "(c/ModSeqType " (str op) " " (str "'" base-sym) " "
           "(list) "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
   Container
   (map [x f]
-    (SetCollectionType (f tc) base-sym path sym var))
+    x)
 
   (map [x f embed]
-    (map (f tc) (fn [new-tc]
-                  (SetCollectionType new-tc base-sym path sym var))))
+    (embed x))
 
   Constraint
   (show-full [c]
@@ -1344,7 +1378,7 @@
                                CollectionOf
                                InnerTypeOfConstraint
                                TypeOfConstraint
-                               SetCollectionType
+                               ModSeqType
                                DebugConstraint
                                ParamConstraint))
 
@@ -1420,6 +1454,7 @@
                          ResultConstraint))
 
 (defn reify-type-constraint [c arity param-cs loc]
+  (assert (instance? Vector param-cs))
   (assert (instance? Constraints c))
 
   ;; (or (= (.file loc) 'core)
@@ -1454,7 +1489,7 @@
     )
 
   (set-collection-type [c tc]
-    (assert (instance? SetCollectionType tc))
+    (assert (instance? ModSeqType tc))
 
     (NoValues [c tc]))
 
@@ -1589,7 +1624,7 @@
                                (format-path 0))))
    nothing))
 
-(extend-type SetCollectionType
+(extend-type ModSeqType
   Constraint
   (intersect [c other-c]
     (set-collection-type other-c c))
@@ -1601,7 +1636,7 @@
   (intersect-vector [c vc]
     (set-collection-type vc c))
 
-  (intersect-vector [c vc]
+  (intersect-list [c vc]
     (set-collection-type vc c)))
 
 (extend-type Vector
@@ -2016,17 +2051,15 @@
   ;;          (maybe info))))
 
   (set-collection-type [c coll-c]
-    (let [tc (.tc coll-c)
-          new-type-num (get-type-num tc)]
-      (cond (or (instance? ListConstraint tc)
-                (= tc top-type))
+    (let [op (.op coll-c)]
+      (cond (= op ListFrom)
             c
 
-            (instance? VectorConstraint tc)
-            (-> tc
+            (= op VectFrom)
+            (-> vect-constraint
                 (.items (.items c))
                 (.tail-c (.tail-c c))
-                (.path (comp (.path tc) (.path c))))
+                (replace-path (comp (.path coll-c) (.path c))))
 
             top-type)))
 
@@ -2224,17 +2257,15 @@
   ;;          (maybe info))))
 
   (set-collection-type [c coll-c]
-    (let [tc (.tc coll-c)
-          new-type-num (get-type-num tc)]
-      (cond (or (instance? VectorConstraint tc)
-                (= tc top-type))
+    (let [op (.op coll-c)]
+      (cond (= op VectFrom)
             c
 
-            (instance? ListConstraint tc)
-            (-> tc
+            (= op ListFrom)
+            (-> list-constraint
                 (.items (.items c))
                 (.tail-c (.tail-c c))
-                (.path (comp (.path tc) (.path c))))
+                (replace-path (comp (.path coll-c) (.path c))))
 
             top-type)))
 
@@ -3419,7 +3450,7 @@
     (cond (or (instance? SumConstraint c2)
               (instance? ParamConstraint c2)
               (instance? HashMapConstraint c2)
-              (instance? SetCollectionType c2))
+              (instance? ModSeqType c2))
           (intersect c2 c1)
 
           (= bottom-type c2)
@@ -3498,7 +3529,7 @@
     (cond (or (instance? SetField c2)
               (instance? GetField c2)
               (instance? GetInnerType c2)
-              (instance? SetCollectionType c2)
+              (instance? ModSeqType c2)
               (instance? CallValue c2))
           c1
 
@@ -3528,7 +3559,7 @@
                                                              (symbol (str (.fld mod)))
                                                              {} empty-list no-symbol "")
 
-                                                            (instance? SetCollectionType mod)
+                                                            (instance? ModSeqType mod)
                                                             ;; TODO: horrible error message with this mistake
                                                             ;; SeqConstraint is invalid here
                                                             ;; (intersect c (replace-path SeqConstraint
