@@ -1321,22 +1321,22 @@
 (def VectFrom (reify
                 Stringable
                 (string-list [_]
-                  (list "c/VectFrom"))
-
-                Eq
-                (=* [x y]
-                  (and (= (get-type x) (get-type y))
-                       (maybe x)))))
+                  (list "c/VectFrom"))))
 
 (def ListFrom (reify
                 Stringable
                 (string-list [_]
-                  (list "c/ListFrom"))
+                  (list "c/ListFrom"))))
 
-                Eq
-                (=* [x y]
-                  (and (= (get-type x) (get-type y))
-                       (maybe x)))))
+(def RestOf (reify
+              Stringable
+              (string-list [_]
+                (list "c/RestOf"))))
+
+(def ButLastOf (reify
+              Stringable
+              (string-list [_]
+                (list "c/ButLastOf"))))
 
 ;; TODO: enum doesn't work
 ;; (def SeqTypeOps (enum ListFrom VectFrom FirstOf LastOf RestOf ButLastOf))
@@ -2061,6 +2061,15 @@
                 (.tail-c (.tail-c c))
                 (replace-path (comp (.path coll-c) (.path c))))
 
+            (= op RestOf)
+            (.items c (rest (.items c)))
+
+            (= op ButLastOf)
+            (cond (= (.tail-c c) bottom-type)
+                  (.items c (butlast (.items c)))
+
+                  c)
+
             top-type)))
 
   (extract-field [c idx]
@@ -2266,6 +2275,15 @@
                 (.items (.items c))
                 (.tail-c (.tail-c c))
                 (replace-path (comp (.path coll-c) (.path c))))
+
+            (= op RestOf)
+            (.items c (rest (.items c)))
+
+            (= op ButLastOf)
+            (cond (= (.tail-c c) bottom-type)
+                  (.items c (butlast (.items c)))
+
+                  c)
 
             top-type)))
 
