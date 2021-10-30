@@ -1338,6 +1338,16 @@
               (string-list [_]
                 (list "c/ButLastOf"))))
 
+(def FirstOf (reify
+               Stringable
+               (string-list [_]
+                 (list "c/FirstOf"))))
+
+(def LastOf (reify
+               Stringable
+               (string-list [_]
+                 (list "c/LastOf"))))
+
 ;; TODO: enum doesn't work
 ;; (def SeqTypeOps (enum ListFrom VectFrom FirstOf LastOf RestOf ButLastOf))
 
@@ -2061,6 +2071,18 @@
                 (.tail-c (.tail-c c))
                 (replace-path (comp (.path coll-c) (.path c))))
 
+            (= op FirstOf)
+            (MaybeConstraint (either (first (.items c))
+                                     (extract-contents-constraint (.tail-c c)))
+                             (.path c) no-symbol "")
+
+            (= op LastOf)
+            (let [tail-c (extract-contents-constraint (.tail-c c))]
+              (MaybeConstraint (either (and (= bottom-type tail-c)
+                                            (last (.items c)))
+                                       tail-c)
+                               (.path c) no-symbol ""))
+
             (= op RestOf)
             (.items c (rest (.items c)))
 
@@ -2275,6 +2297,18 @@
                 (.items (.items c))
                 (.tail-c (.tail-c c))
                 (replace-path (comp (.path coll-c) (.path c))))
+
+            (= op FirstOf)
+            (MaybeConstraint (either (first (.items c))
+                                     (.tail-c c))
+                             empty-list no-symbol "")
+
+            (= op LastOf)
+            (let [tail-c (extract-contents-constraint (.tail-c c))]
+              (MaybeConstraint (either (and (= bottom-type tail-c)
+                                            (last (.items c)))
+                                       tail-c)
+                               (.path c) no-symbol ""))
 
             (= op RestOf)
             (.items c (rest (.items c)))
@@ -3583,17 +3617,23 @@
                                                             ;; SeqConstraint is invalid here
                                                             ;; (intersect c (replace-path SeqConstraint
                                                             ;;                            (.path mod)))
-                                                            (either (map (instance? SeqConstraint c)
-                                                                         (fn [c]
-                                                                           (-> seq-constraint
-                                                                               (set-items (.items c))
-                                                                               (set-tail (.tail-c c)))))
-                                                                    (intersect c (replace-path seq-constraint
-                                                                                               (.path mod))))
+                                                            (cond (instance? SeqConstraint c)
+                                                                  (-> seq-constraint
+                                                                      (set-items (.items c))
+                                                                      (set-tail (.tail-c c)))
+
+                                                                  (and (or (= (.op mod) FirstOf)
+                                                                           (= (.op mod) LastOf))
+                                                                       (instance? MaybeConstraint c))
+                                                                  (intersect (set-tail seq-constraint
+                                                                                       (.contents c))
+                                                                             (replace-path seq-constraint
+                                                                                             (.path mod)))
+
+                                                                  (intersect c (replace-path seq-constraint
+                                                                                             (.path mod))))
 
                                                             (instance? CallValue mod)
-                                                            ;; TODO: there might be an opportunity to capture
-                                                            ;; the needed return value ('c') and propogate that info
                                                             top-type
 
                                                             (intersect mod c)))))))
