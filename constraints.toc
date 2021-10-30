@@ -4,7 +4,7 @@
 
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
-                           :sha "a1bad99"))
+                           :sha "3928103"))
 
 (def SymbolOrString (any-of Symbol
                             String))
@@ -3100,6 +3100,7 @@
                                   "\nat: " loc 'arity-id arity
                                   "\n\n" 'param-c c
                                   "\n\n" 'params params)
+                       (abort)
                        (Left top-type))))
 
           (se/state-error (Right c))))
