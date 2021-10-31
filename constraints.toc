@@ -1019,7 +1019,27 @@
 
   Stringable
   (string-list [_]
-    (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")")))
+    (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")"))
+
+  Eq
+  (=* [x y]
+    (and (= (get-type x) (get-type y))
+         (= param-consts (.param-consts y))
+         (= result-const (.result-const y))
+         (maybe x)))
+
+  Constraint
+  (intersect [ar1 ar2]
+    (assert (instance? fn-arity ar2))
+
+    (let [param-cs (intersect param-consts (.param-consts ar2))
+          result-c (intersect result-const (.result-const ar2))]
+      (either (or (= bottom-type param-cs)
+                  (= bottom-type result-c))
+
+              (-> ar1
+                  (.param-consts param-cs)
+                  (.result-const result-c))))))
 
 (deftype FnConstraint [arities path sym var]
   (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -2752,6 +2772,9 @@
 
           (NoValues [c map-c])))
 
+  (intersect-fn [rc fc]
+    (intersect-reified-val fc rc))
+
   (intersect-reified-val [c reified]
     (cond (= UnknownType (.type-num c) (.type-num reified))
           (-> reified
@@ -3432,8 +3455,8 @@
             ;; (print-err 'c2 c2)
             (either (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
                       (let [params-failed (-> (.param-consts arity-info)
-                                              (extract-items-constraints (count args))
-                                              (zip-lists args)
+                                              (extract-items-constraints (inc (count args)))
+                                              (zip-lists (comp [c2] args))
                                               (some (fn [[param arg]]
                                                       (= bottom-type (intersect param arg)))))]
                         (either params-failed
@@ -3495,7 +3518,7 @@
     (intersect y x))
 
   (intersect-reified-val [c tc]
-    top-type))
+    (intersect c tc)))
 
 (extend-type SetField
   Constraint
@@ -3540,7 +3563,54 @@
                      (maybe y))
                 (and (empty? (.arities y))
                      (maybe x)))
-            (NoValues [x y])))
+            (let [maybe-variadic-x (get-in x [.arities variadic])
+                  maybe-variadic-y (get-in y [.arities variadic])
+                  new-arities (reduce (vec (.arities y)) {}
+                                      (fn [arities [idx y-arity]]
+                                        (either (for [_ (instance? Integer idx)
+                                                      x-arity (or (get-in x [.arities idx])
+                                                                  maybe-variadic-x)]
+                                                  (assoc arities idx (intersect x-arity y-arity)))
+                                                arities)))
+                  new-arities (reduce (vec (.arities x)) new-arities
+                                      (fn [arities [idx x-arity]]
+                                        (cond (get arities idx)
+                                              arities
+
+                                              (either (for [_ (instance? Integer idx)
+                                                            y-arity (or (get-in y [.arities idx])
+                                                                        maybe-variadic-y)]
+                                                        (assoc arities idx (intersect x-arity y-arity)))
+                                                      arities))))
+                  new-arities (either (for [variadic-x maybe-variadic-x
+                                            variadic-y maybe-variadic-y]
+                                        (assoc new-arities variadic (intersect variadic-x variadic-y)))
+                                      new-arities)
+                  new-arities (reduce (vec new-arities) {}
+                                      (fn [new-arities [k v]]
+                                        (cond (= bottom-type v)
+                                              new-arities
+
+                                              (assoc new-arities k v))))]
+              (cond (empty? new-arities)
+                    (NoValues [x y])
+
+                    (.arities x new-arities)))))
+
+  (intersect-reified-val [y x]
+    (let [maybe-variadic-y (get-in y [.arities variadic])
+          new-arities (reduce (vec (.invoke-arities x)) {}
+                              (fn [arities [idx x-arity]]
+                                (either (for [y-arity (or (get-in y [.arities (dec idx)])
+                                                          maybe-variadic-y)
+                                              :let [arity-c (intersect x-arity y-arity)]
+                                              :when-not (= bottom-type arity-c)]
+                                          (assoc arities idx arity-c))
+                                        arities)))]
+      (cond (empty? new-arities)
+            (NoValues [x y])
+
+            x)))
 
   (is-bottom [c] c))
 
@@ -3634,7 +3704,12 @@
                                                                                              (.path mod))))
 
                                                             (instance? CallValue mod)
-                                                            top-type
+                                                            (FnConstraint {(count (.args mod))
+                                                                           (fn-arity (symbol "")
+                                                                                     (.items list-constraint
+                                                                                             (.args mod))
+                                                                                     c)}
+                                                                          empty-list no-symbol "")
 
                                                             (intersect mod c)))))))
                         c))
