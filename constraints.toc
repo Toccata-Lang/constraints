@@ -73,7 +73,14 @@
 (deftype NoSymbol []
   Stringable
   (string-list [_]
-    (list "c/no-symbol")))
+    (list "c/no-symbol"))
+
+    Eq
+    (=* [x y]
+      (or (instance? Symbol y)
+          (and (= (get-type x) (get-type y))
+               (maybe x)))))
+
 (def no-symbol (NoSymbol))
 ;; (def no-symbol
 ;;   (reify
@@ -646,7 +653,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/SymbolConstraint " (str static-value) " "
+    (list "(c/SymbolConstraint " (sym-str static-value) " "
           "(list) "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
@@ -1389,6 +1396,9 @@
     (embed x))
 
   Constraint
+  (assertion-path [_]
+    path)
+
   (show-full [c]
     (format-path c 0))
 
@@ -1398,6 +1408,51 @@
 
   (contents-constraint [c]
     (Left top-type)))
+
+(deftype ArgOf [fn-sym arg-position path sym var]
+  (assert (instance? Symbol fn-sym))
+  (assert (instance? Integer arg-position))
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ArgOf " (str fn-sym " " arg-position)
+          " (list)"
+          ;; (str " " (cons 'list path))
+          " " (sym-str sym)
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? ArgOf y)
+         (= arg-position (.arg-position y))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (show-full [c]
+    (comp (format-path* (cons [(str "Argument " arg-position " of") ""] path)
+                        0)
+          ["===="]))
+
+  (contents-constraint [_]
+    (Left top-type))
+
+  (format-path [_ desired-len]
+    (format-path* (cons [(str "Argument " arg-position " of") ""] path)
+                  desired-len))
+
+  (assertion-path [_]
+    path))
 
 (def SymbolConstraints (any-of CoreValConstraint
                                InferredInner
@@ -1410,6 +1465,7 @@
                                TypeOfConstraint
                                ModSeqType
                                DebugConstraint
+                               ArgOf
                                ParamConstraint))
 
 (deftype NoValues [constraints]
@@ -1725,7 +1781,8 @@
   (intersect-fn [c _] c)
   (is-bottom [c] c)
   (intersect-param [c _] c)
-  (intersect-reified-val [c _] c))
+  (intersect-reified-val [c _] c)
+  (set-collection-type [c tc] c))
 
 (extend-type AllValues
   Constraint
@@ -3141,7 +3198,7 @@
                                                      (reify-c c arity loc))
                                                    mod
                                                    se/state-error)))
-                      param-c (se/get-val (.param-index c))]
+                      param-c (se/get-val (.param-index c) top-type)]
                   (Left (reduce new-mods param-c (fn [c mod]
                                                    ;; (and (instance? ParamConstraint mod)
                                                    ;;      (do
@@ -3149,7 +3206,9 @@
                                                    ;;        (print-err 'loc loc)
                                                    ;;        (print-err 'c c)
                                                    ;;        (print-err 'mod mod)
-                                                   ;;        (abort)))
+                                                   ;;        (print-err 'int (intersect mod c))
+                                                   ;;        (abort)
+                                                   ;;        nothing))
                                                    (intersect mod c)))))
                 (map (se/update-state identity)
                      (fn [params]
@@ -3539,6 +3598,7 @@
           (or (instance? CoreValConstraint c2)
               (instance? GetField c2)
               (instance? GetInnerType c2)
+              (instance? ArgOf c2)
               (instance? CallValue c2))
           (NoValues [c1 c2])
 
@@ -3698,7 +3758,7 @@
                                                                   (intersect (set-tail seq-constraint
                                                                                        (.contents c))
                                                                              (replace-path seq-constraint
-                                                                                             (.path mod)))
+                                                                                           (.path mod)))
 
                                                                   (intersect c (replace-path seq-constraint
                                                                                              (.path mod))))
@@ -3714,6 +3774,83 @@
                                                             (intersect mod c)))))))
                         c))
               outer-c)))
+
+(extend-type ArgOf
+  Constraint
+  (intersect [c1 c2]
+    (cond (instance? ParamConstraint c2)
+          (intersect c2 c1)
+
+          (= bottom-type c2)
+          c2
+
+          (= top-type c2)
+          c1
+
+          (instance? ReifiedConstraint c2)
+          (do
+            ;; (print-err "Intersecting ArgOf" (.arg-position c1))
+            ;; (print-err 'c1 c1)
+            ;; (print-err 'c2 c2)
+            (let [arg-pos (inc (.arg-position c1))
+                  num-args (inc arg-pos)]
+              (-> (.invoke-arities c2)
+                  vals
+                  (map (fn [arity]
+                         (either (-> (.param-consts arity)
+                                     (extract-items-constraints num-args)
+                                     (nth (.arg-position c1)))
+                                 bottom-type)))
+                  (remove (partial = bottom-type))
+                  (map full-param-constraint)
+                  (conj top-type)
+                  vec
+                  sum-type)))
+
+          ;; TODO: the need for this nested cond *must* be fixed ASAP
+          (instance? CoreValConstraint c2)
+          (cond (instance? FnConstraint c2)
+                (do
+                  ;; (print-err "Intersecting ArgOf" (.arg-position c1))
+                  ;; (print-err 'c1 c1)
+                  ;; (print-err 'c2 c2)
+                  (let [num-args (inc (.arg-position c1))]
+                    (-> (.arities c2)
+                        vals
+                        (map (fn [arity]
+                               (either (-> (.param-consts arity)
+                                           (extract-items-constraints num-args)
+                                           (nth (.arg-position c1)))
+                                       bottom-type)))
+                        (remove (partial = bottom-type))
+                        (map full-param-constraint)
+                        vec
+                        sum-type)))
+
+                (NoValues [c1 c2]))
+
+          (or (instance? GetField c2)
+              (instance? SetField c2))
+          (NoValues [c1 c2])
+
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
+          (intersect c2 c1)
+
+          top-type))
+
+  ConstraintOps
+  (set-collection-type [c tc]
+    top-type)
+
+  (is-bottom [c]
+    nothing)
+
+  (intersect-fn [y x]
+    (intersect y x))
+
+  (intersect-reified-val [c tc]
+    (intersect c tc)))
 
 (extend-type ParamConstraint
   Constraint
@@ -3733,10 +3870,9 @@
                                                             (instance? SetField mod)
                                                             c
 
-                                                            (instance? GetField mod)
-                                                            top-type
-
-                                                            (instance? CallValue mod)
+                                                            (or (instance? GetField mod)
+                                                                (instance? CallValue mod)
+                                                                (instance? ArgOf mod))
                                                             top-type
 
                                                             (intersect mod c)))))))
