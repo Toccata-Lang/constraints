@@ -1388,6 +1388,12 @@
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
+  Eq
+  (=* [x y]
+    (and (instance? ModSeqType y)
+         (identical op (.op y))
+         (maybe x)))
+
   Container
   (map [x f]
     x)
@@ -1403,7 +1409,7 @@
     (format-path c 0))
 
   (format-path [x desired-len]
-    (format-path* (cons ["Convert sequence type from:" ""] (.path x))
+    (format-path* (cons [(str "Operate on seq with " op ":") ""] (.path x))
                   desired-len))
 
   (contents-constraint [c]
