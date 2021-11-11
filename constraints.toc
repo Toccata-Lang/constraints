@@ -1411,7 +1411,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ArgOf " (str fn-sym " " arg-position)
+    (list "(c/ArgOf " (sym-str fn-sym) " " (str arg-position)
           " (list)"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
@@ -1447,6 +1447,49 @@
   (assertion-path [_]
     path))
 
+(deftype ResultOf [fn-sym path sym var]
+  (assert (instance? Symbol fn-sym))
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ResultOf " (sym-str fn-sym)
+          " (list)"
+          ;; (str " " (cons 'list path))
+          " " (sym-str sym)
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? ResultOf y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (show-full [c]
+    (comp (format-path* (cons ["Result of" ""] path)
+                        0)
+          ["===="]))
+
+  (contents-constraint [_]
+    (Left top-type))
+
+  (format-path [_ desired-len]
+    (format-path* (cons ["Result of"  ""] path)
+                  desired-len))
+
+  (assertion-path [_]
+    path))
+
 (def SymbolConstraints (any-of CoreValConstraint
                                InferredInner
                                CollectionOf
@@ -1459,6 +1502,7 @@
                                ModSeqType
                                DebugConstraint
                                ArgOf
+                               ResultOf
                                ParamConstraint))
 
 (deftype NoValues [constraints]
@@ -3592,6 +3636,7 @@
               (instance? GetField c2)
               (instance? GetInnerType c2)
               (instance? ArgOf c2)
+              (instance? ResultOf c2)
               (instance? CallValue c2))
           (NoValues [c1 c2])
 
@@ -3842,6 +3887,70 @@
                         (map full-param-constraint)
                         vec
                         sum-type)))
+
+                (NoValues [c1 c2]))
+
+          (or (instance? GetField c2)
+              (instance? SetField c2))
+          (NoValues [c1 c2])
+
+          (or (instance? DebugConstraint c2)
+              (instance? SumConstraint c2))
+          (intersect c2 c1)
+
+          top-type))
+
+  ConstraintOps
+  (set-collection-type [c tc]
+    top-type)
+
+  (is-bottom [c]
+    nothing)
+
+  (intersect-fn [y x]
+    (intersect y x))
+
+  (intersect-reified-val [c tc]
+    (intersect c tc)))
+
+(extend-type ResultOf
+  Constraint
+  (intersect [c1 c2]
+    (cond (instance? ParamConstraint c2)
+          (intersect c2 c1)
+
+          (= bottom-type c2)
+          c2
+
+          (= top-type c2)
+          c1
+
+          (instance? ReifiedConstraint c2)
+          (do
+            ;; (print-err "Intersecting ResultOf")
+            ;; (print-err 'c1 c1)
+            ;; (print-err 'c2 c2)
+            (-> (.invoke-arities c2)
+                vals
+                (map .result-const)
+                (map full-param-constraint)
+                (conj top-type)
+                vec
+                sum-type))
+
+          ;; TODO: the need for this nested cond *must* be fixed ASAP
+          (instance? CoreValConstraint c2)
+          (cond (instance? FnConstraint c2)
+                (do
+                  ;; (print-err "Intersecting ResultOf")
+                  ;; (print-err 'c1 c1)
+                  ;; (print-err 'c2 c2)
+                  (-> (.arities c2)
+                      vals
+                      (map .result-const)
+                      (map full-param-constraint)
+                      vec
+                      sum-type))
 
                 (NoValues [c1 c2]))
 
