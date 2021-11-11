@@ -1033,20 +1033,7 @@
     (and (= (get-type x) (get-type y))
          (= param-consts (.param-consts y))
          (= result-const (.result-const y))
-         (maybe x)))
-
-  Constraint
-  (intersect [ar1 ar2]
-    (assert (instance? fn-arity ar2))
-
-    (let [param-cs (intersect param-consts (.param-consts ar2))
-          result-c (intersect result-const (.result-const ar2))]
-      (either (or (= bottom-type param-cs)
-                  (= bottom-type result-c))
-
-              (-> ar1
-                  (.param-consts param-cs)
-                  (.result-const result-c))))))
+         (maybe x))))
 
 (deftype FnConstraint [arities path sym var]
   (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -3669,7 +3656,12 @@
                               (fn [arities [idx x-arity]]
                                 (either (for [y-arity (or (get-in y [.arities (dec idx)])
                                                           maybe-variadic-y)
-                                              :let [arity-c (intersect x-arity y-arity)]
+                                              :let [x-arity (either (map (get-in x-arity [.param-consts .items])
+                                                                         (fn [param-cs]
+                                                                           (assoc-in x-arity [.param-consts .items]
+                                                                                     (rest param-cs))))
+                                                                    x-arity)
+                                                    arity-c (intersect x-arity y-arity)]
                                               :when-not (= bottom-type arity-c)]
                                           (assoc arities idx arity-c))
                                         arities)))]
@@ -3780,6 +3772,24 @@
                                                             (intersect mod c)))))))
                         c))
               outer-c)))
+
+(extend-type fn-arity
+  Constraint
+  (intersect [ar1 ar2]
+    (assert (instance? fn-arity ar2))
+
+    (let [param-cs (intersect (.param-consts ar1) (.param-consts ar2))
+          result-c (intersect (.result-const ar1) (.result-const ar2))]
+      (either (or (= bottom-type param-cs)
+                  (-> param-cs
+                      full-param-constraint
+                      .items
+                      (some (partial = bottom-type)))
+                  (= bottom-type result-c))
+
+              (-> ar1
+                  (.param-consts param-cs)
+                  (.result-const result-c))))))
 
 (extend-type ArgOf
   Constraint
