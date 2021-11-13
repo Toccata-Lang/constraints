@@ -3933,7 +3933,11 @@
             (-> (.invoke-arities c2)
                 vals
                 (map .result-const)
-                (map full-param-constraint)
+                (map (fn [c]
+                       (either (map (instance? ParamConstraint c)
+                                    (fn [pc]
+                                      (reduce (.mods pc) top-type intersect)))
+                               c)))
                 (conj top-type)
                 vec
                 sum-type))
@@ -3948,15 +3952,19 @@
                   (-> (.arities c2)
                       vals
                       (map .result-const)
-                      (map full-param-constraint)
+                      (map (fn [c]
+                             (either (map (instance? ParamConstraint c)
+                                          (fn [pc]
+                                            (reduce (.mods pc) top-type intersect)))
+                                     c)))
                       vec
                       sum-type))
 
-                (NoValues [c1 c2]))
+                c2)
 
           (or (instance? GetField c2)
               (instance? SetField c2))
-          (NoValues [c1 c2])
+          c2
 
           (or (instance? DebugConstraint c2)
               (instance? SumConstraint c2))
