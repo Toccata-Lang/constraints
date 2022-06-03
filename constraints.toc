@@ -4,7 +4,7 @@
 
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
-                           :sha "3928103"))
+                           :sha "f3a18dc"))
 
 (def SymbolOrString (any-of Symbol
                             String))
@@ -3488,6 +3488,24 @@
 
             inner-c))))
 
+(deftype NoArgs []
+  Stringable
+  (string-list [_]
+    (list "c/no-args"))
+
+  Eq
+  (=* [x y]
+    (and (instance? NoArgs y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+(def no-args (NoArgs))
+
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
@@ -3495,7 +3513,10 @@
 
   Stringable
   (string-list [_]
-    (list "(c/CallValue " "\n[" (to-str (interpose args "\n")) "]"
+    (list "(c/CallValue " 
+          (either (map (= no-args args) (fn [_]
+                                          "c/no-args"))
+                  (str "\n[" (to-str (interpose args "\n")) "]"))
           " (list)"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
@@ -3549,16 +3570,23 @@
             ;; (print-err "Intersecting CallValue")
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
-            (either (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
-                      (let [params-failed (-> (.param-consts arity-info)
-                                              (extract-items-constraints (inc (count args)))
-                                              (zip-lists (comp [c2] args))
-                                              (some (fn [[param arg]]
-                                                      (= bottom-type (intersect param arg)))))]
-                        (either params-failed
-                                (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                       (comp [c2] args)
-                                                       (Location "WTF" 21305)))))
+            (either (or (map (instance? NoArgs args)
+                             (fn [_]
+                               (-> (.invoke-arities c2)
+                                   vals
+                                   (map .result-const)
+                                   vec
+                                   sum-type)))
+                        (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
+                          (let [params-failed (-> (.param-consts arity-info)
+                                                  (extract-items-constraints (inc (count args)))
+                                                  (zip-lists (comp [c2] args))
+                                                  (some (fn [[param arg]]
+                                                          (= bottom-type (intersect param arg)))))]
+                            (either params-failed
+                                    (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                           (comp [c2] args)
+                                                           (Location "WTF" 21305))))))
                     top-type))
 
           ;; TODO: the need for this nested cond *must* be fixed ASAP
@@ -3568,16 +3596,23 @@
                   ;; (print-err "Intersecting CallValue")
                   ;; (print-err 'c1 c1)
                   ;; (print-err 'c2 c2)
-                  (either (for [arity-info (or (get-in c2 [.arities (count args)])
-                                               (get-in c2 [.arities variadic]))]
-                            (let [params-failed (-> (.param-consts arity-info)
-                                                    (extract-items-constraints (count args))
-                                                    (zip-lists args)
-                                                    (some (fn [[param arg]]
-                                                            (= bottom-type (intersect param arg)))))]
-                              (either params-failed
-                                      (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                             args (Location "WTF" 21304)))))
+                  (either (or (map (= no-args args) ;; TODO: replace 'args' with '(args)' bad error msg
+                                   (fn [_]
+                                     (-> (.arities c2)
+                                         vals
+                                         (map .result-const)
+                                         vec
+                                         sum-type)))
+                              (for [arity-info (or (get-in c2 [.arities (count args)])
+                                                   (get-in c2 [.arities variadic]))]
+                                (let [params-failed (-> (.param-consts arity-info)
+                                                        (extract-items-constraints (count args))
+                                                        (zip-lists args)
+                                                        (some (fn [[param arg]]
+                                                                (= bottom-type (intersect param arg)))))]
+                                  (either params-failed
+                                          (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                                 args (Location "WTF" 21304))))))
                           (NoValues [c1 c2])))
 
                 (NoValues [c1 c2]))
@@ -3807,12 +3842,19 @@
                                                                                              (.path mod))))
 
                                                             (instance? CallValue mod)
-                                                            (FnConstraint {(count (.args mod))
-                                                                           (fn-arity (symbol "")
-                                                                                     (.items list-constraint
-                                                                                             (.args mod))
-                                                                                     c)}
-                                                                          empty-list no-symbol "")
+                                                            (either (map (= (.args mod) no-args)
+                                                                         (fn [_]
+                                                                           (FnConstraint
+                                                                            {variadic (fn-arity (symbol "")
+                                                                                       list-constraint
+                                                                                       c)}
+                                                                            empty-list no-symbol "")))
+                                                                    (FnConstraint {(count (.args mod))
+                                                                                   (fn-arity (symbol "")
+                                                                                             (.items list-constraint
+                                                                                                     (.args mod))
+                                                                                             c)}
+                                                                                  empty-list no-symbol ""))
 
                                                             (intersect mod c)))))))
                         c))
