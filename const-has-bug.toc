@@ -1,6 +1,5 @@
 
-;; TODO: really bad error if this is in there
-;; (def int-max)
+;; TODO: bug at line 3747
 
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
@@ -1046,7 +1045,8 @@
     (list "(c/FnConstraint " (str arities) " "
           "(list) "
           ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+           ;; (sym-str sym) " \"" (str var) "\")"
+          ))
 
   Eq
   (=* [x y]
@@ -1512,42 +1512,43 @@
 (def empty-vector-constraint (VectorConstraint [] bottom-type empty-list no-symbol ""))
 
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
-(def fn-constraint (FnConstraint {variadic (fn-arity (symbol "") list-constraint top-type)
+(def fn-constraint (FnConstraint {;; variadic (fn-arity (symbol "") list-constraint top-type)
                                   0 (fn-arity (symbol "") empty-list-constraint
                                               top-type)
-                                  1 (fn-arity (symbol "") (ListConstraint [top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  2 (fn-arity (symbol "") (ListConstraint [top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  3 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  4 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  5 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  6 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  7 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  8 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
-                                                                           top-type top-type top-type top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)
-                                  9 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
-                                                                           top-type top-type top-type top-type
-                                                                           top-type]
-                                                                          bottom-type empty-list no-symbol "")
-                                              top-type)}
+                                  ;; 1 (fn-arity (symbol "") (ListConstraint [top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 2 (fn-arity (symbol "") (ListConstraint [top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 3 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 4 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 5 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
+                                  ;;                                          top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 6 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
+                                  ;;                                          top-type top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 7 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
+                                  ;;                                          top-type top-type top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 8 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
+                                  ;;                                          top-type top-type top-type top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  ;; 9 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
+                                  ;;                                          top-type top-type top-type top-type
+                                  ;;                                          top-type]
+                                  ;;                                         bottom-type empty-list no-symbol "")
+                                  ;;             top-type)
+                                  }
                                  empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
 (def inner-type-of-constraint (InnerTypeOfConstraint 'no-sym empty-list no-symbol ""))
@@ -1743,6 +1744,7 @@
     (assert (instance? CollectionOf cc))
     (assert-result r (instance? Constraints r))
 
+    (print-err 'default-int-coll-of _LINE_)
     (intersect (update-var c (extract-var cc)) cc))
 
   (intersect-sum [c cs]
@@ -1954,6 +1956,9 @@
 
   ConstraintOps
   (intersect-coll-of [c cc]
+    (print-err 'core-val-int-coll-of _LINE_)
+    (print-err 'c c)
+    (print-err 'cc cc)
     (NoValues [c cc]))
 
   (intersect-vector [c vect-c]
@@ -3076,11 +3081,16 @@
     (vec (repeat n (.contents c))))
 
   (intersect [cc c]
+    (print-err 'int-coll-of _LINE_)
     (intersect-coll-of c cc))
 
   ConstraintOps
   (intersect-fn [c fn-c]
-    (intersect c fn-c))
+    (assert (instance? FnConstraint fn-c))
+
+    (print-err 'coll-intersect-fn _LINE_)
+    (print-err 'fn-c fn-c)
+    (intersect-coll-of fn-c c))
 
   (intersect-reified-val [c rc]
     ;; TODO: insufficient for type checking calls to 'map' etc.
@@ -3723,13 +3733,18 @@
                   desired-len))
 
   (intersect [x y]
+    (print-err 'fn-intersect _LINE_)
     (intersect-fn y x))
 
   (contents-constraint [c]
     (Left (NoValues [c not-container])))
 
   ConstraintOps
+  ;; TODO: for some reason, this does not replace the implementation of intersect-coll-of
+  ;; from CoreValConstraint for FnConstraint
+
   (intersect-coll-of [fn-c coll-c]
+    (print-err 'fn-int-coll-of _LINE_)
     (let [content (.contents coll-c)
           maybe-variadic-y (get-in fn-c [.arities variadic])
           new-arities (reduce (vec (.arities fn-c)) {}
@@ -3742,8 +3757,8 @@
       (cond (empty? new-arities)
             (NoValues [fn-c coll-c])
 
-            (.arities fn-c new-arities))))
-
+            fn-c)))
+  
   (intersect-fn [y x]
     (either (or (=* x y)
                 (and (empty? (.arities x))
