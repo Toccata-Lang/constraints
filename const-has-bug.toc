@@ -1,6 +1,29 @@
 
 ;; TODO: bug at line 3747
 
+;; found using
+
+;; (defn test-intersect [c1 c2]
+;;   (let [final-1 (c/intersect c1 c2)
+;;         final-2 (c/intersect c2 c1)]
+;;     (either (map (= final-2 final-1)
+;;                  (fn [c]
+;;                    final-1))
+;;             (do
+;;               (print-err "FAIL!! 'c/intersect not commutative")
+;;               (print-err 'c1 c1)
+;;               (print-err 'c2 c2)
+;;               (print-err final-1)
+;;               (print-err final-2)))) )
+
+;; (def _
+;;   (-> (test-intersect
+;;        (c/CollectionOf
+;;         (c/VectorConstraint [] (c/CollectionOf c/top-type (list ) c/no-symbol "") (list) c/no-symbol "")
+;;         (list ) c/no-symbol "")
+;;        c/fn-constraint)
+;;       print-err))
+
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
                            :sha "f3a18dc"))

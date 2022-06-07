@@ -2,6 +2,9 @@
 ;; TODO: really bad error if this is in there
 ;; (def int-max)
 
+;; TODO: remove
+(deftype Dummy [constraints])
+
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
                            :sha "f3a18dc"))
@@ -800,7 +803,12 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ListConstraint " (str items) " " (str tail-c) " "
+    (list "(c/ListConstraint " (str items) " "
+          (cond (flat-map (get tail-c .constraints) first)
+                (str tail-c)
+
+                "c/bottom-type")
+          " "
           "(list) "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
@@ -850,9 +858,14 @@
 
   Stringable
   (string-list [_]
-    (list "(c/VectorConstraint " (str items) " " (str tail-c) " "
-          ;; "(list) "
-          (str (cons 'list path))
+    (list "(c/VectorConstraint " (str items) " "
+          (cond (flat-map (get tail-c .constraints) first)
+                (str tail-c)
+
+                "c/bottom-type")
+          " "
+          "(list) "
+          ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -1515,37 +1528,31 @@
 (def fn-constraint (FnConstraint {variadic (fn-arity (symbol "") list-constraint top-type)
                                   0 (fn-arity (symbol "") empty-list-constraint
                                               top-type)
-                                  1 (fn-arity (symbol "") (ListConstraint [top-type]
+                                  1 (fn-arity (symbol "") (ListConstraint (repeat 1 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  2 (fn-arity (symbol "") (ListConstraint [top-type top-type]
+                                  2 (fn-arity (symbol "") (ListConstraint (repeat 2 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  3 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type]
+                                  3 (fn-arity (symbol "") (ListConstraint (repeat 3 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  4 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type]
+                                  4 (fn-arity (symbol "") (ListConstraint (repeat 4 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  5 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type]
+                                  5 (fn-arity (symbol "") (ListConstraint (repeat 5 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  6 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type top-type]
+                                  6 (fn-arity (symbol "") (ListConstraint (repeat 6 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  7 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type
-                                                                           top-type top-type top-type top-type]
+                                  7 (fn-arity (symbol "") (ListConstraint (repeat 7 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  8 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
-                                                                           top-type top-type top-type top-type]
+                                  8 (fn-arity (symbol "") (ListConstraint (repeat 8 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  9 (fn-arity (symbol "") (ListConstraint [top-type top-type top-type top-type
-                                                                           top-type top-type top-type top-type
-                                                                           top-type]
+                                  9 (fn-arity (symbol "") (ListConstraint (repeat 9 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)}
                                  empty-list no-symbol ""))
