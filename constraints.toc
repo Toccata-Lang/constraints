@@ -4111,6 +4111,13 @@
                                                                 (instance? ArgOf mod))
                                                             top-type
 
+                                                            (or (and (instance? ReifiedConstraint mod)
+                                                                     (instance? FnConstraint c))
+                                                                (and (instance? ReifiedConstraint c)
+                                                                     (instance? FnConstraint mod)))
+                                                            (either (instance? ReifiedConstraint c)
+                                                                    mod)
+
                                                             (intersect mod c)))))))
                         c))
               outer-c)
