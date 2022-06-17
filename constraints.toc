@@ -804,10 +804,7 @@
   Stringable
   (string-list [_]
     (list "(c/ListConstraint " (str items) " "
-          (cond (flat-map (get tail-c .constraints) first)
-                (str tail-c)
-
-                "c/bottom-type")
+          (str tail-c)
           " "
           "(list) "
           ;; (str (cons 'list path))
@@ -859,10 +856,7 @@
   Stringable
   (string-list [_]
     (list "(c/VectorConstraint " (str items) " "
-          (cond (flat-map (get tail-c .constraints) first)
-                (str tail-c)
-
-                "c/bottom-type")
+          (str tail-c)
           " "
           "(list) "
           ;; (str (cons 'list path))
@@ -1041,6 +1035,13 @@
   (string-list [_]
     (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")"))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Eq
   (=* [x y]
     (and (= (get-type x) (get-type y))
@@ -1192,7 +1193,7 @@
 
   Stringable
   (string-list [_]
-    (list (str "(c/SumConstraint\n" (str alts) " (list"
+    (list (str "(c/SumConstraint\n[" (to-str (interpose alts "\n\n")) "]\n(list"
                ;; (either (map (first path) (fn [[f l]]
                ;;                             (str "[\"" f "\" " l "]")))
                ;;         "")
@@ -1258,7 +1259,7 @@
   Stringable
   (string-list [_]
     (list "(c/ParamConstraint " (str "'" arity) " " (str param-index)
-          "\n[" (to-str (interpose mods "\n "))
+          "\n[" (to-str (interpose mods "\n\n"))
           "]\n"
           ;;  "(list)"
           (str " " (cons 'list path))
@@ -1775,6 +1776,7 @@
 
     (intersect (update-var c (extract-var ic)) ic)))
 
+;; TODO: this shouldn't use print-err. Possibly remove entirely
 (defn conflicting-assertions
   ([failing-constraint loc]
    (conflicting-assertions failing-constraint (.file loc) (.line loc)))
@@ -3360,7 +3362,7 @@
             (print-err 'c c)
             (print-err 'dyn-c dyn-c)
             ;; (abort)
-            )
+            top-type)
 
           (= (.sym c) (.sym dyn-c))
           (cond (every (zip-lists (.mods c) (.mods dyn-c))
@@ -3923,6 +3925,9 @@
 
 (extend-type fn-arity
   Constraint
+  (update-sym [x _] x)
+  (add-to-path [x _ _] x)
+
   (intersect [ar1 ar2]
     (assert (instance? fn-arity ar2))
 
@@ -4167,7 +4172,7 @@
 (extend-type DebugConstraint
   Stringable
   (show* [c indent]
-    (list* "Type of:" (.sym c)
+    (list* "Type of: " (.sym c)
            (map (cata show-full (.constraint c))
                 (partial str  "\n  "))))
 
