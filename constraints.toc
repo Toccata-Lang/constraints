@@ -1618,6 +1618,7 @@
 
 (def Constraints (any-of ValueConstraint
                          NoValues
+                         fn-arity
                          ResultConstraint))
 
 (defn reify-type-constraint [c arity param-cs loc]
