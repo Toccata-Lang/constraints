@@ -580,15 +580,6 @@
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
-  Container
-  (map [x f]
-    (.constraint x (f constraint)))
-
-  (map [x f embed]
-    (map (f constraint)
-         (fn [new-c]
-           (.constraint x new-c))))
-
   Eq
   (=* [x y]
     (and (instance? DebugConstraint y)
@@ -1034,13 +1025,6 @@
   Stringable
   (string-list [_]
     (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")"))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
 
   Eq
   (=* [x y]
@@ -3727,6 +3711,14 @@
           c2)))
 
 (extend-type FnConstraint
+  Container
+  (map [x f]
+    (.arities x (map-vals (.arities x) f)))
+
+  (map [x f embed]
+    (map (contextual-map-vals (.arities x) f embed)
+         (partial .arities x)))
+
   Constraint
   (format-path [x desired-len]
     (format-path* (cons ["Function defined at" ""] (.path x))
@@ -3925,6 +3917,13 @@
               outer-c)))
 
 (extend-type fn-arity
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
   (update-sym [x _] x)
   (add-to-path [x _ _] x)
@@ -4171,6 +4170,15 @@
           (NoValues [c1 c2]))))
 
 (extend-type DebugConstraint
+  Container
+  (map [x f]
+    (.constraint x (f (.constraint x))))
+
+  (map [x f embed]
+    (map (f (.constraint x))
+         (fn [new-c]
+           (.constraint x new-c))))
+
   Stringable
   (show* [c indent]
     (list* "Type of: " (.sym c)
