@@ -551,7 +551,7 @@
   Stringable
   (string-list [_]
     (list "(c/TypeOfConstraint " (sym-str param-sym)
-          "(list) "
+          " (list) "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1062,10 +1062,10 @@
   (get-type-sym [_] 'Fn))
 
 ;; TODO: add type field constraints
-(deftype ReifiedConstraint [type-num fields type-sym invoke-arities path sym var]
+(deftype ReifiedConstraint [type-num fields type-sym invoke-fn path sym var]
   (assert (instance? Integer type-num))
   (assert (instance? HashMap fields))
-  (assert (instance? (map-of ArityRank fn-arity) invoke-arities))
+  (assert (instance? FnConstraint invoke-fn))
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
@@ -1075,7 +1075,7 @@
     (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
           "\n"
           (str " (symbol \"" type-sym "\")")
-          "\n" (str invoke-arities)
+          "\n" (str invoke-fn)
           ;; (str (interpose (cons 'list path) " "))
           " (list) "
           " " (sym-str sym) " \"" (str var) "\")" ))
@@ -1108,21 +1108,19 @@
                         path)
                   desired-len)))
 
-(def not-container (ReifiedConstraint UnknownType {}
-                                      (symbol "Can not contain other values")
-                                      {} empty-list no-symbol ""))
-
 (defn required-field [fld]
   ;; TODO: make a proto fn
   (either (map (instance? Integer fld)
                (fn [_]
                  (ReifiedConstraint UnknownType {fld top-type} no-symbol
-                                    {} empty-list (symbol (str "Need at least " fld
-                                                               " items in list/vector.")) "")))
+                                    (FnConstraint {} empty-list no-symbol "")
+                                    empty-list (symbol (str "Need at least " fld
+                                                            " items in list/vector.")) "")))
           (ReifiedConstraint UnknownType {fld top-type} no-symbol
-                             {} empty-list (symbol (str "field '" (either (get fld .sym)
-                                                                          fld)
-                                                        "' required")) "")))
+                             (FnConstraint {} empty-list no-symbol "")
+                             empty-list (symbol (str "field '" (either (get fld .sym)
+                                                                                                   fld)
+                                                                                 "' required")) "")))
 
 (deftype NoFields []
   Stringable
@@ -1541,6 +1539,9 @@
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)}
                                  empty-list no-symbol ""))
+(def not-container (ReifiedConstraint UnknownType {}
+                                      (symbol "Can not contain other values")
+                                      (.arities fn-constraint {}) empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
 (def inner-type-of-constraint (InnerTypeOfConstraint 'no-sym empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
@@ -1558,14 +1559,14 @@
                                        empty-list no-symbol ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def set-constraint (ReifiedConstraint HashSetType {(Field (symbol ".set-map"))
-                                                    hashmap-constraint}
-                                       'HashSet {} empty-list no-symbol ""))
+(def set-constraint (ReifiedConstraint HashSetType {(Field (symbol ".set-map")) hashmap-constraint}
+                                       'HashSet (.arities fn-constraint {}) empty-list no-symbol ""))
 (def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
 (def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
 (def future-constraint (FutureConstraint empty-list no-symbol ""))
 (def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
-(def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity {} empty-list no-symbol ""))
+(def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity (.arities fn-constraint {})
+                                         empty-list no-symbol ""))
 
 (def core-type-constraints {'Integer int-constraint
                             'StringBuffer strbuff-constraint
@@ -2815,25 +2816,30 @@
 (extend-type ReifiedConstraint
   Container
   (map [tc f]
-    (.fields tc (-> (.fields tc)
-                    vec
-                    (map (fn [[fld fld-c]]
-                           [(f fld) (f fld-c)]))
-                    (reduce {} (fn [m [k v]]
-                                 (assoc m k v))))))
+    (-> tc
+        (.fields (-> (.fields tc)
+                     vec
+                     (map (fn [[fld fld-c]]
+                            [(f fld) (f fld-c)]))
+                     (reduce {} (fn [m [k v]]
+                                  (assoc m k v)))))
+        (.invoke-fn (map (.invoke-fn tc) f))))
 
   (map [tc f embed]
-    (map (-> (.fields tc)
-             vec
-             (map (fn [[fld fld-c]]
-                    (for [new-fld (f fld)
-                          new-c (f fld-c)]
-                      [new-fld new-c]))
-                  embed)
-             (map (fn [new-flds]
-                    (reduce new-flds {} (fn [m [k v]]
-                                          (assoc m k v))))))
-         (partial .fields tc)))
+    (for [new-fields (-> (.fields tc)
+                         vec
+                         (map (fn [[fld fld-c]]
+                                (for [new-fld (f fld)
+                                      new-c (f fld-c)]
+                                  [new-fld new-c]))
+                              embed)
+                         (map (fn [new-flds]
+                                (reduce new-flds {} (fn [m [k v]]
+                                                      (assoc m k v))))))
+          new-invoke (map (.invoke-fn tc) f embed)]
+      (-> tc
+          (.fields new-fields)
+          (.invoke-fn new-invoke))))
 
   Constraint
   (add-to-path [constraint file-name line-number]
@@ -2897,7 +2903,9 @@
           (NoValues [c map-c])))
 
   (intersect-fn [rc fc]
-    (intersect-reified-val fc rc))
+    (let [new-fn (intersect-fn (.invoke-fn rc) fc)]
+      (either (= bottom-type new-fn)
+              (.invoke-fn rc new-fn))))
 
   (intersect-reified-val [c reified]
     (cond (= UnknownType (.type-num c) (.type-num reified))
@@ -3603,24 +3611,7 @@
             ;; (print-err "Intersecting CallValue")
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
-            (either (or (map (instance? NoArgs args)
-                             (fn [_]
-                               (-> (.invoke-arities c2)
-                                   vals
-                                   (map .result-const)
-                                   vec
-                                   sum-type)))
-                        (for [arity-info (get-in c2 [.invoke-arities (inc (count args))])]
-                          (let [params-failed (-> (.param-consts arity-info)
-                                                  (extract-items-constraints (inc (count args)))
-                                                  (zip-lists (comp [c2] args))
-                                                  (some (fn [[param arg]]
-                                                          (= bottom-type (intersect param arg)))))]
-                            (either params-failed
-                                    (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                           (comp [c2] args)
-                                                           (Location "WTF" 21305))))))
-                    top-type))
+            (intersect c1 (.invoke-fn c2)))
 
           ;; TODO: the need for this nested cond *must* be fixed ASAP
           (instance? CoreValConstraint c2)
@@ -3787,24 +3778,9 @@
                     (.arities x new-arities)))))
 
   (intersect-reified-val [y x]
-    (let [maybe-variadic-y (get-in y [.arities variadic])
-          new-arities (reduce (vec (.invoke-arities x)) {}
-                              (fn [arities [idx x-arity]]
-                                (either (for [y-arity (or (get-in y [.arities (dec idx)])
-                                                          maybe-variadic-y)
-                                              :let [x-arity (either (map (get-in x-arity [.param-consts .items])
-                                                                         (fn [param-cs]
-                                                                           (assoc-in x-arity [.param-consts .items]
-                                                                                     (rest param-cs))))
-                                                                    x-arity)
-                                                    arity-c (intersect x-arity y-arity)]
-                                              :when-not (= bottom-type arity-c)]
-                                          (assoc arities idx arity-c))
-                                        arities)))]
-      (cond (empty? new-arities)
-            (NoValues [x y])
-
-            x)))
+    (let [new-fn (intersect-fn y (.invoke-fn x))]
+      (either (= bottom-type new-fn)
+              x)))
 
   (is-bottom [c] c))
 
@@ -3868,13 +3844,13 @@
                                                             (ReifiedConstraint
                                                              UnknownType {(.fld mod) top-type}
                                                              (symbol (str (.fld mod)))
-                                                             {} empty-list no-symbol "")
+                                                             (.arities fn-constraint {}) empty-list no-symbol "")
 
                                                             (instance? GetField mod)
                                                             (ReifiedConstraint
                                                              UnknownType {(.fld mod) c}
                                                              (symbol (str (.fld mod)))
-                                                             {} empty-list no-symbol "")
+                                                             (.arities fn-constraint {}) empty-list no-symbol "")
 
                                                             (instance? ModSeqType mod)
                                                             ;; TODO: horrible error message with this mistake
@@ -3961,20 +3937,7 @@
             ;; (print-err "Intersecting ArgOf" (.arg-position c1))
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
-            (let [arg-pos (inc (.arg-position c1))
-                  num-args (inc arg-pos)]
-              (-> (.invoke-arities c2)
-                  vals
-                  (map (fn [arity]
-                         (either (-> (.param-consts arity)
-                                     (extract-items-constraints num-args)
-                                     (nth (.arg-position c1)))
-                                 bottom-type)))
-                  (remove (partial = bottom-type))
-                  (map full-param-constraint)
-                  (conj top-type)
-                  vec
-                  sum-type)))
+            (intersect c1 (.invoke-fn c2)))
 
           ;; TODO: the need for this nested cond *must* be fixed ASAP
           (instance? CoreValConstraint c2)
@@ -4038,17 +4001,7 @@
             ;; (print-err "Intersecting ResultOf")
             ;; (print-err 'c1 c1)
             ;; (print-err 'c2 c2)
-            (-> (.invoke-arities c2)
-                vals
-                (map .result-const)
-                (map (fn [c]
-                       (either (map (instance? ParamConstraint c)
-                                    (fn [pc]
-                                      (reduce (.mods pc) top-type intersect)))
-                               c)))
-                (conj top-type)
-                vec
-                sum-type))
+            (intersect c1 (.invoke-fn c2)))
 
           ;; TODO: the need for this nested cond *must* be fixed ASAP
           (instance? CoreValConstraint c2)
