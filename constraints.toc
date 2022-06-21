@@ -123,7 +123,7 @@
   (assertion-path [x])
 
   (reify-c [c arity loc]
-    (se/state-error (Right c)))
+    (se/state-error (RecurseWith c)))
 
   ;; Ensure constraint is as small as possible
   (trim [c]
@@ -136,9 +136,9 @@
     (assert-result r (instance? TypeSym r)))
 
   (remove-sym [c]
-    (assert-result r (instance? Either r))
+    (assert-result r (instance? RecurseNext r))
 
-    (Right c))
+    (RecurseWith c))
 
   (filter-reified-field [c]
     c)
@@ -153,15 +153,15 @@
 
   (set-path [c new-path]
     (assert (instance? (list-of Vector) new-path))
-    (assert-result r (instance? Either r))
+    (assert-result r (instance? RecurseNext r))
 
-    (Right c))
+    (RecurseWith c))
 
   (add-to-path [constraint file-name line-number]
     constraint)
 
   (contents-constraint [_]
-    (assert-result r (instance? Either r)))
+    (assert-result r (instance? RecurseNext r)))
 
   (collection-of [_]
     ;; extract CollectionOf constraint
@@ -603,10 +603,10 @@
                   desired-len))
 
   (remove-sym [c]
-    (Right constraint))
+    (RecurseWith constraint))
 
   (set-path [c new-path]
-    (Left (.constraint c (set-path constraint new-path))))
+    (RecurseFinal (.constraint c (set-path constraint new-path))))
 
   (add-to-path [c file-name line-number]
     (.constraint c (add-to-path constraint file-name line-number))))
@@ -1139,17 +1139,17 @@
 (defn set-items [c items]
   (apo (fn [c]
          (cond (instance? SeqConstraint c)
-               (Left (.items c items))
+               (RecurseFinal (.items c items))
 
-               (Right c)))
+               (RecurseWith c)))
        c))
 
 (defn set-tail [c tail]
   (apo (fn [c]
          (cond (instance? SeqConstraint c)
-               (Left (.tail-c c tail))
+               (RecurseFinal (.tail-c c tail))
 
-               (Right c)))
+               (RecurseWith c)))
        c))
 
 (def CoreValConstraint (any-of IntegerConstraint
@@ -1214,7 +1214,7 @@
               UnknownType)))
 
   (remove-sym [tc]
-    (Right (.sym tc no-symbol)))
+    (RecurseWith (.sym tc no-symbol)))
 
   (extract-var [c]
     var)
@@ -1350,7 +1350,7 @@
                   desired-len))
 
   (contents-constraint [c]
-    (Left top-type)))
+    (RecurseFinal top-type)))
 
 (deftype ArgOf [fn-sym arg-position path sym var]
   (assert (instance? Symbol fn-sym))
@@ -1388,7 +1388,7 @@
           ["===="]))
 
   (contents-constraint [_]
-    (Left top-type))
+    (RecurseFinal top-type))
 
   (format-path [_ desired-len]
     (format-path* (cons [(str "Argument " arg-position " of") ""] path)
@@ -1431,7 +1431,7 @@
           ["===="]))
 
   (contents-constraint [_]
-    (Left top-type))
+    (RecurseFinal top-type))
 
   (format-path [_ desired-len]
     (format-path* (cons ["Result of"  ""] path)
@@ -1816,7 +1816,7 @@
         (take n)))
 
   (contents-constraint [_]
-    (Left top-type)))
+    (RecurseFinal top-type)))
 
 (extend-type NoValues
   ;; TODO: this is wrong and in the wrong place
@@ -1831,10 +1831,10 @@
 
   Constraint
   (collection-of [x]
-    (Left x))
+    (RecurseFinal x))
 
   (contents-constraint [c]
-    (Left c))
+    (RecurseFinal c))
 
   ConstraintOps
   (intersect-str [c _] c)
@@ -1855,7 +1855,7 @@
 (extend-type AllValues
   Constraint
   (collection-of [x]
-    (Left x))
+    (RecurseFinal x))
 
   ConstraintOps
   (intersect-str [_ c] c)
@@ -1884,7 +1884,7 @@
     (.var c ""))
 
   (set-path [c new-path]
-    (Left (.path c new-path)))
+    (RecurseFinal (.path c new-path)))
 
   (add-to-path [c file line]
     (cond (or (= file "")
@@ -1896,13 +1896,13 @@
     (instance? Symbol (.sym c)))
 
   (remove-sym [tc]
-    (Left (.sym tc no-symbol)))
+    (RecurseFinal (.sym tc no-symbol)))
 
   (update-sym [tc new-sym]
     (.sym tc new-sym))
 
   (collection-of [x]
-    (Right top-type))
+    (RecurseWith top-type))
 
   (extract-var [c]
     (.var c))
@@ -1973,7 +1973,7 @@
                   desired-len))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-int [y x]
@@ -2019,7 +2019,7 @@
     (intersect-sym y x))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-sym [x y]
@@ -2188,7 +2188,7 @@
                   (take n)))))
 
   (contents-constraint [c]
-    (Left (-> (.items c)
+    (RecurseFinal (-> (.items c)
               (conj (either (= bottom-type (.tail-c c))
                             (extract-contents-constraint (.tail-c c))))
               sum-type)))
@@ -2415,7 +2415,7 @@
                   (take n)))))
 
   (contents-constraint [c]
-    (Left (-> (.items c)
+    (RecurseFinal (-> (.items c)
               (conj (either (= bottom-type (.tail-c c))
                             (extract-contents-constraint (.tail-c c))))
               sum-type)))
@@ -2611,7 +2611,7 @@
     (intersect-maybe y x))
 
   (contents-constraint [c]
-    (Left (.contents c)))
+    (RecurseFinal (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
@@ -2647,7 +2647,7 @@
     (intersect-promise y x))
 
   (contents-constraint [c]
-    (Left (.contents c)))
+    (RecurseFinal (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
@@ -2683,7 +2683,7 @@
     (intersect-agent y x))
 
   (contents-constraint [c]
-    (Left (.contents c)))
+    (RecurseFinal (.contents c)))
 
   ConstraintOps
   (intersect-coll-of [x y]
@@ -2735,7 +2735,7 @@
           (NoValues [x y])))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-inner [fc _]
@@ -2773,7 +2773,7 @@
           (NoValues [x y])))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (is-bottom [c]
@@ -2872,7 +2872,7 @@
   ;;                            (maybe info))))))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-str [rc str-c]
@@ -2993,10 +2993,10 @@
          (maybe coll-info)))
 
   (coll-constraint [c]
-    (Left (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c))))
+    (RecurseFinal (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c))))
 
   (contents-constraint [c]
-    (Left (.contents c)))
+    (RecurseFinal (.contents c)))
 
   (intersect [ic c]
     (intersect-inner c ic))
@@ -3058,7 +3058,7 @@
 
   Constraint
   (coll-constraint [c]
-    (Left c))
+    (RecurseFinal c))
 
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
@@ -3069,10 +3069,10 @@
          (maybe coll-info)))
 
   (contents-constraint [c]
-    (Left (.contents c)))
+    (RecurseFinal (.contents c)))
 
   (collection-of [x]
-    (Left x))
+    (RecurseFinal x))
 
   (old-extract-items-constraints [c n]
     (vec (repeat n (.contents c))))
@@ -3179,7 +3179,7 @@
                (update-var c "")))))
 
   (contents-constraint [c]
-    (Right c))
+    (RecurseWith c))
 
   (get-tail-constraint [c old-c]
     (sum-type (.alts c)))
@@ -3277,7 +3277,7 @@
                                                    mod
                                                    se/state-error)))
                       param-c (se/get-val (.param-index c) top-type)]
-                  (Left (reduce new-mods param-c (fn [c mod]
+                  (RecurseFinal (reduce new-mods param-c (fn [c mod]
                                                    ;; (and (instance? ParamConstraint mod)
                                                    ;;      (do
                                                    ;;        (print-err 'boomerity _FILE_ _LINE_)
@@ -3295,9 +3295,9 @@
                                   "\n\n" 'param-c c
                                   "\n\n" 'params params)
                        (abort)
-                       (Left top-type))))
+                       (RecurseFinal top-type))))
 
-          (se/state-error (Right c))))
+          (se/state-error (RecurseWith c))))
 
   (set-arity [c new-arity]
     (.arity c new-arity))
@@ -3409,7 +3409,7 @@
     (string-list c))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (is-bottom [c]
@@ -3470,7 +3470,7 @@
     (extract-field c2 fld))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-reified-val [c rc]
@@ -3520,7 +3520,7 @@
     c)
 
   (contents-constraint [_]
-    (Left top-type))
+    (RecurseFinal top-type))
 
   (intersect [c1 c2]
     (let [inner-c (extract-contents-constraint c2)]
@@ -3588,7 +3588,7 @@
           ["===="]))
 
   (set-path [c new-path]
-    (Left (.path c new-path)))
+    (RecurseFinal (.path c new-path)))
 
   (add-to-path [c file line]
     (cond (or (= file "")
@@ -3597,7 +3597,7 @@
           (.path c (cons [file line] (.path c)))))
 
   (contents-constraint [_]
-    (Left top-type))
+    (RecurseFinal top-type))
 
   (intersect [c1 c2]
     (cond (instance? ParamConstraint c2)
@@ -3719,7 +3719,7 @@
     (intersect-fn y x))
 
   (contents-constraint [c]
-    (Left (NoValues [c not-container])))
+    (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
   (intersect-coll-of [fn-c coll-c]
@@ -4083,7 +4083,7 @@
         get-type-num))
 
   (contents-constraint [c]
-    (Left (mod-param c (GetInnerType empty-list))))
+    (RecurseFinal (mod-param c (GetInnerType empty-list))))
 
   ConstraintOps
   (extract-field [dyn-c fld]
@@ -4144,10 +4144,10 @@
                                 (reify-c c arity loc))
                               (.constraint c)
                               se/state-error)]
-      (Right (.constraint c))))
+      (RecurseWith (.constraint c))))
 
   (contents-constraint [c]
-    (Right c))
+    (RecurseWith c))
 
   ConstraintOps
   (set-collection-type [c tc]
