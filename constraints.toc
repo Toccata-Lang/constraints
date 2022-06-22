@@ -1608,7 +1608,6 @@
 
 (defn reify-type-constraint [c arity param-cs loc]
   (assert (instance? Vector param-cs))
-  (assert (instance? Constraints c))
 
   ;; (or (= (.file loc) 'core)
   ;;     (= (.line loc) 0)
