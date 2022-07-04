@@ -797,9 +797,10 @@
     (list "(c/ListConstraint " (str items) " "
           (str tail-c)
           " "
-          "(list) "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          ;; "(list) "
+          (str (cons 'list path))
+          " "
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -816,8 +817,10 @@
               (interpose ["----"])
               (flat-map (fn [item-strs]
                           (map item-strs (partial str "  ")))))
-          ["--tail--"]
-          (map tail-c (partial str "  "))
+          (cond (= (show-full bottom-type) tail-c)
+                []
+                (comp ["--tail--"]
+                      (map tail-c (partial str "  "))))
           ["===="]))
 
   (get-type-num [c]
@@ -898,7 +901,9 @@
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          (map contents (partial str "  "))))
+          (cond (= (show-full bottom-type) contents)
+                ""
+                (map contents (partial str "  ")))))
 
   (get-type-num [c] MaybeType)
   (get-type-sym [_] 'Maybe))
@@ -3557,8 +3562,8 @@
           (either (map (= no-args args) (fn [_]
                                           "c/no-args"))
                   (str "\n[" (to-str (interpose args "\n")) "]"))
-          " (list)"
-          ;; (str " " (cons 'list path))
+          ;; " (list)"
+          (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
