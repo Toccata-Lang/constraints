@@ -562,6 +562,9 @@
          (maybe x)))
 
   Constraint
+  (show-full [c]
+    (string-list c))
+
   (assertion-path [_] path)
 
   (format-path [x desired-len]
@@ -903,7 +906,8 @@
     (comp (format-path c 0)
           (cond (= (show-full bottom-type) contents)
                 ""
-                (map contents (partial str "  ")))))
+                (comp ["--contains--"]
+                      (map contents (partial str "  "))))))
 
   (get-type-num [c] MaybeType)
   (get-type-sym [_] 'Maybe))
@@ -1036,7 +1040,25 @@
     (and (= (get-type x) (get-type y))
          (= param-consts (.param-consts y))
          (= result-const (.result-const y))
-         (maybe x))))
+         (maybe x)))
+
+  Constraint
+  (show-full [c]
+    (comp (list (str "arity: " arity-id)
+                "--parameters--")
+          (-> (.items param-consts)
+              (map (partial cata show-full))
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (let [tail-c (cata show-full (.tail-c param-consts))]
+            (cond (= (show-full bottom-type) tail-c)
+                  []
+                  (comp ["--variadic params--"]
+                        (map tail-c (partial str "  ")))))
+          ["--result--"]
+          (map (cata show-full result-const) (partial str "  "))
+          ["===="])))
 
 (deftype FnConstraint [arities path sym var]
   (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -1059,7 +1081,9 @@
 
   Constraint
   (show-full [c]
-    (format-path c 0))
+    (comp (format-path c 0)
+          ["----"]
+          (flatten (vals arities))))
 
   (get-type-num [c]
     FunctionType)
@@ -1441,6 +1465,9 @@
   (format-path [_ desired-len]
     (format-path* (cons ["Result of"  ""] path)
                   desired-len))
+
+  (get-type-num [_]
+    UnknownType)
 
   (assertion-path [_]
     path))
@@ -2043,7 +2070,7 @@
 
   (format-path [x desired-len]
     (format-path* (cons [(str "String " (either (= no-string (.static-value x))
-                                                (str "\"" (.static-value x) "\""))
+                                                (str "'" (.static-value x) "'"))
                               " from:") ""]
                         (.path x))
                   desired-len))
@@ -3716,7 +3743,7 @@
 
   Constraint
   (format-path [x desired-len]
-    (format-path* (cons ["Function defined at" ""] (.path x))
+    (format-path* (cons ["Function from" ""] (.path x))
                   desired-len))
 
   (intersect [x y]
@@ -4011,9 +4038,9 @@
           (instance? CoreValConstraint c2)
           (cond (instance? FnConstraint c2)
                 (do
-                  ;; (print-err "Intersecting ResultOf")
-                  ;; (print-err 'c1 c1)
-                  ;; (print-err 'c2 c2)
+                  (print-err "Intersecting ResultOf")
+                  (print-err 'c1 c1)
+                  (print-err 'c2 c2)
                   (-> (.arities c2)
                       vals
                       (map .result-const)
