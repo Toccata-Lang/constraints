@@ -1061,7 +1061,7 @@
           ["===="])))
 
 (deftype FnConstraint [arities path sym var]
-  (assert (instance? (map-of ArityRank fn-arity) arities))
+  ;; (assert (instance? (map-of ArityRank fn-arity) arities))
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
   (assert (instance? String var))
@@ -1403,28 +1403,15 @@
          (= arg-position (.arg-position y))
          (maybe x)))
 
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
-
   Constraint
   (show-full [c]
     (comp (format-path* (cons [(str "Argument " arg-position " of") ""] path)
                         0)
           ["===="]))
 
-  (contents-constraint [_]
-    (RecurseFinal top-type))
-
   (format-path [_ desired-len]
     (format-path* (cons [(str "Argument " arg-position " of") ""] path)
-                  desired-len))
-
-  (assertion-path [_]
-    path))
+                  desired-len)))
 
 (deftype ResultOf [fn-sym path sym var]
   (assert (instance? Symbol fn-sym))
@@ -1446,31 +1433,56 @@
     (and (instance? ResultOf y)
          (maybe x)))
 
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
-
   Constraint
   (show-full [c]
     (comp (format-path* (cons ["Result of" ""] path)
                         0)
           ["===="]))
 
-  (contents-constraint [_]
-    (RecurseFinal top-type))
-
   (format-path [_ desired-len]
     (format-path* (cons ["Result of"  ""] path)
                   desired-len))
 
   (get-type-num [_]
-    UnknownType)
+    UnknownType))
 
-  (assertion-path [_]
-    path))
+(deftype AritiesRequired [arity-counts path sym var]
+  (assert (instance? Vector arity-counts))
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/Arities " (str arity-counts)
+          ;; " (list)"
+          (str " " (cons 'list path))
+          " " (sym-str sym)
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? AritiesRequired y)
+         (= arity-counts (.arity-counts y))
+         (maybe x)))
+
+  Constraint
+  (show-full [c]
+    (comp (format-path* (cons [(str "Required arities " arity-counts) ""] path)
+                        0)
+          ["===="]))
+
+  (format-path [_ desired-len]
+    (format-path* (cons ["Arities required"  ""] path)
+                  desired-len))
+
+  (get-type-num [_]
+    UnknownType))
+
+(def FnMeta (any-of ArgOf
+                    AritiesRequired
+                    ResultOf))
 
 (def SymbolConstraints (any-of CoreValConstraint
                                InferredInner
@@ -1483,8 +1495,7 @@
                                TypeOfConstraint
                                ModSeqType
                                DebugConstraint
-                               ArgOf
-                               ResultOf
+                               FnMeta
                                ParamConstraint))
 
 (deftype NoValues [constraints]
@@ -1793,7 +1804,6 @@
 
     (intersect (update-var c (extract-var ic)) ic)))
 
-;; TODO: this shouldn't use print-err. Possibly remove entirely
 (defn conflicting-assertions
   ([failing-constraint loc]
    (conflicting-assertions failing-constraint (.file loc) (.line loc)))
@@ -3575,7 +3585,11 @@
     x)
 
   (map [x f embed]
-    (embed x)))
+    (embed x))
+
+  (flat-map [x f]
+    []))
+
 (def no-args (NoArgs))
 
 (deftype CallValue [args path sym var]
@@ -3725,8 +3739,7 @@
           (or (instance? CoreValConstraint c2)
               (instance? GetField c2)
               (instance? GetInnerType c2)
-              (instance? ArgOf c2)
-              (instance? ResultOf c2)
+              (instance? FnMeta c2)
               (instance? CallValue c2))
           (NoValues [c1 c2])
 
@@ -3951,131 +3964,184 @@
                   (.param-consts param-cs)
                   (.result-const result-c))))))
 
-(extend-type ArgOf
-  Constraint
-  (intersect [c1 c2]
-    (cond (instance? ParamConstraint c2)
-          (intersect c2 c1)
+(extend-type FnMeta
+  Container
+  (map [x f]
+    x)
 
-          (= bottom-type c2)
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (contents-constraint [_]
+    (RecurseFinal top-type))
+
+  (assertion-path [c]
+    (.path c))
+
+  (intersect [c1 c2]
+    (cond (= bottom-type c2)
           c2
 
           (= top-type c2)
           c1
 
-          (instance? ReifiedConstraint c2)
-          (do
-            ;; (print-err "Intersecting ArgOf" (.arg-position c1))
-            ;; (print-err 'c1 c1)
-            ;; (print-err 'c2 c2)
-            (intersect c1 (.invoke-fn c2)))
-
-          ;; TODO: the need for this nested cond *must* be fixed ASAP
-          (instance? CoreValConstraint c2)
-          (cond (instance? FnConstraint c2)
-                (do
-                  ;; (print-err "Intersecting ArgOf" (.arg-position c1))
-                  ;; (print-err 'c1 c1)
-                  ;; (print-err 'c2 c2)
-                  (let [num-args (inc (.arg-position c1))]
-                    (-> (.arities c2)
-                        vals
-                        (map (fn [arity]
-                               (either (-> (.param-consts arity)
-                                           (extract-items-constraints num-args)
-                                           (nth (.arg-position c1)))
-                                       bottom-type)))
-                        (remove (partial = bottom-type))
-                        (map full-param-constraint)
-                        vec
-                        sum-type)))
-
-                (NoValues [c1 c2]))
-
-          (or (instance? GetField c2)
-              (instance? SetField c2))
-          (NoValues [c1 c2])
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          top-type))
+          (intersect c2 c1)))
 
   ConstraintOps
   (set-collection-type [c tc]
     top-type)
 
   (is-bottom [c]
-    nothing)
+    nothing))
 
-  (intersect-fn [y x]
-    (intersect y x))
+(extend-type ArgOf
+  ConstraintOps
+  (extract-field [c field-c]
+    (NoValues [c field-c]))
 
   (intersect-reified-val [c tc]
-    (intersect c tc)))
+    (intersect (.arg-position c (inc (.arg-position c)))
+               (.invoke-fn tc)))
+
+  (intersect-int [c int-c]
+    (NoValues [c int-c]))
+
+  (intersect-sym [c sym-c]
+    (NoValues [c sym-c]))
+
+  (intersect-promise [c promise-c]
+    (NoValues [c promise-c]))
+
+  (intersect-agent [c agent-c]
+    (NoValues [c agent-c]))
+
+  (intersect-str [c str-c]
+    (NoValues [c str-c]))
+
+  (intersect-maybe [c maybe-c]
+    (NoValues [c maybe-c]))
+
+  (intersect-hash-map [c map-c]
+    (NoValues [c map-c]))
+
+  (intersect-vector [c vect-c]
+    (NoValues [c vect-c]))
+
+  (intersect-list [c list-c]
+    (NoValues [c list-c]))
+
+  (intersect-fn [c fn-c]
+    ;; (print-err "Intersecting ArgOf" (.arg-position c1))
+    ;; (print-err 'c1 c1)
+    ;; (print-err 'c2 c2)
+    (let [num-args (inc (.arg-position c))]
+      (-> (.arities fn-c)
+          vec
+          (map (fn [[_ arity]]
+                 (assert (instance? fn-arity arity))
+                 (either (-> (.param-consts arity)
+                             (extract-items-constraints num-args)
+                             (nth (.arg-position c)))
+                         bottom-type)))
+          (remove (partial = bottom-type))
+          (map full-param-constraint)
+          vec
+          sum-type))))
+
+(extend-type AritiesRequired
+  ConstraintOps
+  (extract-field [c field-c]
+    (NoValues [c field-c]))
+
+  (intersect-reified-val [c tc]
+    (intersect (.arity-counts c (map (.arity-counts c) inc))
+               (.invoke-fn tc)))
+
+  (intersect-int [c int-c]
+    (NoValues [c int-c]))
+  
+  (intersect-sym [c sym-c]
+    (NoValues [c sym-c]))
+  
+  (intersect-promise [c promise-c]
+    (NoValues [c promise-c]))
+  
+  (intersect-agent [c agent-c]
+    (NoValues [c agent-c]))
+  
+  (intersect-str [c str-c]
+    (NoValues [c str-c]))
+  
+  (intersect-maybe [c maybe-c]
+    (NoValues [c maybe-c]))
+  
+  (intersect-hash-map [c map-c]
+    (NoValues [c map-c]))
+  
+  (intersect-vector [c vect-c]
+    (NoValues [c vect-c]))
+  
+  (intersect-list [c list-c]
+    (NoValues [c list-c]))
+  
+  (intersect-fn [c fn-c]
+    ;; (print-err "Intersecting AritiesRequired" (.arities-count c1))
+    ;; (print-err 'c1 c1)
+    ;; (print-err 'c2 c2)
+    (intersect-fn (.arities fn-constraint (select-keys (.arities fn-constraint)
+                                                       (.arity-counts c)))
+                  fn-c)))
 
 (extend-type ResultOf
-  Constraint
-  (intersect [c1 c2]
-    (cond (instance? ParamConstraint c2)
-          (intersect c2 c1)
-
-          (= bottom-type c2)
-          c2
-
-          (= top-type c2)
-          c1
-
-          (instance? ReifiedConstraint c2)
-          (do
-            ;; (print-err "Intersecting ResultOf")
-            ;; (print-err 'c1 c1)
-            ;; (print-err 'c2 c2)
-            (intersect c1 (.invoke-fn c2)))
-
-          ;; TODO: the need for this nested cond *must* be fixed ASAP
-          (instance? CoreValConstraint c2)
-          (cond (instance? FnConstraint c2)
-                (do
-                  (print-err "Intersecting ResultOf")
-                  (print-err 'c1 c1)
-                  (print-err 'c2 c2)
-                  (-> (.arities c2)
-                      vals
-                      (map .result-const)
-                      (map (fn [c]
-                             (either (map (instance? ParamConstraint c)
-                                          (fn [pc]
-                                            (reduce (.mods pc) top-type intersect)))
-                                     c)))
-                      vec
-                      sum-type))
-
-                c2)
-
-          (or (instance? GetField c2)
-              (instance? SetField c2))
-          c2
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          top-type))
-
   ConstraintOps
-  (set-collection-type [c tc]
-    top-type)
-
-  (is-bottom [c]
-    nothing)
-
-  (intersect-fn [y x]
-    (intersect y x))
+  (extract-field [c field-c]
+    field-c)
 
   (intersect-reified-val [c tc]
-    (intersect c tc)))
+    (intersect c (.invoke-fn tc)))
+
+  (intersect-int [c int-c]
+    int-c)
+  
+  (intersect-sym [c sym-c]
+    sym-c)
+  
+  (intersect-promise [c promise-c]
+    promise-c)
+  
+  (intersect-agent [c agent-c]
+    agent-c)
+  
+  (intersect-str [c str-c]
+    str-c)
+  
+  (intersect-maybe [c maybe-c]
+    maybe-c)
+  
+  (intersect-hash-map [c map-c]
+    map-c)
+  
+  (intersect-vector [c vect-c]
+    vect-c)
+  
+  (intersect-list [c list-c]
+    list-c)
+
+  (intersect-fn [c fn-c]
+    ;; (print-err "Intersecting ResultOf")
+    ;; (print-err 'c1 c1)
+    ;; (print-err 'c2 c2)
+    (-> (.arities fn-c)
+        vals
+        (map .result-const)
+        (map (fn [c]
+               (either (map (instance? ParamConstraint c)
+                            (fn [pc]
+                              (reduce (.mods pc) top-type intersect)))
+                       c)))
+        vec
+        sum-type)))
 
 (extend-type ParamConstraint
   Constraint
