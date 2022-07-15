@@ -3785,7 +3785,7 @@
               (instance? SumConstraint c2))
           (intersect c2 c1)
 
-          top-type))
+          (ComputedConstraint [c2 c1] (.path c1) (.sym c1) (.var c1))))
 
   ;; TODO: these two impls are totally bogus
   (assertion-path [_]
