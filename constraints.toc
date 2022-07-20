@@ -714,8 +714,8 @@
   (string-list [_]
     (list "(c/StrBuffConstraint " (either (map (= static-value no-string) str)
                                           (str "\"" static-value "\"")) " "
-          "(list) "
-          ;; (str (cons 'list path))
+          ;; "(list) "
+          (str (cons 'list path)) " "
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -741,8 +741,8 @@
   (string-list [_]
     (list "(c/SubStrConstraint " (either (map (= static-value no-string) str)
                                          (str "\"" static-value "\"")) " "
-          "(list) "
-          ;; (str (cons 'list path))
+          ;; "(list) "
+          (str (cons 'list path)) " "
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -1282,7 +1282,7 @@
   (show-full [c]
     (comp (format-path c 0)
           (-> (.mods c) 
-              ;; (interpose "---\n")
+              (interpose (list "---\n"))
               (flat-map (fn [mod-strs]
                           (map mod-strs (partial str "  ")))))))
 
@@ -2117,6 +2117,66 @@
 
   (is-bottom [c] c))
 
+(defprotocol StringOps
+  (str-to-list [s])
+  (str-to-vect [s])
+  (first-of-str [s])
+  (rest-of-str [s])
+  (last-of-str [s])
+  (butlast-of-str [s]))
+
+(extend-type String
+ StringOps
+ (str-to-list [s]
+   (-> empty-list-constraint
+       (.items (map (vec s) (partial .static-value substr-constraint)))))
+
+ (str-to-vect [s]
+   (-> empty-vector-constraint
+       (.items (map (vec s) (partial .static-value substr-constraint)))))
+ 
+ (first-of-str [s]
+   (MaybeConstraint (either (map (first s)
+                                 (fn [char]
+                                   (.static-value substr-constraint char)))
+                            (.static-value substr-constraint ""))
+                    empty-list no-symbol ""))
+
+ (rest-of-str [s]
+   (.static-value substr-constraint (rest s)))
+
+ (last-of-str [s]
+   (MaybeConstraint (either (map (last s)
+                                 (fn [char]
+                                   (.static-value substr-constraint char)))
+                            (.static-value substr-constraint ""))
+                    empty-list no-symbol ""))
+
+ (butlast-of-str [s]
+   (.static-value substr-constraint (butlast s))))
+
+(extend-type NoString
+ StringOps
+ (str-to-list [s]
+   (.tail-c list-constraint
+            (CollectionOf substr-constraint empty-list no-symbol "")))
+
+ (str-to-vect [s]
+   (.tail-c vect-constraint
+            (CollectionOf substr-constraint empty-list no-symbol "")))
+ 
+ (first-of-str [s]
+   (MaybeConstraint substr-constraint empty-list no-symbol ""))
+
+ (rest-of-str [s]
+   substr-constraint)
+
+ (last-of-str [s]
+   (MaybeConstraint substr-constraint empty-list no-symbol ""))
+
+ (butlast-of-str [s]
+   substr-constraint))
+
 (extend-type StrConstraint
   Constraint
   (show-full [c]
@@ -2133,6 +2193,28 @@
     (intersect-str y x))
 
   ConstraintOps
+  (set-collection-type [c coll-c]
+    (let [op (.op coll-c)]
+      (cond (= op ListFrom)
+            (str-to-list (.static-value c))
+
+            (= op VectFrom)
+            (str-to-vect (.static-value c))
+
+            (= op FirstOf)
+            (first-of-str (.static-value c))
+
+            (= op LastOf)
+            (last-of-str (.static-value c))
+
+            (= op RestOf)
+            (rest-of-str (.static-value c))
+
+            (= op ButLastOf)
+            (butlast-of-str (.static-value c))
+
+            top-type)))
+
   (intersect-coll-of [str-c c]
     (intersect-str (.contents c) strbuff-constraint))
 
