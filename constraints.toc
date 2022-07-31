@@ -624,7 +624,7 @@
     (list "(c/InnerTypeOfConstraint " (str "'" param-sym) " "
           ;; "(list) "
           (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
+          " " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -1119,7 +1119,7 @@
 
   Constraint
   (show-full [c]
-    (list "Type " (str type-sym)))
+    (list (str "Type: " type-sym)))
 
   (get-type-sym [c]
     type-sym)
