@@ -123,7 +123,8 @@
   (assertion-path [x])
 
   (reify-c [c arity loc]
-    (se/state-error (RecurseWith c)))
+    ;; (se/state-error (RecurseWith c))
+    )
 
   ;; Ensure constraint is as small as possible
   (trim [c]
@@ -246,6 +247,9 @@
     (embed x))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (list "Field " (str sym)))
 
@@ -361,7 +365,17 @@
     (and (=* (get-type x) (get-type y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (format-path c 0))
 
@@ -410,6 +424,10 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (= bottom-type contents)
+                            c)))
+
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -441,6 +459,10 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (= bottom-type contents)
+                            c)))
+
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -539,7 +561,17 @@
          (= min (.min y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (get-type-num [_] IntegerType)
   (get-type-sym [_] 'Integer))
 
@@ -561,7 +593,17 @@
          (= param-sym (.param-sym y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (string-list c))
 
@@ -632,7 +674,17 @@
          (= param-sym (.param-sym y))
          (maybe x)))
 
+  Container
+  (map [x _]
+    x)
+
+  (map [x _ embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (assertion-path [_] path)
 
   (format-path [x desired-len]
@@ -661,7 +713,24 @@
          (= static-value (.static-value y))
          (maybe x)))
 
+  Container
+  (map [x _]
+    x)
+
+  (map [x _ embed]
+    (embed x))
+
+  Container
+  (map [x _]
+    x)
+
+  (map [x _ embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (get-type-num [c]
     SymbolType)
 
@@ -724,7 +793,17 @@
          (= static-value (.static-value y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (get-type-num [c]
     StringBufferType)
 
@@ -751,7 +830,17 @@
          (= static-value (.static-value y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (get-type-num [c]
     SubStringType)
 
@@ -813,6 +902,14 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    ;; TODO: use is-bottom
+    (se/state-error (either (or (some items (partial = bottom-type))
+                                (and (= bottom-type tail-c)
+                                     (first (.constraints tail-c))
+                                     (maybe tail-c)))
+                            c)))
+
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
@@ -867,6 +964,13 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (or (some items (partial = bottom-type))
+                                (and (= bottom-type tail-c)
+                                     (first (.constraints tail-c))
+                                     (maybe tail-c)))
+                            c)))
+
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
@@ -957,6 +1061,9 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (format-path c 0))
 
@@ -982,6 +1089,9 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (get-type-num [c]
     OpaqueType)
 
@@ -1007,6 +1117,11 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (either (map (= bottom-type contents)
+                 se/state-error)
+            (se/state-error c)))
+
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -1042,23 +1157,46 @@
          (= result-const (.result-const y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    (let [new-fixed (map (.items param-consts) f)
+          new-var (f (.tail-c param-consts))]
+      (-> x
+          (.param-consts (-> empty-list-constraint
+                             (.items new-fixed)
+                             (.tail-c new-var)))
+          (.result-const (f result-const)))))
+
+  (map [x f embed]
+    (for [new-fixed (map (.items param-consts) f embed)
+          new-var (f (.tail-c param-consts))
+          new-result (f (.result-const x))]
+      (-> x
+          (.param-consts (-> empty-list-constraint
+                             (.items new-fixed)
+                             (.tail-c new-var)))
+          (.result-const new-result))))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (or (= bottom-type param-consts)
+                                (= bottom-type result-const))
+                            c)))
+
   (show-full [c]
     (comp (list (str "arity: " arity-id)
                 "--parameters--")
           (-> (.items param-consts)
-              (map (partial cata show-full))
               (interpose ["----"])
               (flat-map (fn [item-strs]
                           (map item-strs (partial str "  ")))))
-          (let [tail-c (cata show-full (.tail-c param-consts))]
-            (cond (= (show-full bottom-type) tail-c)
-                  []
+          (let [tail-c (.tail-c param-consts)]
+            (cond (first tail-c)
                   (comp ["--variadic params--"]
-                        (map tail-c (partial str "  ")))))
+                        (map tail-c (partial str "  ")))
+                  []))
           ["--result--"]
-          (map (cata show-full result-const) (partial str "  "))
-          ["===="])))
+          (map result-const (partial str "  ")))))
 
 (deftype FnConstraint [arities path sym var]
   ;; (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -1079,11 +1217,23 @@
          (=* arities (.arities y))
          (maybe x)))
 
+  Container
+  (map [x f]
+    (.arities x (map-vals arities f)))
+
+  (map [x f embed]
+    (map (contextual-map-vals arities f embed)
+         (fn [a]
+           (.arities x a))))
+
   Constraint
   (show-full [c]
     (comp (format-path c 0)
-          ["----"]
-          (flatten (vals arities))))
+          ["---------"]
+          (-> (vals arities)
+              (interpose ["----"])
+              flatten
+              (map (partial str "  ")))))
 
   (get-type-num [c]
     FunctionType)
@@ -1118,6 +1268,9 @@
       x))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (list (str "Type: " type-sym)))
 
@@ -1220,6 +1373,10 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (some (.alts c) (partial = bottom-type))
+                            c)))
+
   (show-full [c]
     (comp (format-path c 0)
           (-> (.alts c)
@@ -1282,7 +1439,7 @@
   (show-full [c]
     (comp (format-path c 0)
           (-> (.mods c) 
-              (interpose (list "---\n"))
+              (interpose (list "---"))
               (flat-map (fn [mod-strs]
                           (map mod-strs (partial str "  ")))))))
 
@@ -1421,6 +1578,9 @@
     (embed x))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (assertion-path [_]
     path)
 
@@ -1457,6 +1617,9 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (comp (format-path* (cons [(str "Argument " arg-position " of") ""] path)
                         0)
@@ -1487,6 +1650,9 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (comp (format-path* (cons ["Result of" ""] path)
                         0)
@@ -1521,6 +1687,9 @@
          (maybe x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (comp (format-path* (cons [(str "Required arities " arity-counts) ""] path)
                         0)
@@ -1557,7 +1726,19 @@
   (string-list [_]
     (list "(c/NoValues\n[" (to-str (interpose constraints "\n")) "])"))
 
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (flat-map (first constraints)
+                                      (partial instance? NoValues))
+                            c)))
+
   (intersect [nv c]
     (cond (instance? DebugConstraint c)
           (intersect c nv)
@@ -1714,8 +1895,8 @@
   ;;                  'params param-cs)
   ;;       nothing))
   (let [r (either (first ((se/try
-                            (comp (map (apo (fn [c]
-                                              (reify-c c arity loc))
+                            (comp (map (cata (fn [c]
+                                               (reify-c c arity loc))
                                             c
                                             se/state-error)
                                        (partial cata trim))
@@ -1886,12 +2067,12 @@
     (map v trim)))
 
 (extend-type Constraints
-  Container
-  (map [x f]
-    x)
+  ;; Container
+  ;; (map [x f]
+  ;;   x)
 
-  (map [x f embed]
-    (embed x))
+  ;; (map [x f embed]
+  ;;   (embed x))
 
   Constraint
   (coll-constraint [x]
@@ -2126,34 +2307,34 @@
   (butlast-of-str [s]))
 
 (extend-type String
- StringOps
- (str-to-list [s]
-   (-> empty-list-constraint
-       (.items (map (vec s) (partial .static-value substr-constraint)))))
+  StringOps
+  (str-to-list [s]
+    (-> empty-list-constraint
+        (.items (map (vec s) (partial .static-value substr-constraint)))))
 
- (str-to-vect [s]
-   (-> empty-vector-constraint
-       (.items (map (vec s) (partial .static-value substr-constraint)))))
- 
- (first-of-str [s]
-   (MaybeConstraint (either (map (first s)
-                                 (fn [char]
-                                   (.static-value substr-constraint char)))
-                            (.static-value substr-constraint ""))
-                    empty-list no-symbol ""))
+  (str-to-vect [s]
+    (-> empty-vector-constraint
+        (.items (map (vec s) (partial .static-value substr-constraint)))))
+  
+  (first-of-str [s]
+    (MaybeConstraint (either (map (first s)
+                                  (fn [char]
+                                    (.static-value substr-constraint char)))
+                             (.static-value substr-constraint ""))
+                     empty-list no-symbol ""))
 
- (rest-of-str [s]
-   (.static-value substr-constraint (rest s)))
+  (rest-of-str [s]
+    (.static-value substr-constraint (rest s)))
 
- (last-of-str [s]
-   (MaybeConstraint (either (map (last s)
-                                 (fn [char]
-                                   (.static-value substr-constraint char)))
-                            (.static-value substr-constraint ""))
-                    empty-list no-symbol ""))
+  (last-of-str [s]
+    (MaybeConstraint (either (map (last s)
+                                  (fn [char]
+                                    (.static-value substr-constraint char)))
+                             (.static-value substr-constraint ""))
+                     empty-list no-symbol ""))
 
- (butlast-of-str [s]
-   (.static-value substr-constraint (butlast s))))
+  (butlast-of-str [s]
+    (.static-value substr-constraint (butlast s))))
 
 (extend-type NoString
  StringOps
@@ -2265,6 +2446,9 @@
 
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (is-bottom c)))
+
   (intersect [x y]
     (intersect-hash-map y x))
 
@@ -2774,6 +2958,10 @@
          (partial .contents x)))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (= bottom-type (.contents c))
+                            c)))
+
   (intersect [x y]
     (intersect-maybe y x))
 
@@ -3438,10 +3626,9 @@
   Constraint
   (reify-c [c arity loc]
     (cond (= (.arity c) arity)
-          (map (se/get-val (.param-index c) top-type)
-               RecurseWith)
+          (se/get-val (.param-index c) top-type)
 
-          (se/state-error (RecurseWith c))))
+          (se/state-error c)))
 
   (set-arity [c new-arity]
     (.arity c new-arity))
@@ -3501,23 +3688,18 @@
 
   Constraint
   (reify-c [c arity loc]
-    (for [new-mods (se/traverse (.mods c)
-                                (fn [mod]
-                                  (apo (fn [c]
-                                         (reify-c c arity loc))
-                                       mod
-                                       se/state-error)))]
-      (RecurseFinal (reduce new-mods top-type (fn [c mod]
-                                                ;; (and (instance? ComputedConstraint mod)
-                                                ;;      (do
-                                                ;;        (print-err 'boomerity _FILE_ _LINE_)
-                                                ;;        (print-err 'loc loc)
-                                                ;;        (print-err 'c c)
-                                                ;;        (print-err 'mod mod)
-                                                ;;        (print-err 'int (intersect mod c))
-                                                ;;        (abort)
-                                                ;;        nothing))
-                                                (intersect mod c))))))
+    (se/state-error (reduce (.mods c) top-type
+                            (fn [c mod]
+                              ;; (and (instance? ComputedConstraint mod)
+                              ;;      (do
+                              ;;        (print-err 'boomerity _FILE_ _LINE_)
+                              ;;        (print-err 'loc loc)
+                              ;;        (print-err 'c c)
+                              ;;        (print-err 'mod mod)
+                              ;;        (print-err 'int (intersect mod c))
+                              ;;        (abort)
+                              ;;        nothing))
+                              (intersect mod c)))))
 
   (intersect [c1 c2]
     (cond (instance? ComputedConstraint c2)
@@ -3680,6 +3862,9 @@
     (embed x))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (string-list c))
 
@@ -3721,6 +3906,9 @@
     (embed x))
 
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (assertion-path [_] path)
 
   (format-path [x desired-len]
@@ -3796,7 +3984,13 @@
     (map (map args f embed)
          (partial .args x)))
 
-  Constraint
+ Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (or (and (= no-args (.args c))
+                                     (maybe c))
+                                (some (.args c) (partial = bottom-type)))
+                            c)))
+
   (show-full [c]
     (comp (format-path* (cons ["Called with args at" ""] path)
                         0)
@@ -3919,15 +4113,11 @@
           c2)))
 
 (extend-type FnConstraint
-  Container
-  (map [x f]
-    (.arities x (map-vals (.arities x) f)))
-
-  (map [x f embed]
-    (map (contextual-map-vals (.arities x) f embed)
-         (partial .arities x)))
-
   Constraint
+  (reify-c [c arity loc]
+    (se/state-error (either (some (vals (.arities c)) (partial = bottom-type))
+                            c)))
+
   (format-path [x desired-len]
     (format-path* (cons ["Function from" ""] (.path x))
                   desired-len))
@@ -4054,8 +4244,8 @@
                                    (reduce top-type (fn [c mod]
                                                       (cond (instance? ComputedConstraint mod)
                                                             (do
-                                                              (print-err 'boomity _FILE_ _LINE_
-                                                                         "\n" outer-c)
+                                                              ;; (print-err 'boomity _FILE_ _LINE_
+                                                              ;;            "\n" outer-c)
                                                               (full-param-constraint mod))
 
                                                             (instance? SetField mod)
@@ -4111,13 +4301,6 @@
               outer-c)))
 
 (extend-type fn-arity
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
-
   Constraint
   (update-sym [x _] x)
   (add-to-path [x _ _] x)
@@ -4412,12 +4595,12 @@
                 (partial str  "\n  "))))
 
   Constraint
-  (reify-c [c arity loc]
-    (for [full-reified (apo (fn [c]
-                                (reify-c c arity loc))
-                              (.constraint c)
-                              se/state-error)]
-      (RecurseWith (.constraint c))))
+  ;; (reify-c [c arity loc]
+  ;;   (for [full-reified (apo (fn [c]
+  ;;                               (reify-c c arity loc))
+  ;;                             (.constraint c)
+  ;;                             se/state-error)]
+  ;;     (RecurseWith (.constraint c))))
 
   (contents-constraint [c]
     (RecurseWith c))
