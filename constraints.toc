@@ -122,8 +122,7 @@
 
   (assertion-path [x])
 
-  (is-bottom [c]
-    )
+  (is-bottom [c])
 
   (reify-c [c arity loc]
     ;; (se/state-error (is-bottom c))
@@ -436,8 +435,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error (either (= bottom-type contents)
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -475,8 +473,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error (either (= bottom-type contents)
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1081,7 +1078,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error c))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1234,10 +1231,13 @@
           (.result-const new-result))))
 
   Constraint
+  (is-bottom [c]
+    (either (or (= bottom-type param-consts)
+                (= bottom-type result-const))
+            c))
+
   (reify-c [c arity loc]
-    (se/state-error (either (or (= bottom-type param-consts)
-                                (= bottom-type result-const))
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (list (str "arity: " arity-id)
@@ -1283,7 +1283,12 @@
            (.arities x a))))
 
   Constraint
-  (is-bottom [c] c)
+  (is-bottom [c]
+    (either (some (vals (.arities c)) (partial = bottom-type))
+            c))
+
+  (reify-c [c arity loc]
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1333,7 +1338,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error c))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (list (str "Type: " type-sym)))
@@ -1443,8 +1448,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error (either (some (.alts c) (partial = bottom-type))
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -3864,7 +3868,7 @@
             c))
 
   (reify-c [c arity loc]
-    (se/state-error c))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (string-list c))
@@ -3987,14 +3991,13 @@
  Constraint
   (is-bottom [c]
     ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some args (partial = bottom-type))
+    (either (or (and (= no-args (.args c))
+                     (maybe c))
+                (some (.args c) (partial = bottom-type)))
             c))
 
   (reify-c [c arity loc]
-    (se/state-error (either (or (and (= no-args (.args c))
-                                     (maybe c))
-                                (some (.args c) (partial = bottom-type)))
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path* (cons ["Called with args at" ""] path)
@@ -4114,10 +4117,6 @@
 
 (extend-type FnConstraint
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error (either (some (vals (.arities c)) (partial = bottom-type))
-                            c)))
-
   (format-path [x desired-len]
     (format-path* (cons ["Function from" ""] (.path x))
                   desired-len))
