@@ -122,8 +122,11 @@
 
   (assertion-path [x])
 
+  (is-bottom [c]
+    )
+
   (reify-c [c arity loc]
-    ;; (se/state-error (RecurseWith c))
+    ;; (se/state-error (is-bottom c))
     )
 
   ;; Ensure constraint is as small as possible
@@ -247,6 +250,8 @@
     (embed x))
 
   Constraint
+  (is-bottom [x] x)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -373,6 +378,8 @@
     (embed x))
 
   Constraint
+  (is-bottom [c] c)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -424,6 +431,10 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (is-bottom [c]
+    (either (= (.contents c) bottom-type)
+            c))
+
   (reify-c [c arity loc]
     (se/state-error (either (= bottom-type contents)
                             c)))
@@ -459,6 +470,10 @@
           ") " (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
+  (is-bottom [c]
+    (either (= (.contents c) bottom-type)
+            c))
+
   (reify-c [c arity loc]
     (se/state-error (either (= bottom-type contents)
                             c)))
@@ -569,6 +584,8 @@
     (embed x))
 
   Constraint
+  (is-bottom [c] c)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -870,6 +887,16 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (or (= bottom-type (.keys-c c))
+                (= bottom-type (.vals-c c))
+                (-> (.kv-pairs c)
+                    vec
+                    (some (fn [[k v]]
+                            (or (= bottom-type k)
+                                (= bottom-type v))))))
+            c))
+
   (show-full [c]
     (list "hash-map (finish this)"))
 
@@ -902,13 +929,16 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (or (some (.items c) (partial = bottom-type))
+                (for [tc (= bottom-type (is-bottom tail-c))
+                      ;; TODO: implement NoTail and remove this check
+                      _ (first (.constraints tc))]
+                  tc))
+            c))
+
   (reify-c [c arity loc]
-    ;; TODO: use is-bottom
-    (se/state-error (either (or (some items (partial = bottom-type))
-                                (and (= bottom-type tail-c)
-                                     (first (.constraints tail-c))
-                                     (maybe tail-c)))
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -964,12 +994,16 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (or (some (.items c) (partial = bottom-type))
+                (for [tc (= bottom-type (is-bottom tail-c))
+                      ;; TODO: implement NoTail and remove this check
+                      _ (first (.constraints tc))]
+                  tc))
+            c))
+
   (reify-c [c arity loc]
-    (se/state-error (either (or (some items (partial = bottom-type))
-                                (and (= bottom-type tail-c)
-                                     (first (.constraints tail-c))
-                                     (maybe tail-c)))
-                            c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1006,6 +1040,13 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
+
+  (reify-c [c arity loc]
+    (se/state-error (is-bottom c)))
+
   (show-full [c]
     (comp (format-path c 0)
           (cond (= (show-full bottom-type) contents)
@@ -1035,6 +1076,13 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
+
+  (reify-c [c arity loc]
+    (se/state-error c))
+
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -1061,6 +1109,9 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    nothing)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -1089,6 +1140,9 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    nothing)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -1117,10 +1171,12 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
+
   (reify-c [c arity loc]
-    (either (map (= bottom-type contents)
-                 se/state-error)
-            (se/state-error c)))
+    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1227,6 +1283,8 @@
            (.arities x a))))
 
   Constraint
+  (is-bottom [c] c)
+
   (show-full [c]
     (comp (format-path c 0)
           ["---------"]
@@ -1268,6 +1326,12 @@
       x))
 
   Constraint
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (some (vals (.fields c))
+                  (partial = bottom-type))
+            c))
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -1373,6 +1437,11 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (some (.alts c) (partial = bottom-type))
+            c))
+
   (reify-c [c arity loc]
     (se/state-error (either (some (.alts c) (partial = bottom-type))
                             c)))
@@ -1436,6 +1505,11 @@
           ")"))
 
   Constraint
+  (is-bottom [c]
+    ;; TODO: need this?
+    ;; (either (some (.mods c) (partial = bottom-type)))
+    c)
+
   (show-full [c]
     (comp (format-path c 0)
           (-> (.mods c) 
@@ -1483,6 +1557,9 @@
           ")"))
 
   Constraint
+  (is-bottom [c]
+    c)
+
   (get-type-num [_]
     UnknownType)
 
@@ -1721,6 +1798,7 @@
                                ParamConstraint
                                ComputedConstraint))
 
+;; TODO: move this as high as possible. Before first use of bottom-type if possible
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
@@ -1734,6 +1812,8 @@
     (embed x))
 
   Constraint
+  (is-bottom [c] c)
+
   (reify-c [c arity loc]
     (se/state-error (either (flat-map (first constraints)
                                       (partial instance? NoValues))
@@ -1872,6 +1952,10 @@
   (string-list [_] (list "(c/ResultConstraint " (str assertion) ")"))
 
   Constraint
+  (is-bottom [c]
+    (either (= (.assertion c) bottom-type)
+            c))
+
   ;; TODO: these impls seem sketchy
   (update-var [_ new-var]
     (ResultConstraint (update-var assertion new-var)))
@@ -1915,9 +1999,6 @@
 
 ;; private operations on Constraints
 (defprotocol ConstraintOps
-  (is-bottom [c]
-    )
-
   (set-collection-type [c tc]
     (assert (instance? ModSeqType tc))
 
@@ -2115,7 +2196,6 @@
   (intersect-agent [c _] c)
   (intersect-promise [c _] c)
   (intersect-fn [c _] c)
-  (is-bottom [c] c)
   (intersect-reified-val [c _] c)
   (set-collection-type [c tc] c))
 
@@ -2135,7 +2215,6 @@
   (intersect-agent [_ c] c)
   (intersect-promise [_ c] c)
   (intersect-fn [_ c] c)
-  (is-bottom [c] c)
   (extract-field [x _] x)
   (intersect-sum [c sc] sc)
   (intersect-result [c rc] rc)
@@ -2174,10 +2253,7 @@
     (.var c))
 
   (update-var [tc new-var]
-    (.var tc new-var))
-
-  ConstraintOps
-  (is-bottom [c] c))
+    (.var tc new-var)))
 
 (defn clear-vars [c]
   (cata clear-var c))
@@ -2260,9 +2336,7 @@
                                     (.static-value new-static)
                                     (.min new-min)
                                     (.max new-max))))
-              (NoValues [x y]))))
-
-  (is-bottom [c] c))
+              (NoValues [x y])))))
 
 (extend-type Symbol
   Constraint
@@ -2294,9 +2368,7 @@
                  ;; TODO: use the path from the most restrictive constraint
                  ;; determined by satisfied-by
                  (partial .static-value x))
-            (NoValues [x y])))
-
-  (is-bottom [c] c))
+            (NoValues [x y]))))
 
 (defprotocol StringOps
   (str-to-list [s])
@@ -2412,9 +2484,7 @@
                          (.static-value y stat-val)
 
                          (.static-value x stat-val))))
-            (NoValues [x y])))
-
-  (is-bottom [c] c))
+            (NoValues [x y]))))
 
 (extend-type HashMapConstraint
   Container
@@ -2487,17 +2557,7 @@
                            empty-list no-symbol ""))))
 
   (intersect-reified-val [hmc rc]
-    (intersect-hash-map rc hmc))
-
-  (is-bottom [c]
-    (either (or (= bottom-type (.keys-c c))
-                (= bottom-type (.vals-c c))
-                (-> (.kv-pairs c)
-                    vec
-                    (some (fn [[k v]]
-                            (or (= bottom-type k)
-                                (= bottom-type v))))))
-            c)))
+    (intersect-hash-map rc hmc)))
 
 (extend-type ListConstraint
   Container
@@ -2713,10 +2773,7 @@
   ;;                                                     (assoc m new-k new-v))))))
   ;;                      is-bottom)))
   ;;           (NoValues [c tc])))
-
-  (is-bottom [c]
-    (either (some (.items c) (partial = bottom-type))
-            c)))
+)
 
 (extend-type VectorConstraint
   Container
@@ -2940,13 +2997,7 @@
   ;;                                                     (assoc m new-k new-v))))))
   ;;                      is-bottom)))
   ;;           (NoValues [c tc])))
-
-  (is-bottom [c]
-    (either (or (some (.items c) (partial = bottom-type))
-                (flat-map (= bottom-type (.tail-c c))
-                          (fn [c]
-                            (first (.constraints c)))))
-            c)))
+  )
 
 (extend-type MaybeConstraint
   Container
@@ -2958,10 +3009,6 @@
          (partial .contents x)))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error (either (= bottom-type (.contents c))
-                            c)))
-
   (intersect [x y]
     (intersect-maybe y x))
 
@@ -2982,11 +3029,7 @@
   (intersect-maybe [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
-              (.contents x contents))))
-
-  (is-bottom [c]
-    (either (= bottom-type (.contents c))
-              c)))
+              (.contents x contents)))))
 
 (extend-type PromiseConstraint
   Container
@@ -3018,11 +3061,7 @@
   (intersect-promise [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
-              (.contents x contents))))
-
-  (is-bottom [c]
-    (either (= bottom-type (.contents c))
-              c)))
+              (.contents x contents)))))
 
 (extend-type AgentConstraint
   Container
@@ -3054,11 +3093,7 @@
   (intersect-agent [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
-              (.contents x contents))))
-
-  (is-bottom [c]
-    (either (= bottom-type (.contents c))
-              c)))
+              (.contents x contents)))))
 
 (extend-type FutureConstraint
   Container
@@ -3100,10 +3135,7 @@
     fc)
 
   (intersect-coll-of [fc _]
-    fc)
-
-  (is-bottom [c]
-    nothing))
+    fc))
 
 (extend-type OpaqueConstraint
   Container
@@ -3131,11 +3163,7 @@
           (NoValues [x y])))
 
   (contents-constraint [c]
-    (RecurseFinal (NoValues [c not-container])))
-
-  ConstraintOps
-  (is-bottom [c]
-    nothing))
+    (RecurseFinal (NoValues [c not-container]))))
 
 (extend-type ResultConstraint
   Container
@@ -3161,10 +3189,6 @@
               (ResultConstraint intersected))))
 
   ConstraintOps
-  (is-bottom [c]
-    (either (= (.assertion c) bottom-type)
-            c))
-
   (=-result-constraint [y x]
     (=* (.assertion x) (.assertion y)))
 
@@ -3288,12 +3312,6 @@
 
           (NoValues [reified c])))
 
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some (vals (.fields c))
-                  (partial = bottom-type))
-            c))
-
   (extract-field [c fld]
     (either (get (.fields c) fld)
             (NoValues [c (required-field fld)])))
@@ -3360,10 +3378,6 @@
     (intersect-inner c ic))
 
   ConstraintOps
-  (is-bottom [c]
-    (either (= (.contents c) bottom-type)
-            c))
-
   (intersect-reified-val [c rc]
     ;; TODO: insufficient for type checking calls to 'map' etc.
     rc)
@@ -3464,10 +3478,6 @@
   (intersect-agent [c agent-c]
     (intersect-coll-of agent-c c))
 
-  (is-bottom [c]
-    (either (= (.contents c) bottom-type)
-            c))
-
   (intersect-inner [c ic]
     (let [new-c (intersect (.contents c) (.contents ic))]
       (either (= new-c bottom-type)
@@ -3545,11 +3555,6 @@
   ConstraintOps
   (set-collection-type [c tc]
     (intersect-sum tc c))
-
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some (.alts c) (partial = bottom-type))
-            c))
 
   (intersect-int [sum-c c]
     (intersect-sum c sum-c))
@@ -3636,9 +3641,6 @@
   ConstraintOps
   (set-collection-type [c tc]
     (intersect c tc))
-
-  (is-bottom [c]
-    c)
 
   (intersect-int [pc int-c]
     (intersect pc int-c))
@@ -3734,11 +3736,6 @@
   (set-collection-type [c tc]
     (mod-param c tc))
 
-  (is-bottom [c]
-    ;; TODO: need this?
-    ;; (either (some (.mods c) (partial = bottom-type)))
-    c)
-
   (intersect-int [pc int-c]
     (mod-param pc int-c))
 
@@ -3804,6 +3801,12 @@
                 new-c)))
 
   Constraint
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (or (= (.fld c) bottom-type)
+                (= (.fld-c c) bottom-type))
+            c))
+
   (show-full [c]
     (string-list c))
 
@@ -3811,12 +3814,6 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (or (= (.fld c) bottom-type)
-                (= (.fld-c c) bottom-type))
-            c))
-
   (intersect-hash-map [sf c]
     (let [new-k (intersect (.keys-c c) fld)
           new-v (intersect (.vals-c c) fld-c)
@@ -3862,6 +3859,10 @@
     (embed x))
 
   Constraint
+  (is-bottom [c]
+    (either (= (.fld c) bottom-type)
+            c))
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -3879,11 +3880,7 @@
     (extract-field rc fld))
 
   (extract-field [c other-fld]
-    top-type)
-
-  (is-bottom [c]
-    (either (= (.fld c) bottom-type)
-            c)))
+    top-type))
 
 (defn get-field [fld]
   (GetField fld))
@@ -3906,6 +3903,9 @@
     (embed x))
 
   Constraint
+  (is-bottom [c]
+    c)
+
   (reify-c [c arity loc]
     (se/state-error c))
 
@@ -3985,6 +3985,11 @@
          (partial .args x)))
 
  Constraint
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (some args (partial = bottom-type))
+            c))
+
   (reify-c [c arity loc]
     (se/state-error (either (or (and (= no-args (.args c))
                                      (maybe c))
@@ -4075,11 +4080,6 @@
   ConstraintOps
   (set-collection-type [c tc]
     top-type)
-
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some args (partial = bottom-type))
-            c))
 
   (intersect-fn [y x]
     (intersect y x))
@@ -4187,17 +4187,12 @@
   (intersect-reified-val [y x]
     (let [new-fn (intersect-fn y (.invoke-fn x))]
       (either (= bottom-type new-fn)
-              x)))
-
-  (is-bottom [c] c))
+              x))))
 
 (extend-type GetInnerType
   ConstraintOps
   (set-collection-type [c tc]
     top-type)
-
-  (is-bottom [c]
-    c)
 
   (intersect-sum [c sum-c]
     (extract-contents-constraint sum-c))
@@ -4330,6 +4325,9 @@
     (embed x))
 
   Constraint
+  (is-bottom [c]
+    nothing)
+
   (contents-constraint [_]
     (RecurseFinal top-type))
 
@@ -4347,10 +4345,7 @@
 
   ConstraintOps
   (set-collection-type [c tc]
-    top-type)
-
-  (is-bottom [c]
-    nothing))
+    top-type))
 
 (extend-type ArgOf
   ConstraintOps
@@ -4544,10 +4539,6 @@
   ConstraintOps
   (extract-field [dyn-c fld]
     (mod-param dyn-c (GetField fld))))
-
-(extend-type Field
-  ConstraintOps
-  (is-bottom [x] x))
 
 (extend-type TypeOfConstraint
   Constraint
