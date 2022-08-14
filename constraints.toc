@@ -125,8 +125,7 @@
   (is-bottom [c])
 
   (reify-c [c arity loc]
-    ;; (se/state-error (is-bottom c))
-    )
+    (se/state-error (is-bottom c)))
 
   ;; Ensure constraint is as small as possible
   (trim [c]
@@ -250,9 +249,6 @@
 
   Constraint
   (is-bottom [x] x)
-
-  (reify-c [c arity loc]
-    (se/state-error c))
 
   (show-full [c]
     (list "Field " (str sym)))
@@ -379,9 +375,6 @@
   Constraint
   (is-bottom [c] c)
 
-  (reify-c [c arity loc]
-    (se/state-error c))
-
   (show-full [c]
     (format-path c 0))
 
@@ -434,9 +427,6 @@
     (either (= (.contents c) bottom-type)
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -471,9 +461,6 @@
   (is-bottom [c]
     (either (= (.contents c) bottom-type)
             c))
-
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -583,9 +570,6 @@
   Constraint
   (is-bottom [c] c)
 
-  (reify-c [c arity loc]
-    (se/state-error c))
-
   (get-type-num [_] IntegerType)
   (get-type-sym [_] 'Integer))
 
@@ -615,8 +599,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (show-full [c]
     (string-list c))
@@ -696,8 +679,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (assertion-path [_] path)
 
@@ -742,8 +724,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (get-type-num [c]
     SymbolType)
@@ -815,8 +796,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (get-type-num [c]
     StringBufferType)
@@ -852,8 +832,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (get-type-num [c]
     SubStringType)
@@ -934,9 +913,6 @@
                   tc))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
@@ -999,9 +975,6 @@
                   tc))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           ["--items--"]
@@ -1041,9 +1014,6 @@
     (either (= bottom-type (.contents c))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           (cond (= (show-full bottom-type) contents)
@@ -1077,9 +1047,6 @@
     (either (= bottom-type (.contents c))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           (map contents (partial str "  "))))
@@ -1107,10 +1074,7 @@
 
   Constraint
   (is-bottom [c]
-    nothing)
-
-  (reify-c [c arity loc]
-    (se/state-error c))
+    c)
 
   (show-full [c]
     (format-path c 0))
@@ -1138,10 +1102,7 @@
 
   Constraint
   (is-bottom [c]
-    nothing)
-
-  (reify-c [c arity loc]
-    (se/state-error c))
+    c)
 
   (get-type-num [c]
     OpaqueType)
@@ -1171,9 +1132,6 @@
   (is-bottom [c]
     (either (= bottom-type (.contents c))
             c))
-
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1236,9 +1194,6 @@
                 (= bottom-type result-const))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (list (str "arity: " arity-id)
                 "--parameters--")
@@ -1287,9 +1242,6 @@
     (either (some (vals (.arities c)) (partial = bottom-type))
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (comp (format-path c 0)
           ["---------"]
@@ -1336,9 +1288,6 @@
     (either (some (vals (.fields c))
                   (partial = bottom-type))
             c))
-
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (list (str "Type: " type-sym)))
@@ -1446,9 +1395,6 @@
     ;; TODO: always choose bottom-type with non-empty constraints if possible
     (either (some (.alts c) (partial = bottom-type))
             c))
-
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1659,8 +1605,7 @@
     (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (assertion-path [_]
     path)
@@ -1698,8 +1643,7 @@
          (maybe x)))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (show-full [c]
     (comp (format-path* (cons [(str "Argument " arg-position " of") ""] path)
@@ -1731,8 +1675,7 @@
          (maybe x)))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (show-full [c]
     (comp (format-path* (cons ["Result of" ""] path)
@@ -1768,8 +1711,7 @@
          (maybe x)))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error c))
+  (is-bottom [c] c)
 
   (show-full [c]
     (comp (format-path* (cons [(str "Required arities " arity-counts) ""] path)
@@ -2520,9 +2462,6 @@
 
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (intersect [x y]
     (intersect-hash-map y x))
 
@@ -3867,9 +3806,6 @@
     (either (= (.fld c) bottom-type)
             c))
 
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
-
   (show-full [c]
     (string-list c))
 
@@ -3909,9 +3845,6 @@
   Constraint
   (is-bottom [c]
     c)
-
-  (reify-c [c arity loc]
-    (se/state-error c))
 
   (assertion-path [_] path)
 
@@ -3995,9 +3928,6 @@
                      (maybe c))
                 (some (.args c) (partial = bottom-type)))
             c))
-
-  (reify-c [c arity loc]
-    (se/state-error (is-bottom c)))
 
   (show-full [c]
     (comp (format-path* (cons ["Called with args at" ""] path)
@@ -4324,9 +4254,6 @@
     (embed x))
 
   Constraint
-  (is-bottom [c]
-    nothing)
-
   (contents-constraint [_]
     (RecurseFinal top-type))
 
