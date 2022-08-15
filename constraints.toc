@@ -629,6 +629,10 @@
          (maybe x)))
 
   Constraint
+  (is-bottom [c]
+    (either (= bottom-type (is-bottom constraint))
+            c))
+
   (show-full [_]
     (cata show-full constraint))
 
@@ -4514,13 +4518,6 @@
                 (partial str  "\n  "))))
 
   Constraint
-  ;; (reify-c [c arity loc]
-  ;;   (for [full-reified (apo (fn [c]
-  ;;                               (reify-c c arity loc))
-  ;;                             (.constraint c)
-  ;;                             se/state-error)]
-  ;;     (RecurseWith (.constraint c))))
-
   (contents-constraint [c]
     (RecurseWith c))
 
