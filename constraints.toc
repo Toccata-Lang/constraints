@@ -1739,7 +1739,6 @@
                                SumConstraint
                                ReifiedConstraint
                                InferredInner
-                               CollectionOf
                                InnerTypeOfConstraint
                                TypeOfConstraint
                                ModSeqType
@@ -3185,11 +3184,7 @@
                   (.path new-path)))))
 
   (intersect [rc c]
-    (cond (and (empty? (.fields rc))
-               (= UnknownType (.type-num rc)))
-          c
-
-          (intersect-reified-val c rc)))
+    (intersect-reified-val c rc))
 
   ;; (satisfied-by [c info]
   ;;   (either (sum-c-satisfies info c)
@@ -3263,8 +3258,8 @@
     (either (get (.fields c) fld)
             (NoValues [c (required-field fld)])))
 
-  (intersect-coll-of [c _]
-    c)
+  (intersect-coll-of [c cc]
+    (NoValues [c cc]))
 
   (intersect-inner [c _]
     c))
@@ -3404,8 +3399,7 @@
     (intersect c fn-c))
 
   (intersect-reified-val [c rc]
-    ;; TODO: insufficient for type checking calls to 'map' etc.
-    rc)
+    (NoValues [c rc]))
 
   (intersect-vector [c vect-c]
     (intersect-coll-of vect-c c))
