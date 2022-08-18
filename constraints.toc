@@ -683,12 +683,15 @@
     (embed x))
 
   Constraint
+  (show-full [c]
+    (format-path c 0))
+
   (is-bottom [c] c)
 
   (assertion-path [_] path)
 
   (format-path [x desired-len]
-    (format-path* (cons ["Type of value from" ""] path)
+    (format-path* (cons ["Inner type of value from" ""] path)
                   desired-len))
 
   (update-sym [tc new-sym]
