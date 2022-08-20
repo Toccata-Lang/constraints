@@ -676,11 +676,12 @@
          (maybe x)))
 
   Container
-  (map [x _]
-    x)
+  (map [x f]
+    (.param-sym x (f param-sym)))
 
-  (map [x _ embed]
-    (embed x))
+  (map [x f embed]
+    (map (f param-sym)
+         (partial .param-sym x)))
 
   Constraint
   (show-full [c]
@@ -3864,8 +3865,9 @@
 
   (intersect [c1 c2]
     (let [inner-c (extract-contents-constraint c2)]
-      (cond (= bottom-type inner-c)
-            (NoValues [c1 c2])
+      (cond (and (= bottom-type inner-c)
+                 (empty? (.constraints inner-c)))
+            top-type
 
             inner-c))))
 
