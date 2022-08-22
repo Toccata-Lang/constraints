@@ -1463,6 +1463,8 @@
           ")"))
 
   Constraint
+  (assertion-path [_] path)
+
   (is-bottom [c]
     ;; TODO: need this?
     ;; (either (some (.mods c) (partial = bottom-type)))
@@ -1705,7 +1707,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/Arities " (str arity-counts)
+    (list "(c/AritiesRequired " (str arity-counts)
           ;; " (list)"
           (str " " (cons 'list path))
           " " (sym-str sym)
@@ -3107,6 +3109,9 @@
           (instance? ComputedConstraint y)
           (mod-param y x)
 
+          (instance? ParamConstraint y)
+          (ComputedConstraint [y x] (.path x) (.sym x) (.var x))
+
           (= y bottom-type)
           y
 
@@ -3623,99 +3628,49 @@
   (intersect-reified-val [c rc]
     (intersect c rc)))
 
-(extend-type ComputedConstraint
+(deftype GetInnerType [path]
+  Stringable
+  (string-list [_]
+    (list "(c/GetInnerType empty-list)"))
+
+  Eq
+  (=* [x y]
+    (and (instance? GetInnerType y)
+         (maybe x)))
+
   Container
   (map [x f]
-    (.mods x (map (.mods x) f)))
+    x)
 
   (map [x f embed]
-    (map (map (.mods x) f embed)
-         (fn [new-mods]
-           (.mods x new-mods))))
+    (embed x))
 
   Constraint
-  (reify-c [c arity loc]
-    (se/state-error (reduce (.mods c) top-type
-                            (fn [c mod]
-                              ;; (and (instance? ComputedConstraint mod)
-                              ;;      (do
-                              ;;        (print-err 'boomerity _FILE_ _LINE_)
-                              ;;        (print-err 'loc loc)
-                              ;;        (print-err 'c c)
-                              ;;        (print-err 'mod mod)
-                              ;;        (print-err 'int (intersect mod c))
-                              ;;        (abort)
-                              ;;        nothing))
-                              (intersect mod c)))))
+  (is-bottom [c]
+    c)
+
+  (assertion-path [_] path)
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Inner type required from" ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (list "GetInnerType"))
+
+  (update-sym [c _]
+    c)
+
+  (contents-constraint [_]
+    (RecurseFinal top-type))
 
   (intersect [c1 c2]
-    (cond (instance? ComputedConstraint c2)
-          (cond (= c1 c2)
-                c1
+    (let [inner-c (extract-contents-constraint c2)]
+      (cond (and (= bottom-type inner-c)
+                 (empty? (.constraints inner-c)))
+            top-type
 
-                (or (= (.sym c1) no-symbol)
-                    (= (.sym c2) no-symbol))
-                (do
-                  (print-err 'kablooie _FILE_ _LINE_)
-                  (print-err 'c1 c1)
-                  (print-err 'c2 c2)
-                  ;; (abort)
-                  top-type)
-
-                (= (.sym c1) (.sym c2))
-                ;; TODO: why not use 'vec='?
-                (cond (every (zip-lists (.mods c1) (.mods c2))
-                             (fn [[c1 c2]]
-                               (= c1 c2)))
-                      (cond (< (count (.mods c1)) (count (.mods c2)))
-                            c2
-
-                            c1)
-
-                      (.mods c2 (conj (.mods c2) c1)))
-
-                (.mods c2 (conj (.mods c2) c1)))
-          (mod-param c1 c2)))
-
-  ConstraintOps
-  (set-collection-type [c tc]
-    (mod-param c tc))
-
-  (intersect-int [pc int-c]
-    (mod-param pc int-c))
-
-  (intersect-fn [pc fn-c]
-    (mod-param pc fn-c))
-
-  (intersect-sym [pc sym-c]
-    (mod-param pc sym-c))
-
-  (intersect-str [pc str-c]
-    (mod-param pc str-c))
-
-  (intersect-maybe [pc maybe-c]
-    (mod-param pc maybe-c))
-
-  (intersect-hash-map [pc hash-map-c]
-    (mod-param pc hash-map-c))
-
-  (intersect-vector [pc vect-c]
-    (mod-param pc vect-c))
-
-  (intersect-list [pc vect-c]
-    (mod-param pc vect-c))
-
-  (intersect-promise [pc promise-c]
-    (mod-param pc promise-c))
-
-  (intersect-agent [pc agent-c]
-    (mod-param pc agent-c))
-
-  (intersect-sum [c cs]
-    (mod-param c cs))
-
-  (intersect-reified-val [c rc]
-    (mod-param c rc)))
+            inner-c))))
 
 (deftype SetField [fld fld-c]
   Eq
@@ -3827,49 +3782,126 @@
 (defn get-field [fld]
   (GetField fld))
 
-(deftype GetInnerType [path]
-  Stringable
-  (string-list [_]
-    (list "(c/GetInnerType)"))
+(def TypeOps (any-of ModSeqType
+                     InnerTypeOfConstraint
+                     GetInnerType
+                     SetField
+                     GetField
+                     ArgOf
+                     ResultOf
+                     AritiesRequired))
 
-  Eq
-  (=* [x y]
-    (and (instance? GetInnerType y)
-         (maybe x)))
+(defn merge-mods [mods1 mods2 new-c]
+  (assert (instance? Sequence mods1))
+  (assert (instance? Sequence mods2))
+  (assert (instance? ComputedConstraint new-c))
 
+  (cond (empty? mods1)
+        (.mods new-c (comp (.mods new-c) mods2))
+
+        (empty? mods2)
+        (.mods new-c (comp (.mods new-c) mods1))
+
+        (let [[mod1 & rest-mods1] mods1
+              [mod2 & rest-mods2] mods2]
+          (cond (and (instance? TypeOps mod1)
+                     (instance? TypeOps mod2))
+                (either (map (= mod1 mod2)
+                             (fn [_]
+                               (merge-mods rest-mods1 rest-mods2
+                                           (.mods new-c (conj (.mods new-c) mod1)))))
+                        (NoValues [mod1 mod2]))
+
+                (instance? ComputedConstraint mod1)
+                (merge-mods (comp (.mods mod1) rest-mods1) mods2
+                            new-c)
+
+                (instance? ComputedConstraint mod2)
+                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
+                            new-c)
+
+                (instance? TypeOps mod1)
+                (merge-mods mods1 rest-mods2
+                            (.mods new-c (conj (.mods new-c) mod2)))
+
+                (instance? TypeOps mod2)
+                (merge-mods rest-mods1 mods2
+                            (.mods new-c (conj (.mods new-c) mod1)))
+
+                (let [new-mod (intersect mod1 mod2)]
+                  (either (= bottom-type new-mod)
+                          (.mods new-c (conj (.mods new-c) new-mod))))))))
+
+(extend-type ComputedConstraint
   Container
   (map [x f]
-    x)
+    (.mods x (map (.mods x) f)))
 
   (map [x f embed]
-    (embed x))
+    (map (map (.mods x) f embed)
+         (fn [new-mods]
+           (.mods x new-mods))))
 
   Constraint
-  (is-bottom [c]
-    c)
-
-  (assertion-path [_] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Inner type required from" ""] path)
-                  desired-len))
-
-  (show-full [c]
-    (list "GetInnerType"))
-
-  (update-sym [c _]
-    c)
-
-  (contents-constraint [_]
-    (RecurseFinal top-type))
-
   (intersect [c1 c2]
-    (let [inner-c (extract-contents-constraint c2)]
-      (cond (and (= bottom-type inner-c)
-                 (empty? (.constraints inner-c)))
-            top-type
+    (cond (instance? ComputedConstraint c2)
+          (merge-mods (.mods c1) (.mods c2) (.mods c1 []))
 
-            inner-c))))
+          (mod-param c1 c2)))
+
+  (reify-c [c arity loc]
+    (se/state-error (reduce (.mods c) top-type
+                            (fn [c mod]
+                              ;; (and (instance? ComputedConstraint mod)
+                              ;;      (do
+                              ;;        (print-err 'boomerity _FILE_ _LINE_)
+                              ;;        (print-err 'loc loc)
+                              ;;        (print-err 'c c)
+                              ;;        (print-err 'mod mod)
+                              ;;        (print-err 'int (intersect mod c))
+                              ;;        (abort)
+                              ;;        nothing))
+                              (intersect mod c)))))
+
+  ConstraintOps
+  (set-collection-type [c tc]
+    (mod-param c tc))
+
+  (intersect-int [pc int-c]
+    (mod-param pc int-c))
+
+  (intersect-fn [pc fn-c]
+    (mod-param pc fn-c))
+
+  (intersect-sym [pc sym-c]
+    (mod-param pc sym-c))
+
+  (intersect-str [pc str-c]
+    (mod-param pc str-c))
+
+  (intersect-maybe [pc maybe-c]
+    (mod-param pc maybe-c))
+
+  (intersect-hash-map [pc hash-map-c]
+    (mod-param pc hash-map-c))
+
+  (intersect-vector [pc vect-c]
+    (mod-param pc vect-c))
+
+  (intersect-list [pc vect-c]
+    (mod-param pc vect-c))
+
+  (intersect-promise [pc promise-c]
+    (mod-param pc promise-c))
+
+  (intersect-agent [pc agent-c]
+    (mod-param pc agent-c))
+
+  (intersect-sum [c cs]
+    (mod-param c cs))
+
+  (intersect-reified-val [c rc]
+    (mod-param c rc)))
 
 (deftype NoArgs []
   Stringable
@@ -4238,7 +4270,11 @@
     (assert (instance? fn-arity ar2))
 
     (let [param-cs (intersect (.param-consts ar1) (.param-consts ar2))
-          result-c (intersect (.result-const ar1) (.result-const ar2))]
+          result-c (intersect (.result-const ar1) (.result-const ar2))
+          arity-id (cond (= (str (.arity-id ar1)) "")
+                         (.arity-id ar2)
+
+                         (.arity-id ar1))]
       (either (or (= bottom-type param-cs)
                   (-> param-cs
                       full-param-constraint
@@ -4247,6 +4283,7 @@
                   (= bottom-type result-c))
 
               (-> ar1
+                  (.arity-id arity-id)
                   (.param-consts param-cs)
                   (.result-const result-c))))))
 
@@ -4271,6 +4308,12 @@
 
           (= top-type c2)
           c1
+
+          (= c1 c2)
+          c1
+
+          (instance? FnMeta c2)
+          (ComputedConstraint [c1 c2] (.path c1) (.sym c1) (.var c1))
 
           (intersect c2 c1)))
 
