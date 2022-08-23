@@ -3782,127 +3782,6 @@
 (defn get-field [fld]
   (GetField fld))
 
-(def TypeOps (any-of ModSeqType
-                     InnerTypeOfConstraint
-                     GetInnerType
-                     SetField
-                     GetField
-                     ArgOf
-                     ResultOf
-                     AritiesRequired))
-
-(defn merge-mods [mods1 mods2 new-c]
-  (assert (instance? Sequence mods1))
-  (assert (instance? Sequence mods2))
-  (assert (instance? ComputedConstraint new-c))
-
-  (cond (empty? mods1)
-        (.mods new-c (comp (.mods new-c) mods2))
-
-        (empty? mods2)
-        (.mods new-c (comp (.mods new-c) mods1))
-
-        (let [[mod1 & rest-mods1] mods1
-              [mod2 & rest-mods2] mods2]
-          (cond (and (instance? TypeOps mod1)
-                     (instance? TypeOps mod2))
-                (either (map (= mod1 mod2)
-                             (fn [_]
-                               (merge-mods rest-mods1 rest-mods2
-                                           (.mods new-c (conj (.mods new-c) mod1)))))
-                        (NoValues [mod1 mod2]))
-
-                (instance? ComputedConstraint mod1)
-                (merge-mods (comp (.mods mod1) rest-mods1) mods2
-                            new-c)
-
-                (instance? ComputedConstraint mod2)
-                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
-                            new-c)
-
-                (instance? TypeOps mod1)
-                (merge-mods mods1 rest-mods2
-                            (.mods new-c (conj (.mods new-c) mod2)))
-
-                (instance? TypeOps mod2)
-                (merge-mods rest-mods1 mods2
-                            (.mods new-c (conj (.mods new-c) mod1)))
-
-                (let [new-mod (intersect mod1 mod2)]
-                  (either (= bottom-type new-mod)
-                          (.mods new-c (conj (.mods new-c) new-mod))))))))
-
-(extend-type ComputedConstraint
-  Container
-  (map [x f]
-    (.mods x (map (.mods x) f)))
-
-  (map [x f embed]
-    (map (map (.mods x) f embed)
-         (fn [new-mods]
-           (.mods x new-mods))))
-
-  Constraint
-  (intersect [c1 c2]
-    (cond (instance? ComputedConstraint c2)
-          (merge-mods (.mods c1) (.mods c2) (.mods c1 []))
-
-          (mod-param c1 c2)))
-
-  (reify-c [c arity loc]
-    (se/state-error (reduce (.mods c) top-type
-                            (fn [c mod]
-                              ;; (and (instance? ComputedConstraint mod)
-                              ;;      (do
-                              ;;        (print-err 'boomerity _FILE_ _LINE_)
-                              ;;        (print-err 'loc loc)
-                              ;;        (print-err 'c c)
-                              ;;        (print-err 'mod mod)
-                              ;;        (print-err 'int (intersect mod c))
-                              ;;        (abort)
-                              ;;        nothing))
-                              (intersect mod c)))))
-
-  ConstraintOps
-  (set-collection-type [c tc]
-    (mod-param c tc))
-
-  (intersect-int [pc int-c]
-    (mod-param pc int-c))
-
-  (intersect-fn [pc fn-c]
-    (mod-param pc fn-c))
-
-  (intersect-sym [pc sym-c]
-    (mod-param pc sym-c))
-
-  (intersect-str [pc str-c]
-    (mod-param pc str-c))
-
-  (intersect-maybe [pc maybe-c]
-    (mod-param pc maybe-c))
-
-  (intersect-hash-map [pc hash-map-c]
-    (mod-param pc hash-map-c))
-
-  (intersect-vector [pc vect-c]
-    (mod-param pc vect-c))
-
-  (intersect-list [pc vect-c]
-    (mod-param pc vect-c))
-
-  (intersect-promise [pc promise-c]
-    (mod-param pc promise-c))
-
-  (intersect-agent [pc agent-c]
-    (mod-param pc agent-c))
-
-  (intersect-sum [c cs]
-    (mod-param c cs))
-
-  (intersect-reified-val [c rc]
-    (mod-param c rc)))
-
 (deftype NoArgs []
   Stringable
   (string-list [_]
@@ -4055,6 +3934,128 @@
   (intersect-reified-val [c tc]
     (intersect c tc)))
 
+(def TypeOps (any-of ModSeqType
+                     CallValue
+                     InnerTypeOfConstraint
+                     GetInnerType
+                     SetField
+                     GetField
+                     ArgOf
+                     ResultOf
+                     AritiesRequired))
+
+(defn merge-mods [mods1 mods2 new-c]
+  (assert (instance? Sequence mods1))
+  (assert (instance? Sequence mods2))
+  (assert (instance? ComputedConstraint new-c))
+
+  (cond (empty? mods1)
+        (.mods new-c (comp (.mods new-c) mods2))
+
+        (empty? mods2)
+        (.mods new-c (comp (.mods new-c) mods1))
+
+        (let [[mod1 & rest-mods1] mods1
+              [mod2 & rest-mods2] mods2]
+          (cond (and (instance? TypeOps mod1)
+                     (instance? TypeOps mod2))
+                (either (map (= mod1 mod2)
+                             (fn [_]
+                               (merge-mods rest-mods1 rest-mods2
+                                           (.mods new-c (conj (.mods new-c) mod1)))))
+                        (NoValues [mod1 mod2]))
+
+                (instance? ComputedConstraint mod1)
+                (merge-mods (comp (.mods mod1) rest-mods1) mods2
+                            new-c)
+
+                (instance? ComputedConstraint mod2)
+                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
+                            new-c)
+
+                (instance? TypeOps mod1)
+                (merge-mods mods1 rest-mods2
+                            (.mods new-c (conj (.mods new-c) mod2)))
+
+                (instance? TypeOps mod2)
+                (merge-mods rest-mods1 mods2
+                            (.mods new-c (conj (.mods new-c) mod1)))
+
+                (let [new-mod (intersect mod1 mod2)]
+                  (either (= bottom-type new-mod)
+                          (.mods new-c (conj (.mods new-c) new-mod))))))))
+
+(extend-type ComputedConstraint
+  Container
+  (map [x f]
+    (.mods x (map (.mods x) f)))
+
+  (map [x f embed]
+    (map (map (.mods x) f embed)
+         (fn [new-mods]
+           (.mods x new-mods))))
+
+  Constraint
+  (intersect [c1 c2]
+    (cond (instance? ComputedConstraint c2)
+          (merge-mods (.mods c1) (.mods c2) (.mods c1 []))
+
+          (mod-param c1 c2)))
+
+  (reify-c [c arity loc]
+    (se/state-error (reduce (.mods c) top-type
+                            (fn [c mod]
+                              ;; (and (instance? ComputedConstraint mod)
+                              ;;      (do
+                              ;;        (print-err 'boomerity _FILE_ _LINE_)
+                              ;;        (print-err 'loc loc)
+                              ;;        (print-err 'c c)
+                              ;;        (print-err 'mod mod)
+                              ;;        (print-err 'int (intersect mod c))
+                              ;;        (abort)
+                              ;;        nothing))
+                              (intersect mod c)))))
+
+  ConstraintOps
+  (set-collection-type [c tc]
+    (mod-param c tc))
+
+  (intersect-int [pc int-c]
+    (mod-param pc int-c))
+
+  (intersect-fn [pc fn-c]
+    (mod-param pc fn-c))
+
+  (intersect-sym [pc sym-c]
+    (mod-param pc sym-c))
+
+  (intersect-str [pc str-c]
+    (mod-param pc str-c))
+
+  (intersect-maybe [pc maybe-c]
+    (mod-param pc maybe-c))
+
+  (intersect-hash-map [pc hash-map-c]
+    (mod-param pc hash-map-c))
+
+  (intersect-vector [pc vect-c]
+    (mod-param pc vect-c))
+
+  (intersect-list [pc vect-c]
+    (mod-param pc vect-c))
+
+  (intersect-promise [pc promise-c]
+    (mod-param pc promise-c))
+
+  (intersect-agent [pc agent-c]
+    (mod-param pc agent-c))
+
+  (intersect-sum [c cs]
+    (mod-param c cs))
+
+  (intersect-reified-val [c rc]
+    (mod-param c rc)))
+
 (extend-type SetField
   Constraint
   (intersect [c1 c2]
@@ -4185,11 +4186,7 @@
 (extend-type AllValues
   Constraint
   (intersect [c1 c2]
-    (cond (or (instance? SetField c2)
-              (instance? GetField c2)
-              (instance? GetInnerType c2)
-              (instance? ModSeqType c2)
-              (instance? CallValue c2))
+    (cond (instance? TypeOps c2)
           c1
 
           c2)))
