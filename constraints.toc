@@ -1918,6 +1918,96 @@
   (update-sym [_ new-sym]
     (ResultConstraint (update-sym assertion new-sym))))
 
+(deftype NoArgs []
+  Stringable
+  (string-list [_]
+    (list "c/no-args"))
+
+  Eq
+  (=* [x y]
+    (and (instance? NoArgs y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  (flat-map [x f]
+    []))
+
+(def no-args (NoArgs))
+
+(deftype CallValue [args path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/CallValue "
+          (either (map (= no-args args) (fn [_]
+                                          "c/no-args"))
+                  (str "\n[" (to-str (interpose args "\n")) "]"))
+          ;; " (list)"
+          (str " " (cons 'list path))
+          " " (sym-str sym)
+          " " (str "\"" var "\"")
+          ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? CallValue y)
+         (= args (.args y))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    (.args x (map args f)))
+
+  (map [x f embed]
+    (map (map args f embed)
+         (partial .args x)))
+
+ Constraint
+  (is-bottom [c]
+    ;; TODO: always choose bottom-type with non-empty constraints if possible
+    (either (or (and (= no-args (.args c))
+                     (maybe c))
+                (some (.args c) (partial = bottom-type)))
+            c))
+
+  (show-full [c]
+    (comp (format-path* (cons ["Called with args at" ""] path)
+                        0)
+          ["--args--"]
+          (flat-map (.args c) (fn [arg-strs]
+                                (map arg-strs (partial str "  "))))
+          ["===="]))
+
+  (set-path [c new-path]
+    (RecurseFinal (.path c new-path)))
+
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some path (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c)))))
+
+  (contents-constraint [_]
+    (RecurseFinal top-type))
+
+    ;; TODO: these two impls are totally bogus
+  (assertion-path [_]
+    (either (map (first args) assertion-path)
+            empty-list))
+
+  (format-path [_ desired-len]
+    (format-path* (cons ["Called at " ""] path)
+                  desired-len)))
+
 (def Constraints (any-of ValueConstraint
                          NoValues
                          fn-arity
@@ -1958,6 +2048,11 @@
     (assert (instance? ModSeqType tc))
 
     (NoValues [c tc]))
+
+  (intersect-call-value [c cvc]
+    (assert (instance? CallValue cvc))
+    ;; (ComputedConstraint [c2 c1] (.path c1) (.sym c1) (.var c1))
+    )
 
   (intersect-fn [c fn-c]
     (assert (instance? FnConstraint fn-c))
@@ -2142,6 +2237,7 @@
 
   ConstraintOps
   (intersect-str [c _] c)
+  (intersect-call-value [c _] c)
   (intersect-int [c _] c)
   (intersect-sym [c _] c)
   (intersect-maybe [c _] c)
@@ -2245,6 +2341,9 @@
                   desired-len))
 
   ConstraintOps
+  (intersect-call-value [c cc]
+    (NoValues [c cc]))
+
   (intersect-coll-of [c cc]
     (NoValues [c cc]))
 
@@ -3208,6 +3307,12 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-call-value [c cvc]
+    ;; (print-err "Intersecting CallValue")
+    ;; (print-err 'c1 c1)
+    ;; (print-err 'c2 c2)
+    (intersect-call-value (.invoke-fn c) cvc))
+
   (intersect-str [rc str-c]
     (cond (and (empty? (.fields rc))
                (= UnknownType (.type-num rc)))
@@ -3506,6 +3611,9 @@
   (set-collection-type [c tc]
     (intersect-sum tc c))
 
+  (intersect-call-value [c cvc]
+    (intersect c cvc))
+
   (intersect-int [sum-c c]
     (intersect-sum c sum-c))
 
@@ -3591,6 +3699,9 @@
   ConstraintOps
   (set-collection-type [c tc]
     (intersect c tc))
+
+  (intersect-call-value [c cvc]
+    (ComputedConstraint [c cvc] (.path cvc) (.sym cvc) (.var cvc)))
 
   (intersect-int [pc int-c]
     (intersect pc int-c))
@@ -3714,6 +3825,9 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-call-value [c2 c1]
+    (NoValues [c1 c2]))
+
   (intersect-hash-map [sf c]
     (let [new-k (intersect (.keys-c c) fld)
           new-v (intersect (.vals-c c) fld-c)
@@ -3773,6 +3887,9 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-call-value [c2 c1]
+    (NoValues [c1 c2]))
+
   (intersect-reified-val [c rc]
     (extract-field rc fld))
 
@@ -3782,151 +3899,80 @@
 (defn get-field [fld]
   (GetField fld))
 
-(deftype NoArgs []
-  Stringable
-  (string-list [_]
-    (list "c/no-args"))
+(extend-type CallValue
+  Constraint
+ (intersect [c1 c2]
+    (intersect-call-value c2 c1)
 
-  Eq
-  (=* [x y]
-    (and (instance? NoArgs y)
-         (maybe x)))
+    ;; TODO: the need for this nested cond *must* be fixed ASAP
+    ;; this problem cropped up and then got refactored out, but must be reproduced and fixed
+    ;; (cond
+    ;;       (instance? CoreValConstraint c2)
+    ;;       (cond (instance? FnConstraint c2)
+    ;;             (do
+    ;;               ;; (print-err "Intersecting CallValue")
+    ;;               ;; (print-err 'c1 c1)
+    ;;               ;; (print-err 'c2 c2)
+    ;;               (either (or (map (= no-args args) ;; TODO: replace 'args' with '(args)' bad error msg
+    ;;                                (fn [_]
+    ;;                                  (-> (.arities c2)
+    ;;                                      vals
+    ;;                                      (map .result-const)
+    ;;                                      vec
+    ;;                                      sum-type)))
+    ;;                           (for [arity-info (or (get-in c2 [.arities (count args)])
+    ;;                                                (get-in c2 [.arities variadic]))]
+    ;;                             (let [params-failed (-> (.param-consts arity-info)
+    ;;                                                     (extract-items-constraints (count args))
+    ;;                                                     (zip-lists args)
+    ;;                                                     (some (fn [[param arg]]
+    ;;                                                             (= bottom-type (intersect param arg)))))]
+    ;;                               (either params-failed
+    ;;                                       (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+    ;;                                                              args (Location "WTF" 21304))))))
+    ;;                       (NoValues [c1 c2])))
 
-  Container
-  (map [x f]
-    x)
+    ;;             (NoValues [c1 c2]))
 
-  (map [x f embed]
-    (embed x))
-
-  (flat-map [x f]
-    []))
-
-(def no-args (NoArgs))
-
-(deftype CallValue [args path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/CallValue " 
-          (either (map (= no-args args) (fn [_]
-                                          "c/no-args"))
-                  (str "\n[" (to-str (interpose args "\n")) "]"))
-          ;; " (list)"
-          (str " " (cons 'list path))
-          " " (sym-str sym)
-          " " (str "\"" var "\"")
-          ")"))
-
-  Eq
-  (=* [x y]
-    (and (instance? CallValue y)
-         (= args (.args y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.args x (map args f)))
-
-  (map [x f embed]
-    (map (map args f embed)
-         (partial .args x)))
-
- Constraint
-  (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (or (and (= no-args (.args c))
-                     (maybe c))
-                (some (.args c) (partial = bottom-type)))
-            c))
-
-  (show-full [c]
-    (comp (format-path* (cons ["Called with args at" ""] path)
-                        0)
-          ["--args--"]
-          (flat-map (.args c) (fn [arg-strs]
-                                (map arg-strs (partial str "  "))))
-          ["===="]))
-
-  (set-path [c new-path]
-    (RecurseFinal (.path c new-path)))
-
-  (add-to-path [c file line]
-    (cond (or (= file "")
-              (some path (partial = [file line])))
-          c
-          (.path c (cons [file line] (.path c)))))
-
-  (contents-constraint [_]
-    (RecurseFinal top-type))
-
-  (intersect [c1 c2]
-    (cond (instance? ComputedConstraint c2)
-          (intersect c2 c1)
-
-          (= bottom-type c2)
-          c2
-
-          (instance? ReifiedConstraint c2)
-          (do
-            ;; (print-err "Intersecting CallValue")
-            ;; (print-err 'c1 c1)
-            ;; (print-err 'c2 c2)
-            (intersect c1 (.invoke-fn c2)))
-
-          ;; TODO: the need for this nested cond *must* be fixed ASAP
-          (instance? CoreValConstraint c2)
-          (cond (instance? FnConstraint c2)
-                (do
-                  ;; (print-err "Intersecting CallValue")
-                  ;; (print-err 'c1 c1)
-                  ;; (print-err 'c2 c2)
-                  (either (or (map (= no-args args) ;; TODO: replace 'args' with '(args)' bad error msg
-                                   (fn [_]
-                                     (-> (.arities c2)
-                                         vals
-                                         (map .result-const)
-                                         vec
-                                         sum-type)))
-                              (for [arity-info (or (get-in c2 [.arities (count args)])
-                                                   (get-in c2 [.arities variadic]))]
-                                (let [params-failed (-> (.param-consts arity-info)
-                                                        (extract-items-constraints (count args))
-                                                        (zip-lists args)
-                                                        (some (fn [[param arg]]
-                                                                (= bottom-type (intersect param arg)))))]
-                                  (either params-failed
-                                          (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
-                                                                 args (Location "WTF" 21304))))))
-                          (NoValues [c1 c2])))
-
-                (NoValues [c1 c2]))
-
-          (or (instance? GetField c2)
-              (instance? SetField c2))
-          (NoValues [c1 c2])
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          (ComputedConstraint [c2 c1] (.path c1) (.sym c1) (.var c1))))
-
-  ;; TODO: these two impls are totally bogus
-  (assertion-path [_]
-    (either (map (first args) assertion-path)
-            empty-list))
-
-  (format-path [_ desired-len]
-    (format-path* (cons ["Called at " ""] path)
-                  desired-len))
+    ;;       )
+   )
 
   ConstraintOps
   (set-collection-type [c tc]
     top-type)
+
+  (intersect-call-value [c2 c1]
+    ;; TODO: this formulation of 'cond' fails.
+    ;; 'cond' only seems to handle one test clause correctly
+    ;; (cond (instance? NoArgs (.args c1))
+    ;;       c2
+
+    ;;       (instance? NoArgs (.args c2))
+    ;;       c1
+
+    ;;       (= (count (.args c1)) (count (.args c2)))
+    ;;       (let [arg-cs (-> (zip-lists (.args c1) (.args c2))
+    ;;                        (map (fn [[c1 c2]]
+    ;;                               (intersect c1 c2))))]
+    ;;         (either (some arg-cs (partial = bottom-type))
+    ;;                 (.args c1 (vec arg-cs))))
+
+    ;;       (NoValues [c1 c2]))
+
+    (either (or (map (instance? NoArgs (.args c1))
+                     (fn [_]
+                       c2))
+                (map (instance? NoArgs (.args c2))
+                     (fn [_]
+                       c1)))
+            (cond (= (count (.args c1)) (count (.args c2)))
+                  (let [arg-cs (-> (zip-lists (.args c1) (.args c2))
+                                   (map (fn [[c1 c2]]
+                                          (intersect c1 c2))))]
+                    (either (some arg-cs (partial = bottom-type))
+                            (.args c1 (vec arg-cs))))
+
+                  (NoValues [c1 c2]))))
 
   (intersect-fn [y x]
     (intersect y x))
@@ -3963,7 +4009,7 @@
                              (fn [_]
                                (merge-mods rest-mods1 rest-mods2
                                            (.mods new-c (conj (.mods new-c) mod1)))))
-                        (NoValues [mod1 mod2]))
+                        (intersect mod1 mod2))
 
                 (instance? ComputedConstraint mod1)
                 (merge-mods (comp (.mods mod1) rest-mods1) mods2
@@ -3983,7 +4029,8 @@
 
                 (let [new-mod (intersect mod1 mod2)]
                   (either (= bottom-type new-mod)
-                          (.mods new-c (conj (.mods new-c) new-mod))))))))
+                          (merge-mods rest-mods1 rest-mods2
+                                      (.mods new-c (conj (.mods new-c) new-mod)))))))))
 
 (extend-type ComputedConstraint
   Container
@@ -4019,6 +4066,9 @@
   ConstraintOps
   (set-collection-type [c tc]
     (mod-param c tc))
+
+  (intersect-call-value [c cvc]
+    (intersect c cvc))
 
   (intersect-int [pc int-c]
     (mod-param pc int-c))
@@ -4094,6 +4144,31 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-call-value [c cvc]
+    ;; (print-err "Intersecting CallValue")
+    ;; (print-err 'c1 c1)
+    ;; (print-err 'c2 c2)
+    (let [args (.args cvc)]
+      (either (or (map (instance? NoArgs args)
+                       (fn [_]
+                         (-> (.arities c)
+                             vals
+                             (map .result-const)
+                             vec
+                             sum-type)))
+                  (let [args-count (count args)]
+                    (for [arity-info (or (get-in c [.arities args-count])
+                                         (get-in c [.arities variadic]))]
+                      (let [params-failed (-> (.param-consts arity-info)
+                                              (extract-items-constraints args-count)
+                                              (zip-lists args)
+                                              (some (fn [[param arg]]
+                                                      (= bottom-type (intersect param arg)))))]
+                        (either params-failed
+                                (reify-type-constraint (.result-const arity-info) (.arity-id arity-info)
+                                                       args (Location (str "WTF" _FILE_) _LINE_)))))))
+              (NoValues [cvc c]))))
+
   (intersect-coll-of [fn-c coll-c]
     (let [content (.contents coll-c)
           maybe-variadic-y (get-in fn-c [.arities variadic])
@@ -4377,6 +4452,9 @@
   (extract-field [c field-c]
     (NoValues [c field-c]))
 
+  (intersect-call-value [c cvc]
+    (ComputedConstraint [c cvc] (.path cvc) (.sym cvc) (.var cvc)))
+
   (intersect-reified-val [c tc]
     (intersect (.arity-counts c (map (.arity-counts c) inc))
                (.invoke-fn tc)))
@@ -4561,6 +4639,9 @@
     (RecurseWith c))
 
   ConstraintOps
+  (intersect-call-value [c cvc]
+    (intersect c cvc))
+
   (set-collection-type [c tc]
     (intersect c tc))
 
