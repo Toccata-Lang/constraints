@@ -170,7 +170,7 @@
     )
 
   (coll-constraint [_]
-    ;; extract the CollectionOf or the InferredInner constraints
+    ;; extract the CollectionOf constraints
     ;; returns either an AllValues or CollectionOf constraint
     )
 
@@ -408,42 +408,6 @@
                        (str "(maybe '" s ")"))))
           "nothing"))
 
-;; InferredInner is a weaker version of CollectionOf
-(deftype InferredInner [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/InferredInner\n" (str contents) " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
-
-  Constraint
-  (is-bottom [c]
-    (either (= (.contents c) bottom-type)
-            c))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          (map contents (partial str "  "))))
-
-  (get-type-num [c]
-    UnknownType)
-
-  (is-collection? [c]
-    (maybe c))
-
-  (assertion-path [_] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Contents from" ""] path)
-                  desired-len)))
-
-;; CollectionOf is a stronger version of InferredInner
 (deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
@@ -1750,11 +1714,9 @@
                     ResultOf))
 
 (def SymbolConstraints (any-of CoreValConstraint
-                               InferredInner
                                CollectionOf
                                SumConstraint
                                ReifiedConstraint
-                               InferredInner
                                InnerTypeOfConstraint
                                TypeOfConstraint
                                ModSeqType
@@ -2167,13 +2129,7 @@
                            (maybe (NoValues [c cs]))))
                   (and (= (count goods) 1)
                        (first goods)))
-              (.alts cs goods))))
-
-  (intersect-inner [c ic]
-    (assert (instance? InferredInner ic))
-    (assert-result r (instance? Constraints r))
-
-    (intersect (update-var c (extract-var ic)) ic)))
+              (.alts cs goods)))))
 
 (defn conflicting-assertions
   ([failing-constraint loc]
@@ -2283,7 +2239,6 @@
   (intersect-result [c rc] rc)
   (intersect-reified-val [c tc] tc)
   (intersect-coll-of [c cc] cc)
-  (intersect-inner [c ic] ic)
   (set-collection-type [c tc] c))
 
 (extend-type SymbolConstraints
@@ -2363,10 +2318,7 @@
     (NoValues [c vect-c]))
 
   (intersect-list [c vect-c]
-    (NoValues [c vect-c]))
-
-  (intersect-inner [c ic]
-    (NoValues [c ic])))
+    (NoValues [c vect-c])))
 
 (extend-type IntegerConstraint
   Constraint
@@ -2535,9 +2487,6 @@
             top-type)))
 
   (intersect-coll-of [str-c c]
-    (intersect-str (.contents c) strbuff-constraint))
-
-  (intersect-inner [str-c c]
     (intersect-str (.contents c) strbuff-constraint))
 
   (intersect-str [y x]
@@ -2760,25 +2709,6 @@
                        (first goods)))
               (.alts cs goods))))
 
-  (intersect-inner [c ic]
-    (let [new-items (map (.items c)
-                         (fn [c]
-                           (-> (.contents ic)
-                               (intersect c)
-                               (update-var (extract-var c)))))
-          new-tail (either (= (.tail-c c) bottom-type)
-                           (intersect ic (.tail-c c)))]
-      (cond (= (.contents ic) bottom-type)
-            (.tail-c list-constraint bottom-type)
-
-            (either (or (some new-items (partial = bottom-type))
-                        (cond (= (.tail-c c) bottom-type)
-                              nothing
-                              (= new-tail bottom-type)))
-                    (-> c
-                        (.items new-items)
-                        (.tail-c new-tail))))))
-
   (intersect-list [c lc]
     (assert (instance? ListConstraint lc))
 
@@ -2984,25 +2914,6 @@
                         (.items new-items)
                         (.tail-c new-tail))))))
 
-  (intersect-inner [c ic]
-    (let [new-items (map (.items c)
-                         (fn [c]
-                           (-> (.contents ic)
-                               (intersect c)
-                               (update-var (extract-var c)))))
-          new-tail (either (= (.tail-c c) bottom-type)
-                           (intersect ic (.tail-c c)))]
-      (cond (= (.contents ic) bottom-type)
-            (.tail-c vect-constraint bottom-type)
-
-            (either (or (some new-items (partial = bottom-type))
-                        (cond (= (.tail-c c) bottom-type)
-                              nothing
-                              (= new-tail bottom-type)))
-                    (-> c
-                        (.items new-items)
-                        (.tail-c new-tail))))))
-
   (intersect-vector [c vc]
     (assert (instance? VectorConstraint vc))
 
@@ -3084,11 +2995,6 @@
       (either (= bottom-type contents)
               (.contents x contents))))
 
-  (intersect-inner [x y]
-    (let [contents (intersect (.contents x) (.contents y))]
-      (either (= bottom-type contents)
-              (.contents x contents))))
-
   (intersect-maybe [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
@@ -3116,11 +3022,6 @@
       (either (= bottom-type contents)
               (.contents x contents))))
 
-  (intersect-inner [x y]
-    (let [contents (intersect (.contents x) (.contents y))]
-      (either (= bottom-type contents)
-              (.contents x contents))))
-
   (intersect-promise [y x]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
@@ -3144,11 +3045,6 @@
 
   ConstraintOps
   (intersect-coll-of [x y]
-    (let [contents (intersect (.contents x) (.contents y))]
-      (either (= bottom-type contents)
-              (.contents x contents))))
-
-  (intersect-inner [x y]
     (let [contents (intersect (.contents x) (.contents y))]
       (either (= bottom-type contents)
               (.contents x contents))))
@@ -3181,8 +3077,7 @@
           (intersect y x)
 
           (and (or (= y top-type)
-                   (instance? CollectionOf y)
-                   (instance? InferredInner y)))
+                   (instance? CollectionOf y)))
           x
 
           (= y bottom-type)
@@ -3194,9 +3089,6 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
-  (intersect-inner [fc _]
-    fc)
-
   (intersect-coll-of [fc _]
     fc))
 
@@ -3385,10 +3277,7 @@
             (NoValues [c (required-field fld)])))
 
   (intersect-coll-of [c cc]
-    (NoValues [c cc]))
-
-  (intersect-inner [c _]
-    c))
+    (NoValues [c cc])))
 
 (defn core-containers [c]
   (cata (fn [inner-c]
@@ -3409,78 +3298,6 @@
                         promise-constraint
                         maybe-constraint]
                        empty-list no-symbol "")))
-
-(extend-type InferredInner
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (-> (.contents x)
-        f
-        (map (partial .contents x))))
-
-  Eq
-  (=* [x y]
-    (=-inferred-inner y x))
-
-  Constraint
-  (old-extract-items-constraints [c n]
-    (vec (repeat n (.contents c))))
-
-  (satisfied-by [c coll-info]
-    (assert-result r (instance? (maybe-of ValueConstraint) r))
-
-    (and (or (and (= (.contents c) top-type)
-                  (satisfied-by (core-containers c) coll-info))
-             (satisfied-by (.contents c) (extract-contents-constraint coll-info)))
-         (maybe coll-info)))
-
-  (coll-constraint [c]
-    (RecurseFinal (CollectionOf (.contents c) (.path c) (.sym c) (extract-var c))))
-
-  (contents-constraint [c]
-    (RecurseFinal (.contents c)))
-
-  (intersect [ic c]
-    (intersect-inner c ic))
-
-  ConstraintOps
-  (intersect-reified-val [c rc]
-    ;; TODO: insufficient for type checking calls to 'map' etc.
-    rc)
-
-  (intersect-vector [c vect-c]
-    (intersect-inner vect-c c))
-
-  (intersect-list [c vect-c]
-    (intersect-inner vect-c c))
-
-  (intersect-str [c str-c]
-    (intersect-inner str-c c))
-
-  (intersect-promise [c promise-c]
-    (intersect-inner promise-c c))
-
-  (intersect-agent [c agent-c]
-    (intersect-inner agent-c c))
-
-  (intersect-maybe [c maybe-c]
-    (intersect-inner maybe-c c))
-
-  (intersect-coll-of [c cc]
-    (let [new-inner (intersect (.contents cc) (.contents c))]
-      (either (= new-inner bottom-type)
-              (.contents cc new-inner))))
-
-  (=-inferred-inner [y x]
-    (and (= (.contents x) (.contents y))
-         (maybe x)))
-
-  (intersect-inner [c ic]
-    (let [new-c (intersect (.contents ic) (.contents c))]
-      (either (= new-c bottom-type)
-              (.contents ic new-c)))))
 
 (extend-type CollectionOf
   Container
@@ -3544,11 +3361,6 @@
 
   (intersect-agent [c agent-c]
     (intersect-coll-of agent-c c))
-
-  (intersect-inner [c ic]
-    (let [new-c (intersect (.contents c) (.contents ic))]
-      (either (= new-c bottom-type)
-              (.contents c new-c))))
 
   (intersect-coll-of [c cc]
     (let [new-cs (intersect (.contents cc) (.contents c))]
@@ -4054,9 +3866,9 @@
                 (or (= (.sym c1) no-symbol)
                     (= (.sym c2) no-symbol))
                 (do
-                  (print-err 'kablooie _FILE_ _LINE_)
-                  (print-err 'c1 c1)
-                  (print-err 'c2 c2)
+                  ;; (print-err 'kablooie _FILE_ _LINE_)
+                  ;; (print-err 'c1 c1)
+                  ;; (print-err 'c2 c2)
                   ;; (abort)
                   top-type)
 
@@ -4340,6 +4152,8 @@
                                                                                  (replace-path seq-constraint
                                                                                                (.path mod)))
 
+                                                                      ;; TODO: this is wrong. FirstOf, et al. can be
+                                                                      ;; called on strings
                                                                       (intersect c (replace-path seq-constraint
                                                                                                  (.path mod))))
 
