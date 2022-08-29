@@ -78,11 +78,11 @@
   (string-list [_]
     (list "c/no-symbol"))
 
-    Eq
-    (=* [x y]
-      (or (instance? Symbol y)
-          (and (= (get-type x) (get-type y))
-               (maybe x)))))
+  Eq
+  (=* [x y]
+    (or (instance? Symbol y)
+        (and (= (get-type x) (get-type y))
+             (maybe x)))))
 
 (def no-symbol (NoSymbol))
 ;; (def no-symbol
@@ -641,17 +641,33 @@
 
   Container
   (map [x f]
-    (.param-sym x (f param-sym)))
+    (cond (instance? TypeSym param-sym)
+          x
+
+          (.param-sym x (f param-sym))))
 
   (map [x f embed]
-    (map (f param-sym)
-         (partial .param-sym x)))
+    (cond (instance? TypeSym param-sym)
+          (embed x)
+
+          (map (f param-sym)
+               (partial .param-sym x))))
 
   Constraint
+  (intersect [c1 c2]
+    (let [inner-c (extract-contents-constraint c2)]
+      (cond (and (= bottom-type inner-c)
+                 (empty? (.constraints inner-c)))
+            top-type
+
+            inner-c)))
+
   (show-full [c]
     (format-path c 0))
 
-  (is-bottom [c] c)
+  (is-bottom [c]
+    (either (= bottom-type param-sym)
+            c))
 
   (assertion-path [_] path)
 
@@ -1828,7 +1844,7 @@
                                       (symbol "Can not contain other values")
                                       (.arities fn-constraint {}) empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
-(def inner-type-of-constraint (InnerTypeOfConstraint 'no-sym empty-list no-symbol ""))
+(def inner-type-of-constraint (InnerTypeOfConstraint no-symbol empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
 (def seq-constraint (SumConstraint [vect-constraint list-constraint]
@@ -3563,50 +3579,6 @@
   (intersect-reified-val [c rc]
     (intersect c rc)))
 
-(deftype GetInnerType [path]
-  Stringable
-  (string-list [_]
-    (list "(c/GetInnerType empty-list)"))
-
-  Eq
-  (=* [x y]
-    (and (instance? GetInnerType y)
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x))
-
-  Constraint
-  (is-bottom [c]
-    c)
-
-  (assertion-path [_] path)
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Inner type required from" ""] path)
-                  desired-len))
-
-  (show-full [c]
-    (list "GetInnerType"))
-
-  (update-sym [c _]
-    c)
-
-  (contents-constraint [_]
-    (RecurseFinal top-type))
-
-  (intersect [c1 c2]
-    (let [inner-c (extract-contents-constraint c2)]
-      (cond (and (= bottom-type inner-c)
-                 (empty? (.constraints inner-c)))
-            top-type
-
-            inner-c))))
-
 (deftype SetField [fld fld-c]
   Eq
   (=* [x y]
@@ -3807,7 +3779,6 @@
 (def TypeOps (any-of ModSeqType
                      CallValue
                      InnerTypeOfConstraint
-                     GetInnerType
                      SetField
                      GetField
                      ArgOf
@@ -3965,7 +3936,6 @@
 
           (or (instance? CoreValConstraint c2)
               (instance? GetField c2)
-              (instance? GetInnerType c2)
               (instance? FnMeta c2)
               (instance? CallValue c2))
           (NoValues [c1 c2])
@@ -4069,35 +4039,6 @@
     (let [new-fn (intersect-fn y (.invoke-fn x))]
       (either (= bottom-type new-fn)
               x))))
-
-(extend-type GetInnerType
-  ConstraintOps
-  (set-collection-type [c tc]
-    top-type)
-
-  (intersect-sum [c sum-c]
-    (extract-contents-constraint sum-c))
-
-  (intersect-maybe [c maybe-c]
-    (extract-contents-constraint maybe-c))
-
-  (intersect-hash-map [c hm-c]
-    (extract-contents-constraint hm-c))
-
-  (intersect-agent [c agent-c]
-    (extract-contents-constraint agent-c))
-
-  (intersect-promise [c promise-c]
-    (extract-contents-constraint promise-c))
-
-  (intersect-str [c str-c]
-    (extract-contents-constraint str-c))
-
-  (intersect-vector [c vect-c]
-    (extract-contents-constraint vect-c))
-
-  (intersect-list [c list-c]
-    (extract-contents-constraint list-c)))
 
 (extend-type AllValues
   Constraint
@@ -4426,7 +4367,7 @@
         get-type-num))
 
   (contents-constraint [c]
-    (RecurseFinal (mod-param c (GetInnerType empty-list)))))
+    (RecurseFinal (mod-param c inner-type-of-constraint))))
 
 (extend-type TypeOfConstraint
   Constraint
@@ -4434,22 +4375,6 @@
     (cond (or (=* c1 c2)
               (instance? AllValues c2))
           c1
-
-          (or (instance? DebugConstraint c2)
-              (instance? SumConstraint c2))
-          (intersect c2 c1)
-
-          (NoValues [c1 c2]))))
-
-(extend-type InnerTypeOfConstraint
-  Constraint
-  (intersect [c1 c2]
-    (cond (or (=* c1 c2)
-              (instance? AllValues c2))
-          c1
-
-          (instance? ComputedConstraint c2)
-          (mod-param c2 (GetInnerType (.path c1)))
 
           (or (instance? DebugConstraint c2)
               (instance? SumConstraint c2))
