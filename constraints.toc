@@ -2168,6 +2168,9 @@
     (set-collection-type other-c c))
 
   ConstraintOps
+  (intersect-str [c sc]
+    (set-collection-type sc c))
+
   (intersect-vector [c vc]
     (set-collection-type vc c))
 
@@ -3683,6 +3686,9 @@
     (RecurseFinal (NoValues [c not-container])))
 
   ConstraintOps
+  (intersect-list [c lc]
+    (extract-field lc fld))
+
   (intersect-call-value [c2 c1]
     (NoValues [c1 c2]))
 
