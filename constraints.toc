@@ -1178,7 +1178,7 @@
 
   Constraint
   (is-bottom [c]
-    (either (or (= bottom-type param-consts)
+    (either (or (= bottom-type (is-bottom param-consts))
                 (= bottom-type result-const))
             c))
 
@@ -2162,21 +2162,6 @@
                                (format-path 0))))
    nothing))
 
-(extend-type ModSeqType
-  Constraint
-  (intersect [c other-c]
-    (set-collection-type other-c c))
-
-  ConstraintOps
-  (intersect-str [c sc]
-    (set-collection-type sc c))
-
-  (intersect-vector [c vc]
-    (set-collection-type vc c))
-
-  (intersect-list [c vc]
-    (set-collection-type vc c)))
-
 (extend-type Vector
   Constraint
   (trim [v]
@@ -2589,6 +2574,38 @@
 
   (intersect-reified-val [hmc rc]
     (intersect-hash-map rc hmc)))
+
+(extend-type ModSeqType
+  Constraint
+  (intersect [c other-c]
+    (set-collection-type other-c c))
+
+  ConstraintOps
+  (intersect-str [c sc]
+    (set-collection-type sc c))
+
+  (intersect-vector [c vc]
+    (set-collection-type vc c))
+
+  (intersect-list [c vc]
+    (set-collection-type vc c)))
+
+(extend-type InnerTypeOfConstraint
+  ConstraintOps
+  (intersect-fn [c fc]
+    (intersect c fc))
+
+  (intersect-hash-map [c mc]
+    (intersect c mc))
+
+  (intersect-maybe [c mc]
+    (intersect c mc))
+
+  (intersect-list [c lc]
+    (intersect c lc))
+
+  (intersect-vector [c vc]
+    (intersect c vc)))
 
 (extend-type ListConstraint
   Container
@@ -3687,6 +3704,9 @@
 
   ConstraintOps
   (intersect-list [c lc]
+    (extract-field lc fld))
+
+  (intersect-vector [c lc]
     (extract-field lc fld))
 
   (intersect-call-value [c2 c1]
