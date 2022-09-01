@@ -1278,7 +1278,8 @@
             c))
 
   (show-full [c]
-    (list (str "Type: " type-sym)))
+    (cons (str "Type: " type-sym)
+          (show-full invoke-fn)))
 
   (get-type-sym [c]
     type-sym)
@@ -1292,7 +1293,7 @@
   (assertion-path [_] path)
 
   (format-path [x desired-len]
-    (format-path* (cons [(str type-sym "' from") ""]
+    (format-path* (cons [(str "'" type-sym "' from") ""]
                         path)
                   desired-len)))
 
@@ -3313,7 +3314,7 @@
             (NoValues [c (required-field fld)])))
 
   (intersect-coll-of [c cc]
-    (NoValues [c cc])))
+    top-type))
 
 (defn core-containers [c]
   (cata (fn [inner-c]
@@ -3378,7 +3379,7 @@
     (intersect c fn-c))
 
   (intersect-reified-val [c rc]
-    (NoValues [c rc]))
+    top-type)
 
   (intersect-vector [c vect-c]
     (intersect-coll-of vect-c c))
