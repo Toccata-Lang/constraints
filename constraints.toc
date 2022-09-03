@@ -165,15 +165,6 @@
   (contents-constraint [_]
     (assert-result r (instance? RecurseNext r)))
 
-  (collection-of [_]
-    ;; extract CollectionOf constraint
-    )
-
-  (coll-constraint [_]
-    ;; extract the CollectionOf constraints
-    ;; returns either an AllValues or CollectionOf constraint
-    )
-
   (intersect [c1 c2])
 
   (format-path [x n]
@@ -219,13 +210,6 @@
     (assert-result r (instance? Maybe r))
 
     nothing))
-
-;; (defn extract-collection-of [c]
-;;   (let [x (old-extract-collection-of c)
-;;         y (cata collection-of c)]
-;;     (or (= x y)
-;;         (maybe (print-err 'diff-coll-of c "\n\n" x "\n\n" y)))
-;;     y))
 
 (deftype Field [sym]
   (assert (instance? Symbol sym))
@@ -274,12 +258,6 @@
   (cata (fn [c]
           (set-type-name c new-name))
         c))
-
-(defn extract-collection-of [c]
-  (elgot collection-of trim c))
-
-(defn extract-coll-constraint [c]
-  (elgot coll-constraint trim c))
 
 (defn extract-contents-constraint [c]
   (apo (fn [c]
@@ -373,6 +351,9 @@
     (embed x))
 
   Constraint
+  (contents-constraint [c]
+    (RecurseFinal c))
+
   (is-bottom [c] c)
 
   (show-full [c]
@@ -408,6 +389,7 @@
                        (str "(maybe '" s ")"))))
           "nothing"))
 
+;; TODO: replace CollectionOf with a 'contents' field on ReifiedConstraint
 (deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? TypeSym sym))
@@ -1508,6 +1490,10 @@
           ")"))
 
   Constraint
+  (contents-constraint [c]
+    (RecurseFinal (ComputedConstraint [c (InnerTypeOfConstraint no-symbol empty-list no-symbol "")]
+                                      [] (.path c) (.sym c) (.var c))))
+
   (is-bottom [c]
     c)
 
@@ -1616,10 +1602,7 @@
 
   (format-path [x desired-len]
     (format-path* (cons [(str "Operate on seq with " op ":") ""] (.path x))
-                  desired-len))
-
-  (contents-constraint [c]
-    (RecurseFinal top-type)))
+                  desired-len)))
 
 (deftype ArgOf [fn-sym arg-position path sym var]
   (assert (instance? Symbol fn-sym))
@@ -1807,7 +1790,7 @@
 
 (def bottom-type (NoValues []))
 (def empty-list-constraint (ListConstraint [] bottom-type empty-list no-symbol ""))
-(def empty-vector-constraint (VectorConstraint [] bottom-type empty-list no-symbol ""))
+(def empty-vect-constraint (VectorConstraint [] bottom-type empty-list no-symbol ""))
 
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
 (def fn-constraint (FnConstraint {variadic (fn-arity (symbol "") list-constraint top-type)
@@ -1985,8 +1968,8 @@
           c
           (.path c (cons [file line] (.path c)))))
 
-  (contents-constraint [_]
-    (RecurseFinal top-type))
+  ;; (contents-constraint [_]
+  ;;   (RecurseFinal top-type))
 
     ;; TODO: these two impls are totally bogus
   (assertion-path [_]
@@ -2177,16 +2160,14 @@
   ;;   (embed x))
 
   Constraint
-  (coll-constraint [x]
-    (collection-of x))
-
   (old-extract-items-constraints [c n]
     (-> (extract-items-constraints c)
         (comp (repeat n top-type))
         (take n)))
 
-  (contents-constraint [_]
-    (RecurseFinal top-type)))
+  ;; (contents-constraint [_]
+  ;;   (RecurseFinal top-type))
+  )
 
 (extend-type NoValues
   ;; TODO: this is wrong and in the wrong place
@@ -2200,9 +2181,6 @@
   ;;       (map (partial .constraints x))))
 
   Constraint
-  (collection-of [x]
-    (RecurseFinal x))
-
   (contents-constraint [c]
     (RecurseFinal c))
 
@@ -2223,10 +2201,6 @@
   (set-collection-type [c tc] c))
 
 (extend-type AllValues
-  Constraint
-  (collection-of [x]
-    (RecurseFinal x))
-
   ConstraintOps
   (intersect-call-value [c _] c)
   (intersect-str [_ c] c)
@@ -2268,9 +2242,6 @@
 
   (update-sym [tc new-sym]
     (.sym tc new-sym))
-
-  (collection-of [x]
-    (RecurseWith top-type))
 
   (extract-var [c]
     (.var c))
@@ -2408,7 +2379,7 @@
         (.items (map (vec s) (partial .static-value substr-constraint)))))
 
   (str-to-vect [s]
-    (-> empty-vector-constraint
+    (-> empty-vect-constraint
         (.items (map (vec s) (partial .static-value substr-constraint)))))
   
   (first-of-str [s]
@@ -2455,6 +2426,16 @@
 
 (extend-type StrConstraint
   Constraint
+  (contents-constraint [c]
+    (RecurseFinal (cond (= (.static-value c) no-string)
+                        c
+
+                        (-> (.static-value c)
+                            (reduce [] conj)
+                            (map (partial .static-value c))
+                            sum-type
+                            (replace-path (.path c))))))
+
   (show-full [c]
     (format-path c 0))
 
@@ -2492,7 +2473,8 @@
             top-type)))
 
   (intersect-coll-of [str-c c]
-    (intersect-str (.contents c) strbuff-constraint))
+    ;; TODO: need a way to specify the contents of a string can be limited to a set of chars
+    string-constraint)
 
   (intersect-str [y x]
     (either (map (or (= (.static-value x) (.static-value y))
@@ -2536,6 +2518,10 @@
 
 
   Constraint
+  (contents-constraint [_]
+    ;; TODO: inadequate
+    (RecurseFinal top-type))
+
   (intersect [x y]
     (intersect-hash-map y x))
 
@@ -2593,6 +2579,9 @@
 
 (extend-type InnerTypeOfConstraint
   ConstraintOps
+  (intersect-str [c sc]
+    (intersect c sc))
+
   (intersect-fn [c fc]
     (intersect c fc))
 
@@ -2649,9 +2638,10 @@
 
   (contents-constraint [c]
     (RecurseFinal (-> (.items c)
-              (conj (either (= bottom-type (.tail-c c))
-                            (extract-contents-constraint (.tail-c c))))
-              sum-type)))
+                      (conj (either (= bottom-type (.tail-c c))
+                                    ;; TODO: shouldn't need this call
+                                    (extract-contents-constraint (.tail-c c))))
+                      sum-type)))
 
   ConstraintOps
   ;; TODO: will probably need this
@@ -2855,6 +2845,7 @@
   (contents-constraint [c]
     (RecurseFinal (-> (.items c)
               (conj (either (= bottom-type (.tail-c c))
+                            ;; TODO: shouldn't need this call to extract-contents-constraint
                             (extract-contents-constraint (.tail-c c))))
               sum-type)))
 
@@ -3351,9 +3342,6 @@
     (=-contentsc y x))
 
   Constraint
-  (coll-constraint [c]
-    (RecurseFinal c))
-
   (satisfied-by [c coll-info]
     (assert-result r (instance? (maybe-of ValueConstraint) r))
 
@@ -3364,9 +3352,6 @@
 
   (contents-constraint [c]
     (RecurseFinal (.contents c)))
-
-  (collection-of [x]
-    (RecurseFinal x))
 
   (old-extract-items-constraints [c n]
     (vec (repeat n (.contents c))))
@@ -3979,7 +3964,12 @@
     (intersect-fn y x))
 
   (contents-constraint [c]
-    (RecurseFinal (NoValues [c not-container])))
+    (-> (.arities c)
+        vals
+        vec
+        (map .result-const)
+        sum-type
+        RecurseFinal))
 
   ConstraintOps
   (intersect-call-value [c cvc]
@@ -4089,6 +4079,9 @@
                                                                   ;; (print-err 'boomity _FILE_ _LINE_
                                                                   ;;            "\n" outer-c)
                                                                   (full-param-constraint mod))
+
+                                                                ;; TODO: account for InnerTypeOf
+                                                                ;; and CollectionOf
 
                                                                 (instance? SetField mod)
                                                                 (ReifiedConstraint
