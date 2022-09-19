@@ -862,7 +862,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ListConstraint " (str items) " "
+    (list "(c/ListConstraint " (str items) "\n"
           (str tail-c)
           " "
           "empty-list "
@@ -970,7 +970,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/MaybeConstraint " (str contents) " "
+    (list "(c/MaybeConstraint " (str contents) "\n"
           "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
@@ -1189,7 +1189,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/FnConstraint " (str arities) " "
+    (list "(c/FnConstraint\n" (str arities) "\n"
           "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
@@ -1488,7 +1488,7 @@
   Stringable
   (string-list [_]
     (list "(c/ParamConstraint " (str "'" arity) " " (str param-index)
-           "empty-list"
+          " empty-list"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
@@ -1734,7 +1734,7 @@
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
-    (list "(c/NoValues\n[" (to-str (interpose constraints "\n")) "])"))
+    (list "(c/NoValues [" (to-str (interpose constraints "\n")) "])"))
 
   Container
   (map [x f]
