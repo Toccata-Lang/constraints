@@ -621,7 +621,8 @@
   Eq
   (=* [x y]
     (and (instance? InnerTypeOfConstraint y)
-         (= param-sym (.param-sym y))
+         (or (= param-sym (.param-sym y))
+             (= (.param-sym y) param-sym))
          (maybe x)))
 
   Container
@@ -862,7 +863,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ListConstraint " (str items) "\n"
+    (list "(c/ListConstraint [\n" (to-str (interpose items "\n")) "]\n"
           (str tail-c)
           " "
           "empty-list "
@@ -924,7 +925,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/VectorConstraint " (str items) " "
+    (list "(c/VectorConstraint [" (to-str (interpose items "\n")) "]\n"
           (str tail-c)
           " "
           "empty-list "
@@ -1124,7 +1125,7 @@
                        Variadic))
 
 (deftype fn-arity [arity-id param-consts result-const]
-  (assert (instance? Symbol arity-id))
+  (assert (instance? TypeSym arity-id))
   (assert (instance? ListConstraint param-consts))
   ;; TODO: need recursive types
   ;; (assert (instance? ValueConstraint result-const))
@@ -1423,7 +1424,7 @@
   Stringable
   (string-list [_]
     (list "(c/ComputedConstraint "
-          "\n[" (to-str (interpose mods "\n\n"))
+          "\n[" (to-str (interpose mods "\n"))
           "]\n []"
            " empty-list"
           ;; (str " " (cons 'list path))
@@ -1798,34 +1799,34 @@
 (def empty-vect-constraint (VectorConstraint [] bottom-type empty-list no-symbol ""))
 
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
-(def fn-constraint (FnConstraint {variadic (fn-arity (symbol "") list-constraint top-type)
-                                  0 (fn-arity (symbol "") empty-list-constraint
+(def fn-constraint (FnConstraint {variadic (fn-arity no-symbol list-constraint top-type)
+                                  0 (fn-arity no-symbol empty-list-constraint
                                               top-type)
-                                  1 (fn-arity (symbol "") (ListConstraint (repeat 1 top-type)
+                                  1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  2 (fn-arity (symbol "") (ListConstraint (repeat 2 top-type)
+                                  2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  3 (fn-arity (symbol "") (ListConstraint (repeat 3 top-type)
+                                  3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  4 (fn-arity (symbol "") (ListConstraint (repeat 4 top-type)
+                                  4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  5 (fn-arity (symbol "") (ListConstraint (repeat 5 top-type)
+                                  5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  6 (fn-arity (symbol "") (ListConstraint (repeat 6 top-type)
+                                  6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  7 (fn-arity (symbol "") (ListConstraint (repeat 7 top-type)
+                                  7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  8 (fn-arity (symbol "") (ListConstraint (repeat 8 top-type)
+                                  8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)
-                                  9 (fn-arity (symbol "") (ListConstraint (repeat 9 top-type)
+                                  9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
                                                                           bottom-type empty-list no-symbol "")
                                               top-type)}
                                  empty-list no-symbol ""))
@@ -4137,12 +4138,12 @@
                                                        (either (map (= (.args mod) no-args)
                                                                     (fn [_]
                                                                       (FnConstraint
-                                                                       {variadic (fn-arity (symbol "")
+                                                                       {variadic (fn-arity no-symbol
                                                                                            list-constraint
                                                                                            c)}
                                                                        empty-list no-symbol "")))
                                                                (FnConstraint {(count (.args mod))
-                                                                              (fn-arity (symbol "")
+                                                                              (fn-arity no-symbol
                                                                                         (.items list-constraint
                                                                                                 (.args mod))
                                                                                         c)}
