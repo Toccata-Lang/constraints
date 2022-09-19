@@ -397,11 +397,14 @@
 
   Stringable
   (string-list [_]
-    (list "(c/CollectionOf\n" (str contents) " (list "
+    (list "(c/CollectionOf\n" (str contents)
+          " empty-list "
+          ;; " (list "
           ;; (either (map (first path) (fn [[f l]]
           ;;                             (str "[\"" f "\" " l "]")))
           ;;         "")
-          ") " (sym-str sym) " \"" (str var) "\")"))
+          ;; ") "
+          (sym-str sym) " \"" (str var) "\")"))
 
   Constraint
   (is-bottom [c]
@@ -494,7 +497,7 @@
   Stringable
   (string-list [_]
     (list "(c/IntegerConstraint " (str static-value) " " (str max) " " (str min) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -527,7 +530,7 @@
   Stringable
   (string-list [_]
     (list "(c/TypeOfConstraint " (sym-str param-sym)
-          " (list) "
+          " empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
@@ -564,7 +567,7 @@
   Stringable
   (string-list [_]
     (list "(c/DebugConstraint " (str constraint)
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
@@ -611,8 +614,8 @@
   Stringable
   (string-list [_]
     (list "(c/InnerTypeOfConstraint " (str "'" param-sym) " "
-          ;; "(list) "
-          (str (cons 'list path))
+          "empty-list "
+          ;; (str (cons 'list path))
           " " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -669,7 +672,7 @@
   Stringable
   (string-list [_]
     (list "(c/SymbolConstraint " (sym-str static-value) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -748,8 +751,8 @@
   (string-list [_]
     (list "(c/StrBuffConstraint " (either (map (= static-value no-string) str)
                                           (str "\"" static-value "\"")) " "
-          ;; "(list) "
-          (str (cons 'list path)) " "
+          "empty-list "
+          ;; (str (cons 'list path)) " "
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -784,8 +787,8 @@
   (string-list [_]
     (list "(c/SubStrConstraint " (either (map (= static-value no-string) str)
                                          (str "\"" static-value "\"")) " "
-          ;; "(list) "
-          (str (cons 'list path)) " "
+          "empty-list "
+          ;; (str (cons 'list path)) " "
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -820,7 +823,7 @@
   (string-list [_]
     (list "(c/HashMapConstraint " (str type-num) " " (str kv-pairs) " "
           (str keys-c) " " (str vals-c) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -862,9 +865,8 @@
     (list "(c/ListConstraint " (str items) " "
           (str tail-c)
           " "
-          ;; "(list) "
-          (str (cons 'list path))
-          " "
+          "empty-list "
+          ;; (str (cons 'list path)) " "
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -925,7 +927,7 @@
     (list "(c/VectorConstraint " (str items) " "
           (str tail-c)
           " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
@@ -969,7 +971,7 @@
   Stringable
   (string-list [_]
     (list "(c/MaybeConstraint " (str contents) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1002,7 +1004,7 @@
   Stringable
   (string-list [_]
     (list "(c/AgentConstraint " (str contents) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1033,7 +1035,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/FutureConstraint " "(list) "
+    (list "(c/FutureConstraint " "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1061,7 +1063,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/OpaqueConstraint " "(list) "
+    (list "(c/OpaqueConstraint " "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1088,7 +1090,7 @@
   Stringable
   (string-list [_]
     (list "(c/PromiseConstraint " (str contents) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1188,7 +1190,7 @@
   Stringable
   (string-list [_]
     (list "(c/FnConstraint " (str arities) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
            (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1241,7 +1243,7 @@
           (str " (symbol \"" type-sym "\")")
           "\n" (str invoke-fn)
           ;; (str (interpose (cons 'list path) " "))
-          " (list) "
+          " empty-list "
           " " (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
@@ -1296,7 +1298,7 @@
 (deftype NoFields []
   Stringable
   (string-list [_]
-    (list "<NoFields>")))
+    (list "c/no-fields")))
 
 (def no-fields (NoFields))
 
@@ -1346,11 +1348,12 @@
 
   Stringable
   (string-list [_]
-    (list (str "(c/SumConstraint\n[" (to-str (interpose alts "\n\n")) "]\n(list"
-               ;; (either (map (first path) (fn [[f l]]
+    (list (str "(c/SumConstraint\n[" (to-str (interpose alts "\n\n")) "]"
+               " empty-list "
+               ;; "\n(list" (either (map (first path) (fn [[f l]]
                ;;                             (str "[\"" f "\" " l "]")))
-               ;;         "")
-               ") " (sym-str sym) " "
+               ;;         "") ") "
+               (sym-str sym) " "
                (str "\"" var "\"") ")")))
 
   Eq
@@ -1363,8 +1366,10 @@
 
   Constraint
   (is-bottom [c]
-    ;; TODO: always choose bottom-type with non-empty constraints if possible
-    (either (some (.alts c) (partial = bottom-type))
+    (either (flat-map (every (.alts c) (partial = bottom-type))
+                      (fn [_]
+                        (some (.alts c) (fn [alt]
+                                          (< 0 (count (.constraints alt)))))))
             c))
 
   (show-full [c]
@@ -1419,9 +1424,9 @@
   (string-list [_]
     (list "(c/ComputedConstraint "
           "\n[" (to-str (interpose mods "\n\n"))
-          "]\n"
-          ;;  "(list)"
-          "[]" (str " " (cons 'list path))
+          "]\n []"
+           " empty-list"
+          ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -1483,8 +1488,8 @@
   Stringable
   (string-list [_]
     (list "(c/ParamConstraint " (str "'" arity) " " (str param-index)
-          ;;  "(list)"
-          (str " " (cons 'list path))
+           "empty-list"
+          ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -1574,7 +1579,7 @@
   Stringable
   (string-list [_]
     (list "(c/ModSeqType " (str op) " " (str "'" base-sym) " "
-          "(list) "
+          "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
@@ -1614,7 +1619,7 @@
   Stringable
   (string-list [_]
     (list "(c/ArgOf " (sym-str fn-sym) " " (str arg-position)
-          " (list)"
+          " empty-list"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
@@ -1647,7 +1652,7 @@
   Stringable
   (string-list [_]
     (list "(c/ResultOf " (sym-str fn-sym)
-          " (list)"
+          " empty-list"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
@@ -1682,8 +1687,8 @@
   Stringable
   (string-list [_]
     (list "(c/AritiesRequired " (str arity-counts)
-          ;; " (list)"
-          (str " " (cons 'list path))
+          " empty-list"
+          ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -1837,6 +1842,8 @@
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
+(def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
+                                          empty-list no-symbol ""))
 (def hash-coll-constraint (HashMapConstraint HashCollisionNodeType {} top-type top-type empty-list no-symbol ""))
 (def array-constraint (HashMapConstraint ArrayNodeType {} top-type top-type empty-list no-symbol ""))
 (def bitmap-constraint (HashMapConstraint BitmapIndexedType {} top-type top-type empty-list no-symbol ""))
@@ -1923,8 +1930,8 @@
           (either (map (= no-args args) (fn [_]
                                           "c/no-args"))
                   (str "\n[" (to-str (interpose args "\n")) "]"))
-          ;; " (list)"
-          (str " " (cons 'list path))
+          " empty-list"
+          ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
           ")"))
@@ -2427,14 +2434,14 @@
 (extend-type StrConstraint
   Constraint
   (contents-constraint [c]
-    (RecurseFinal (cond (= (.static-value c) no-string)
-                        c
-
+    (RecurseFinal (cond (instance? String (.static-value c))
                         (-> (.static-value c)
                             (reduce [] conj)
                             (map (partial .static-value c))
                             sum-type
-                            (replace-path (.path c))))))
+                            (replace-path (.path c)))
+
+                        c)))
 
   (show-full [c]
     (format-path c 0))
@@ -4066,76 +4073,86 @@
           c2)))
 
 (defn full-param-constraint [outer-c]
-  (trim (cata (fn [c]
-                (either (or (and (instance? ParamConstraint c)
-                                 (maybe top-type))
-                            (map (instance? ComputedConstraint c)
-                                 (fn [dyn-c]
-                                   (-> (.mods dyn-c)
-                                       reverse
-                                       (reduce top-type (fn [c mod]
-                                                          (cond (instance? ComputedConstraint mod)
-                                                                (do
-                                                                  ;; (print-err 'boomity _FILE_ _LINE_
-                                                                  ;;            "\n" outer-c)
-                                                                  (full-param-constraint mod))
+  (-> (fn [c]
+        (either (or (and (instance? ParamConstraint c)
+                         (maybe top-type))
+                    (map (instance? ComputedConstraint c)
+                         (fn [dyn-c]
+                           (-> (.mods dyn-c)
+                               reverse
+                               (reduce top-type
+                                       (fn [c mod]
+                                         (let [r (cond (instance? ComputedConstraint mod)
+                                                       (do
+                                                         ;; (print-err 'boomity _FILE_ _LINE_
+                                                         ;;            "\n" outer-c)
+                                                         (intersect c (full-param-constraint mod)))
 
-                                                                ;; TODO: account for InnerTypeOf
-                                                                ;; and CollectionOf
+                                                       ;; TODO: account for InnerTypeOf
+                                                       ;; and CollectionOf
 
-                                                                (instance? SetField mod)
-                                                                (ReifiedConstraint
-                                                                 UnknownType {(.fld mod) top-type}
-                                                                 (symbol (str (.fld mod)))
-                                                                 (.arities fn-constraint {}) empty-list no-symbol "")
+                                                       (instance? SetField mod)
+                                                       (ReifiedConstraint
+                                                        UnknownType {(.fld mod) top-type}
+                                                        (symbol (str (.fld mod)))
+                                                        (.arities fn-constraint {}) empty-list no-symbol "")
 
-                                                                (instance? GetField mod)
-                                                                (ReifiedConstraint
-                                                                 UnknownType {(.fld mod) c}
-                                                                 (symbol (str (.fld mod)))
-                                                                 (.arities fn-constraint {}) empty-list no-symbol "")
+                                                       (instance? GetField mod)
+                                                       (ReifiedConstraint
+                                                        UnknownType {(.fld mod) c}
+                                                        (symbol (str (.fld mod)))
+                                                        (.arities fn-constraint {}) empty-list no-symbol "")
 
-                                                                (instance? ModSeqType mod)
-                                                                ;; TODO: horrible error message with this mistake
-                                                                ;; SeqConstraint is invalid here
-                                                                ;; (intersect c (replace-path SeqConstraint
-                                                                ;;                            (.path mod)))
-                                                                (cond (instance? SeqConstraint c)
-                                                                      (-> seq-constraint
-                                                                          (set-items (.items c))
-                                                                          (set-tail (.tail-c c)))
+                                                       (instance? ModSeqType mod)
+                                                       ;; TODO: horrible error message with this mistake
+                                                       ;; SeqConstraint is invalid here
+                                                       ;; (intersect c (replace-path SeqConstraint
+                                                       ;;                            (.path mod)))
+                                                       (cond (instance? SeqConstraint c)
+                                                             (-> seq-constraint
+                                                                 (set-items (.items c))
+                                                                 (set-tail (.tail-c c)))
 
-                                                                      (and (or (= (.op mod) FirstOf)
-                                                                               (= (.op mod) LastOf))
-                                                                           (instance? MaybeConstraint c))
-                                                                      (intersect (set-tail seq-constraint
-                                                                                           (.contents c))
-                                                                                 (replace-path seq-constraint
-                                                                                               (.path mod)))
+                                                             (and (or (= (.op mod) FirstOf)
+                                                                      (= (.op mod) LastOf))
+                                                                  (instance? MaybeConstraint c))
+                                                             (cond (instance? StrConstraint (.contents c))
+                                                                   (replace-path (.contents c) (.path mod))
+                                                                   
+                                                                   (= top-type (.contents c))
+                                                                   (intersect (set-tail seq-or-str-constraint
+                                                                                        (.contents c))
+                                                                              (replace-path seq-or-str-constraint
+                                                                                            (.path mod))) 
 
-                                                                      ;; TODO: this is wrong. FirstOf, et al. can be
-                                                                      ;; called on strings
-                                                                      (intersect c (replace-path seq-constraint
-                                                                                                 (.path mod))))
+                                                                   (intersect (set-tail seq-constraint
+                                                                                        (.contents c))
+                                                                              (replace-path seq-constraint
+                                                                                            (.path mod))))
 
-                                                                (instance? CallValue mod)
-                                                                (either (map (= (.args mod) no-args)
-                                                                             (fn [_]
-                                                                               (FnConstraint
-                                                                                {variadic (fn-arity (symbol "")
-                                                                                                    list-constraint
-                                                                                                    c)}
-                                                                                empty-list no-symbol "")))
-                                                                        (FnConstraint {(count (.args mod))
-                                                                                       (fn-arity (symbol "")
-                                                                                                 (.items list-constraint
-                                                                                                         (.args mod))
-                                                                                                 c)}
-                                                                                      empty-list no-symbol ""))
+                                                             (intersect c (replace-path seq-or-str-constraint
+                                                                                        (.path mod))))
 
-                                                                (intersect mod c))))))))
-                        c))
-              outer-c)))
+                                                       (instance? CallValue mod)
+                                                       (either (map (= (.args mod) no-args)
+                                                                    (fn [_]
+                                                                      (FnConstraint
+                                                                       {variadic (fn-arity (symbol "")
+                                                                                           list-constraint
+                                                                                           c)}
+                                                                       empty-list no-symbol "")))
+                                                               (FnConstraint {(count (.args mod))
+                                                                              (fn-arity (symbol "")
+                                                                                        (.items list-constraint
+                                                                                                (.args mod))
+                                                                                        c)}
+                                                                             empty-list no-symbol ""))
+
+                                                       (intersect mod c))]
+                                           r)))))))
+                c))
+      (cata outer-c)
+      trim))
 
 (extend-type fn-arity
   Constraint
