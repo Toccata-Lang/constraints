@@ -34,6 +34,7 @@
 
 (def top-type)
 (def bottom-type)
+(def no-tail)
 
 (def always-nothing -1)
 (def never-nothing -2)
@@ -174,7 +175,7 @@
     nothing)
 
   (get-tail-constraint [c x]
-    bottom-type)
+    no-tail)
 
   (fixed-items-constraints [c x]
     (assert-result r (instance? Vector r))
@@ -642,11 +643,7 @@
   Constraint
   (intersect [c1 c2]
     (let [inner-c (extract-contents-constraint c2)]
-      (cond (and (= bottom-type inner-c)
-                 (empty? (.constraints inner-c)))
-            top-type
-
-            inner-c)))
+      inner-c))
 
   (show-full [c]
     (format-path c 0))
@@ -855,6 +852,42 @@
 
   (get-type-sym [_] 'HashMap))
 
+(deftype NoTail []
+  Stringable
+  (string-list [_]
+    (list "c/no-tail"))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x))
+
+  Constraint
+  (assertion-path [_]
+    empty-list)
+
+  (format-path [_ n]
+    (list "No Tail for sequence"))
+
+  (is-bottom [c] c)
+
+  (reify-c [c arity loc]
+    (se/state-error c))
+
+  (show-full [c]
+    (list "c/no-tail"))
+
+  (trim [c]
+    c)
+
+  Eq
+  (=* [x y]
+    (instance? NoTail y)))
+
+(def no-tail (NoTail))
+
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
@@ -863,7 +896,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ListConstraint [\n" (to-str (interpose items "\n")) "]\n"
+    (list "(c/ListConstraint [" (to-str (interpose items "\n")) "]\n"
           (str tail-c)
           " "
           "empty-list "
@@ -913,8 +946,6 @@
             vc)))
 
 ;; TODO: defining a value here using 'bottom-type' causes a bad incRef error. Must be fixed.
-;; (def empty-list-constraint (ListConstraint [] bottom-type empty-list nothing ""))
-(def empty-list-constraint)
 
 ;; TODO: add tail-items to track conj additions
 (deftype VectorConstraint [items tail-c path sym var]
@@ -963,6 +994,9 @@
     VectorType)
 
   (get-type-sym [_] 'Vector))
+
+(def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
+(def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
 
 (deftype MaybeConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
@@ -1467,6 +1501,13 @@
   (=* [x y]
     (and (instance? ComputedConstraint y)
          (= mods (.mods y))
+         ;; TODO: for debugging. Remove eventually
+         ;; (reduce (zip-lists mods (.mods y)) (maybe '_)
+         ;;         (fn [r [x y]]
+         ;;           (or (= x y)
+         ;;               (do
+         ;;                 (print-err 'x _LINE_ x "\n" 'y y)
+         ;;                 nothing))))
          (maybe x))))
 
 (defn mod-param [c mod]
@@ -1697,7 +1738,7 @@
   Eq
   (=* [x y]
     (and (instance? AritiesRequired y)
-         (= arity-counts (.arity-counts y))
+         (= (set arity-counts) (set (.arity-counts y)))
          (maybe x)))
 
   Constraint
@@ -1795,39 +1836,39 @@
              (maybe x)))))
 
 (def bottom-type (NoValues []))
-(def empty-list-constraint (ListConstraint [] bottom-type empty-list no-symbol ""))
-(def empty-vect-constraint (VectorConstraint [] bottom-type empty-list no-symbol ""))
-
 (def list-constraint (ListConstraint [] coll-of-any empty-list no-symbol ""))
+(def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
+(def seq-constraint (SumConstraint [vect-constraint list-constraint]
+                                   empty-list no-symbol ""))
 (def fn-constraint (FnConstraint {variadic (fn-arity no-symbol list-constraint top-type)
                                   0 (fn-arity no-symbol empty-list-constraint
                                               top-type)
                                   1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)
                                   9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
-                                                                          bottom-type empty-list no-symbol "")
+                                                                        no-tail empty-list no-symbol "")
                                               top-type)}
                                  empty-list no-symbol ""))
 (def not-container (ReifiedConstraint UnknownType {}
@@ -1836,9 +1877,6 @@
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
 (def inner-type-of-constraint (InnerTypeOfConstraint no-symbol empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
-(def vect-constraint (VectorConstraint [] coll-of-any empty-list no-symbol ""))
-(def seq-constraint (SumConstraint [vect-constraint list-constraint]
-                                   empty-list no-symbol ""))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
@@ -1989,6 +2027,7 @@
                   desired-len)))
 
 (def Constraints (any-of ValueConstraint
+                         NoTail
                          NoValues
                          fn-arity
                          ResultConstraint))
@@ -2635,7 +2674,7 @@
     (either (and (<= n 0)
                  (maybe []))
             (let [needed-tail-items (- n (count (.items c)))
-                  tail-items (cond (= (.tail-c c) bottom-type)
+                  tail-items (cond (= (.tail-c c) no-tail)
                                    (repeat needed-tail-items (.tail-c c))
 
                                    (-> (.tail-c c)
@@ -2646,9 +2685,11 @@
 
   (contents-constraint [c]
     (RecurseFinal (-> (.items c)
-                      (conj (either (= bottom-type (.tail-c c))
-                                    ;; TODO: shouldn't need this call
-                                    (extract-contents-constraint (.tail-c c))))
+                      (conj (cond (= no-tail (.tail-c c))
+                                  bottom-type
+
+                                  ;; TODO: shouldn't need this call
+                                  (extract-contents-constraint (.tail-c c))))
                       sum-type)))
 
   ConstraintOps
@@ -2681,7 +2722,7 @@
 
             (= op LastOf)
             (let [tail-c (extract-contents-constraint (.tail-c c))]
-              (MaybeConstraint (either (and (= bottom-type tail-c)
+              (MaybeConstraint (either (and (= no-tail tail-c)
                                             (last (.items c)))
                                        tail-c)
                                (.path c) no-symbol ""))
@@ -2690,7 +2731,7 @@
             (.items c (rest (.items c)))
 
             (= op ButLastOf)
-            (cond (= (.tail-c c) bottom-type)
+            (cond (= (.tail-c c) no-tail)
                   (.items c (butlast (.items c)))
 
                   c)
@@ -2712,15 +2753,15 @@
                                            (intersect c))]
                              (either (instance? NoValues new-c)
                                      (update-var new-c (extract-var c))))))
-          new-tail (either (= (.tail-c c) bottom-type)
+          new-tail (either (= (.tail-c c) no-tail)
                            (intersect cc (.tail-c c)))]
       (cond (= (.contents cc) bottom-type)
-            (.tail-c list-constraint bottom-type)
+            (.tail-c list-constraint no-tail)
 
             (either (or (some new-items (partial = bottom-type))
-                        (cond (= (.tail-c c) bottom-type)
+                        (cond (= (.tail-c c) no-tail)
                               nothing
-                              (= new-tail bottom-type)))
+                              (= new-tail no-tail)))
                     (-> c
                         (.items new-items)
                         (.tail-c new-tail))))))
@@ -2841,7 +2882,7 @@
     (either (and (<= n 0)
                  (maybe []))
             (let [needed-tail-items (- n (count (.items c)))
-                  tail-items (cond (= (.tail-c c) bottom-type)
+                  tail-items (cond (= (.tail-c c) no-tail)
                                    (repeat needed-tail-items (.tail-c c))
 
                                    (-> (.tail-c c)
@@ -2852,9 +2893,11 @@
 
   (contents-constraint [c]
     (RecurseFinal (-> (.items c)
-              (conj (either (= bottom-type (.tail-c c))
-                            ;; TODO: shouldn't need this call to extract-contents-constraint
-                            (extract-contents-constraint (.tail-c c))))
+                      (conj (cond (= no-tail (.tail-c c))
+                                  bottom-type
+
+                                  ;; TODO: shouldn't need this call to extract-contents-constraint
+                                  (extract-contents-constraint (.tail-c c))))
               sum-type)))
 
   ConstraintOps
@@ -2887,7 +2930,7 @@
 
             (= op LastOf)
             (let [tail-c (extract-contents-constraint (.tail-c c))]
-              (MaybeConstraint (either (and (= bottom-type tail-c)
+              (MaybeConstraint (either (and (= no-tail tail-c)
                                             (last (.items c)))
                                        tail-c)
                                (.path c) no-symbol ""))
@@ -2896,7 +2939,7 @@
             (.items c (rest (.items c)))
 
             (= op ButLastOf)
-            (cond (= (.tail-c c) bottom-type)
+            (cond (= (.tail-c c) no-tail)
                   (.items c (butlast (.items c)))
 
                   c)
@@ -2937,15 +2980,15 @@
                                            (intersect c))]
                              (either (instance? NoValues new-c)
                                      (update-var new-c (extract-var c))))))
-          new-tail (either (= (.tail-c c) bottom-type)
+          new-tail (either (= (.tail-c c) no-tail)
                            (intersect cc (.tail-c c)))]
       (cond (= (.contents cc) bottom-type)
-            (.tail-c vect-constraint bottom-type)
+            (.tail-c vect-constraint no-tail)
 
             (either (or (some new-items (partial = bottom-type))
-                        (cond (= (.tail-c c) bottom-type)
+                        (cond (= (.tail-c c) no-tail)
                               nothing
-                              (= new-tail bottom-type)))
+                              (= new-tail no-tail)))
                     (-> c
                         (.items new-items)
                         (.tail-c new-tail))))))
@@ -4420,6 +4463,64 @@
 
           (NoValues [c1 c2]))))
 
+(extend-type NoTail
+  Constraint
+  (intersect [c other]
+    (cond (or (instance? NoTail other)
+              (instance? SeqConstraint other)
+              (instance? CollectionOf other))
+          c
+
+          (NoValues [c other])))
+
+  (contents-constraint [c]
+    (RecurseFinal (NoValues [c not-container])))
+
+  ConstraintOps
+  (intersect-fn [c fn-c]
+    (intersect c fn-c))
+
+  (intersect-int [c int-c]
+    (intersect c int-c))
+
+  (intersect-promise [c promise-c]
+    (intersect c promise-c))
+
+  (intersect-agent [c agent-c]
+    (intersect c agent-c))
+
+  (intersect-sym [c sym-c]
+    (intersect c sym-c))
+
+  (intersect-hash-map [c map-c]
+    (intersect c map-c))
+
+  (intersect-list [c list-c]
+    (intersect c list-c))
+
+  (intersect-str [c vect-c]
+    (intersect c vect-c))
+
+  (intersect-vector [c vect-c]
+    (intersect c vect-c))
+
+  (intersect-maybe [c maybe-c]
+    (intersect c maybe-c))
+
+  (intersect-reified-val [c rc]
+    (intersect c rc))
+
+  (intersect-coll-of [c cc]
+    (intersect c cc))
+
+  (intersect-sum [c sum-c]
+    (let [alts (map (.alts sum-c) (partial intersect c))]
+      (either (flat-map (every alts (partial = bottom-type))
+                        (fn [_]
+                          (some alts (fn [alt]
+                                       (< 0 (count (.constraints alt)))))))
+              (.alts sum-c alts)))))
+
 (extend-type DebugConstraint
   Container
   (map [x f]
@@ -4486,7 +4587,10 @@
     (intersect c rc))
 
   (intersect-sum [c sum-c]
-    (intersect c sum-c)))
+    (intersect c sum-c))
+
+  (intersect-coll-of [c cc]
+    (intersect c cc)))
 
 (defn compose-constraints [file-name line-number x y]
   (assert (instance? Constraints x))
