@@ -1579,7 +1579,8 @@
   (=* [x y]
     (and (instance? ParamConstraint y)
          (= arity (.arity y))
-         (= param-index (.param-index y))
+         (or (= param-index (.param-index y))
+             (= (.param-index y) param-index))
          (maybe x))))
 
 (def VectFrom (reify
