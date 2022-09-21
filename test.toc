@@ -1,0 +1,8 @@
+
+;; regression tests for constraints.toc
+
+
+(add-ns c (module "constraints.toc"))
+
+(main [_]
+  (print-err 'testing-constraints))
