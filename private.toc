@@ -229,7 +229,9 @@
   Eq
   (=* [x y]
     (and (instance? IntegerConstraint y)
-         (= static-value (.static-value y))
+         (or (= static-value (.static-value y))
+             (= no-int static-value)
+             (= no-int (.static-value y)))
          (= max (.max y))
          (= min (.min y))
          (maybe x)))
@@ -257,7 +259,9 @@
   Eq
   (=* [x y]
     (and (instance? SymbolConstraint y)
-         (= static-value (.static-value y))
+         (or (= static-value (.static-value y))
+             (= no-symbol static-value)
+             (= no-symbol (.static-value y)))
          (maybe x)))
 
   Container
@@ -302,7 +306,9 @@
   Eq
   (=* [x y]
     (and (instance? StrBuffConstraint y)
-         (= static-value (.static-value y))
+         (or (= static-value (.static-value y))
+             (= no-string static-value)
+             (= no-string (.static-value y)))
          (maybe x)))
 
   Container
@@ -330,7 +336,9 @@
   Eq
   (=* [x y]
     (and (instance? SubStrConstraint y)
-         (= static-value (.static-value y))
+         (or (= static-value (.static-value y))
+             (= no-string static-value)
+             (= no-string (.static-value y)))
          (maybe x)))
 
   Container
@@ -1125,9 +1133,12 @@
                                 (.min y))
                 new-max (either (< (.max x) (.max y))
                                 (.max y))
-                new-static (or (= no-int (.static-value x) (.static-value y))
+                new-static (or (= (.static-value x) (.static-value y))
                                (flat-map (or (= (.static-value x) (.static-value y))
-                                             (= (.static-value y) (.static-value x)))
+                                             (and (= (.static-value x) no-int)
+                                                  (maybe (.static-value y)))
+                                             (and (= (.static-value y) no-int)
+                                                  (maybe (.static-value x))))
                                          (fn [new-static]
                                            (and (<= new-min new-static new-max)
                                                 (maybe new-static)))))]
@@ -1158,7 +1169,10 @@
 
           (instance? SymbolConstraint y)
           (either (map (or (= (.static-value x) (.static-value y))
-                           (= (.static-value y) (.static-value x)))
+                           (and (= (.static-value x) no-symbol)
+                                (maybe (.static-value y)))
+                           (and (= (.static-value y) no-symbol)
+                                (maybe (.static-value x))))
                        (partial .static-value x))
                   (NoValues [x y]))
 
@@ -1192,13 +1206,15 @@
 
           (instance? StrConstraint y)
           (either (map (or (= (.static-value x) (.static-value y))
-                           (= (.static-value x) no-string)
-                           (= (.static-value y) no-string))
-                 (fn [stat-val]
-                   (cond (instance? StrBuffConstraint y)
-                         (.static-value y stat-val)
+                           (and (= (.static-value x) no-string)
+                                (maybe (.static-value y)))
+                           (and (= (.static-value y) no-string)
+                                (maybe (.static-value x))))
+                       (fn [stat-val]
+                         (cond (instance? StrBuffConstraint y)
+                               (.static-value y stat-val)
 
-                         (.static-value x stat-val))))
+                               (.static-value x stat-val))))
             (NoValues [x y]))
 
           (instance? CollectionOf y)
@@ -1206,6 +1222,31 @@
                 (NoValues [x y])
 
                 x)
+
+          (NoValues [x y]))))
+
+(extend-type MaybeConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (or (instance? MaybeConstraint y)
+              (instance? CollectionOf y))
+          (let [contents (intersect (.contents x) (.contents y))]
+            (print-err 'contents _LINE_ contents
+                       "\n\n" 'x (.contents x)
+                       "\n\n" 'y (.contents y))
+            (either (= bottom-type contents)
+                    (.contents x contents)))
 
           (NoValues [x y]))))
 

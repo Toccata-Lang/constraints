@@ -14,6 +14,7 @@
 (def int-vect-2 (p/ListConstraint [c/int-constraint c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 
 (def sym-c (p/SymbolConstraint 'this-sym empty-list p/no-symbol ""))
+(def coll-of-sym (p/CollectionOf c/sym-constraint empty-list p/no-symbol ""))
 
 (def substr-c (p/SubStrConstraint "strng" empty-list p/no-symbol ""))
 (def str-c (p/StrBuffConstraint "buffr" empty-list p/no-symbol ""))
@@ -35,8 +36,8 @@
 
 (def int-or-str (p/SumConstraint [c/int-constraint c/string-constraint] empty-list p/no-symbol ""))
 
-(def maybe-str  (p/MaybeConstraint c/strbuff-constraint empty-list p/no-symbol ""))
-(def maybe-int  (p/MaybeConstraint c/substr-constraint empty-list p/no-symbol ""))
+(def maybe-str  (p/MaybeConstraint str-c empty-list p/no-symbol ""))
+(def maybe-int  (p/MaybeConstraint pos-10 empty-list p/no-symbol ""))
 (def maybe-sym  (p/MaybeConstraint sym-c empty-list p/no-symbol ""))
 
 (def param (p/ParamConstraint 'arity-1 0 empty-list p/no-symbol ""))
@@ -70,7 +71,7 @@
                        ;; c/hashmap-constraint
                        c/int-constraint
                        c/sym-constraint
-                       ;; c/maybe-constraint
+                       c/maybe-constraint
                        ;; c/set-constraint
                        ;; c/agent-constraint
                        ;; c/promise-constraint
@@ -102,9 +103,9 @@
                        int-0
                        non-0
 
-                       ;; maybe-str
-                       ;; maybe-int
-                       ;; maybe-sym
+                       maybe-str
+                       maybe-int
+                       maybe-sym
 
                        param])
 
@@ -135,15 +136,16 @@
 
         (drop-until (rest coll) pred)))
 
-(def _ (for [c1 test-constraints
-             c2 (drop-until test-constraints (partial = c1))
-             c3 (drop-until test-constraints (partial = c2))]
-         (let [c12 (test-intersect c1 c2)
-               c23 (test-intersect c2 c3)]
-           (test-intersect c12 c23))))
+;; (def _ (for [c1 test-constraints
+;;              c2 (drop-until test-constraints (partial = c1))
+;;              c3 (drop-until test-constraints (partial = c2))]
+;;          (let [c12 (test-intersect c1 c2)
+;;                c23 (test-intersect c2 c3)]
+;;            (test-intersect c12 c23))))
 
 (main [_]
-  ;; (print-err (test-intersect
-  ;;             coll-of-str
-  ;;             str-c))
+  (print-err)
+  (print-err (test-intersect
+              coll-of-sym
+              maybe-sym))
   (print-err 'testing-constraints))
