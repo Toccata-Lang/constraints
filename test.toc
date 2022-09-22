@@ -1,8 +1,98 @@
 
 ;; regression tests for constraints.toc
 
+(add-ns p (module "private.toc"))
 
-(add-ns c (module "constraints.toc"))
+(def int-list (p/ListConstraint [] p/int-constraint empty-list p/no-symbol ""))
+(def int-list-1 (p/ListConstraint [p/int-constraint] p/no-tail empty-list p/no-symbol ""))
+(def int-list-2 (p/ListConstraint [p/int-constraint p/int-constraint] p/no-tail empty-list p/no-symbol ""))
+(def coll-of-int (p/CollectionOf p/int-constraint empty-list p/no-symbol ""))
+
+(def int-vect (p/ListConstraint [] p/int-constraint empty-list p/no-symbol ""))
+(def int-vect-1 (p/ListConstraint [p/int-constraint] p/no-tail empty-list p/no-symbol ""))
+(def int-vect-2 (p/ListConstraint [p/int-constraint p/int-constraint] p/no-tail empty-list p/no-symbol ""))
+
+(def sym-c (p/SymbolConstraint 'this-sym empty-list p/no-symbol ""))
+(def substr-c (p/SubStrConstraint "strng" empty-list p/no-symbol ""))
+(def str-c (p/StrBuffConstraint "buffr" empty-list p/no-symbol ""))
+
+(def hash-coll-constraint (p/HashMapConstraint p/HashCollisionNodeType {}
+                                               p/top-type p/top-type empty-list p/no-symbol ""))
+(def array-constraint (p/HashMapConstraint p/ArrayNodeType {} p/top-type p/top-type empty-list p/no-symbol ""))
+(def bitmap-constraint (p/HashMapConstraint p/BitmapIndexedType {} p/top-type p/top-type empty-list p/no-symbol ""))
+
+(def pos-int (p/IntegerConstraint p/no-int int-max 1 empty-list p/no-symbol ""))
+(def neg-int (p/IntegerConstraint p/no-int -1 int-min empty-list p/no-symbol ""))
+(def pos-1 (p/IntegerConstraint 1 int-max int-min empty-list p/no-symbol ""))
+(def pos-10 (p/IntegerConstraint 10 int-max int-min empty-list p/no-symbol ""))
+(def neg-1 (p/IntegerConstraint -1 int-max int-min empty-list p/no-symbol ""))
+(def neg-10 (p/IntegerConstraint -10 int-max int-min empty-list p/no-symbol ""))
+
+(def maybe-str  (p/MaybeConstraint p/strbuff-constraint empty-list p/no-symbol ""))
+(def maybe-int  (p/MaybeConstraint p/substr-constraint empty-list p/no-symbol ""))
+(def maybe-sym  (p/MaybeConstraint sym-c empty-list p/no-symbol ""))
+
+;; (def agent-constraint (AgentConstraint top-type empty-list p/no-symbol ""))
+;; (def promise-constraint (PromiseConstraint top-type empty-list p/no-symbol ""))
+;; (def future-constraint (FutureConstraint empty-list p/no-symbol ""))
+;; (def opaque-constraint (OpaqueConstraint empty-list p/no-symbol ""))
+;; (def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity (.arities fn-constraint {})
+;;                                          empty-list p/no-symbol ""))
+
+(def constraints [p/top-type
+                  p/bottom-type
+                  p/empty-list-constraint
+                  p/empty-vect-constraint
+                  p/coll-of-any
+                  p/list-constraint
+                  p/vect-constraint
+                  p/seq-constraint
+                  p/fn-constraint
+                  p/not-container
+                  p/type-of-constraint
+                  p/inner-type-of-constraint
+                  p/sym-constraint
+                  p/substr-constraint
+                  p/strbuff-constraint
+                  p/string-constraint
+                  p/seq-or-str-constraint
+                  p/hash-coll-constraint
+                  p/array-constraint
+                  p/bitmap-constraint
+                  p/hashmap-constraint
+                  p/int-constraint
+                  p/maybe-constraint
+                  p/set-constraint
+                  p/agent-constraint
+                  p/promise-constraint
+                  p/future-constraint
+                  p/opaque-constraint
+                  p/arity-constraint
+
+                  int-list
+                  int-list-1
+                  int-list-2
+                  coll-of-int
+
+                  int-vect
+                  int-vect-1
+                  int-vect-2
+
+                  sym-c
+                  substr-c
+                  str-c
+
+                  pos-int
+                  neg-int
+                  pos-1
+                  pos-10
+                  neg-1
+                  neg-10
+
+                  maybe-str
+                  maybe-int
+                  maybe-sym
+                  ])
 
 (main [_]
   (print-err 'testing-constraints))
