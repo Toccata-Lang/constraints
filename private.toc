@@ -340,6 +340,9 @@
   (map [x f embed]
     (embed x)))
 
+(def StrConstraint (any-of StrBuffConstraint
+                           SubStrConstraint))
+
 ;; container types
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
@@ -681,6 +684,37 @@
           (.fields new-fields)
           (.invoke-fn new-invoke)))))
 
+;; type attributes
+(deftype CollectionOf [contents path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? TypeSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/CollectionOf\n" (str contents)
+          "\nempty-list "
+          ;; " (list "
+          ;; (either (map (first path) (fn [[f l]]
+          ;;                             (str "[\"" f "\" " l "]")))
+          ;;         "")
+          ;; ") "
+          (sym-str sym) " \"" (str var) "\")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? CollectionOf y)
+         (= contents (.contents y))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
+  (map [x f embed]
+    (-> (.contents x)
+        f
+        (map (partial .contents x)))))
 
 ;; sum type
 (deftype SumConstraint [alts path sym var]
@@ -716,38 +750,6 @@
     (-> (.alts x)
         (map f embed)
         (map (partial .alts x)))))
-
-;; type attributes
-(deftype CollectionOf [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/CollectionOf\n" (str contents)
-          "\nempty-list "
-          ;; " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ;; ") "
-          (sym-str sym) " \"" (str var) "\")"))
-
-  Eq
-  (=* [x y]
-    (and (instance? CollectionOf y)
-         (= contents (.contents y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (-> (.contents x)
-        f
-        (map (partial .contents x)))))
 
 ;; computed types
 (deftype ComputedConstraint [mods path sym var]
@@ -1054,6 +1056,33 @@
 
 (def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
+(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
+(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
+(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
+                                      empty-list no-symbol ""))
+
+(defn sum-type [const-cs]
+  (assert (instance? Vector const-cs))
+
+  (either (or (flat-map (every const-cs (partial = bottom-type))
+                        (fn [_]
+                          (first const-cs)))
+              (let [const-cs (remove const-cs (partial = bottom-type))]
+                (or (and (= 1 (count const-cs))
+                         (first const-cs))
+                    (and (empty? const-cs)
+                         (maybe top-type))
+                    (some const-cs (partial = top-type))
+                    (apply = const-cs)
+                    (and (every const-cs (partial instance? CollectionOf))
+                         (-> const-cs
+                             (map .contents)
+                             sum-type
+                             (CollectionOf empty-list no-symbol "")
+                             maybe))
+                    (and (< 1 (count const-cs))
+                         (maybe (SumConstraint const-cs empty-list no-symbol ""))))))
+          top-type))
 
 (defprotocol Constraint
   (intersect [c1 c2]
@@ -1113,6 +1142,73 @@
 
           (NoValues [x y]))))
 
+(extend-type SymbolConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? SymbolConstraint y)
+          (either (map (or (= (.static-value x) (.static-value y))
+                           (= (.static-value y) (.static-value x)))
+                       (partial .static-value x))
+                  (NoValues [x y]))
+
+          (NoValues [x y]))))
+
+(defn str-inner [sc]
+  (assert (instance? StrConstraint sc))
+
+  (cond (= (.static-value sc) no-string)
+        string-constraint
+
+        (-> (.static-value sc)
+            vec
+            (map (fn [c]
+                   (StrBuffConstraint c empty-list no-symbol "")))
+            sum-type)))
+
+(extend-type StrConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? StrConstraint y)
+          (either (map (or (= (.static-value x) (.static-value y))
+                           (= (.static-value x) no-string)
+                           (= (.static-value y) no-string))
+                 (fn [stat-val]
+                   (cond (instance? StrBuffConstraint y)
+                         (.static-value y stat-val)
+
+                         (.static-value x stat-val))))
+            (NoValues [x y]))
+
+          (instance? CollectionOf y)
+          (cond (= (intersect (str-inner x) (.contents y)) bottom-type)
+                (NoValues [x y])
+
+                x)
+
+          (NoValues [x y]))))
+
 (extend-type SumConstraint
   Constraint
   (intersect [x y]
@@ -1151,6 +1247,23 @@
                         (and (= (count goods) 1)
                              (first goods)))
                     (.alts x goods))))))
+
+(extend-type CollectionOf
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? CollectionOf y)
+          (let [new-cs (intersect (.contents y) (.contents x))]
+            (either (or (= new-cs bottom-type)
+                        (= x y))
+                    (.contents y new-cs)))
+
+          (intersect y x))))
 
 (extend-type ComputedConstraint
   Constraint

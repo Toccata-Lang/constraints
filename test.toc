@@ -14,8 +14,10 @@
 (def int-vect-2 (p/ListConstraint [c/int-constraint c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 
 (def sym-c (p/SymbolConstraint 'this-sym empty-list p/no-symbol ""))
+
 (def substr-c (p/SubStrConstraint "strng" empty-list p/no-symbol ""))
 (def str-c (p/StrBuffConstraint "buffr" empty-list p/no-symbol ""))
+(def coll-of-str (p/CollectionOf c/string-constraint empty-list p/no-symbol ""))
 
 (def hash-coll-constraint (p/HashMapConstraint p/HashCollisionNodeType {}
                                                c/top-type c/top-type empty-list p/no-symbol ""))
@@ -67,7 +69,7 @@
                        ;; c/bitmap-constraint
                        ;; c/hashmap-constraint
                        c/int-constraint
-                       ;; c/sym-constraint
+                       c/sym-constraint
                        ;; c/maybe-constraint
                        ;; c/set-constraint
                        ;; c/agent-constraint
@@ -79,15 +81,17 @@
                        ;; int-list
                        ;; int-list-1
                        ;; int-list-2
-                       ;; coll-of-int
+                       coll-of-int
 
                        ;; int-vect
                        ;; int-vect-1
                        ;; int-vect-2
 
-                       ;; sym-c
+                       sym-c
+
                        ;; substr-c
                        ;; str-c
+                       coll-of-str
 
                        pos-int
                        neg-int
@@ -139,13 +143,7 @@
            (test-intersect c12 c23))))
 
 (main [_]
-  ;; (test-intersect
-  ;;  (p/SumConstraint
-  ;;   [(p/IntegerConstraint p/no-int 2147483647 1 empty-list p/no-symbol "")
-  ;;    (p/IntegerConstraint p/no-int -1 -2147483648 empty-list p/no-symbol "")]
-  ;;   empty-list p/no-symbol "")
-
-  ;;  (p/SumConstraint
-  ;;   [(p/ParamConstraint 'arity-1 0 empty-list p/no-symbol "")]
-  ;;   empty-list p/no-symbol ""))
+  ;; (print-err (test-intersect
+  ;;             coll-of-str
+  ;;             str-c))
   (print-err 'testing-constraints))
