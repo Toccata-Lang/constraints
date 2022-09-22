@@ -750,7 +750,7 @@
         (map (partial .contents x)))))
 
 ;; computed types
-(deftype ComputedConstraint [mods uses path sym var]
+(deftype ComputedConstraint [mods path sym var]
   (assert (instance? TypeSym sym))
 
   Stringable
@@ -768,7 +768,6 @@
   (=* [x y]
     (and (instance? ComputedConstraint y)
          (= mods (.mods y))
-         (= uses (.uses y))
          (maybe x)))
 
   Container
@@ -1086,6 +1085,11 @@
           (= bottom-type y)
           y
 
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y))
+          (intersect y x)
+
+
           (instance? IntegerConstraint y)
           (let [new-min (either (> (.min x) (.min y))
                                 (.min y))
@@ -1107,6 +1111,34 @@
                     (NoValues [x y])))
 
           (NoValues [x y]))))
+
+(extend-type ComputedConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? ComputedConstraint y)
+          top-type
+
+          (.mods x (conj (.mods x) y)))))
+
+(extend-type ParamConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? ComputedConstraint y)
+          (intersect y x)
+
+          (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
 
 ;; misc
 ;; Going to try and do without these
