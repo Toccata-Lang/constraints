@@ -1054,6 +1054,7 @@
     (map (f fld) GetField)))
 
 (def top-type (AllValues empty-list ""))
+(def bottom-type (NoValues []))
 
 (defprotocol Constraint
   (intersect [c1 c2]
@@ -1067,6 +1068,45 @@
     ;; 'top-type' is the undefined result
     top-type)
   )
+
+(extend-type AllValues
+  Constraint
+  (intersect [_ y] y))
+
+(extend-type NoValues
+  Constraint
+  (intersect [x _] x))
+
+(extend-type IntegerConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? IntegerConstraint y)
+          (let [new-min (either (> (.min x) (.min y))
+                                (.min y))
+                new-max (either (< (.max x) (.max y))
+                                (.max y))
+                new-static (or (= no-int (.static-value x) (.static-value y))
+                               (flat-map (or (= (.static-value x) (.static-value y))
+                                             (= (.static-value y) (.static-value x)))
+                                         (fn [new-static]
+                                           (and (<= new-min new-static new-max)
+                                                (maybe new-static)))))]
+            (either (map new-static (fn [new-static]
+                                      ;; TODO: use the path from the most restrictive constraint
+                                      ;; determined by satisfied-by
+                                      (-> x
+                                          (.static-value new-static)
+                                          (.min new-min)
+                                          (.max new-max))))
+                    (NoValues [x y])))
+
+          (NoValues [x y]))))
 
 ;; misc
 ;; Going to try and do without these

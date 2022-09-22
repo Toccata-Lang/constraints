@@ -42,46 +42,46 @@
 
 (def test-constraints [c/top-type
                        c/bottom-type
-                       c/empty-list-constraint
-                       c/empty-vect-constraint
-                       c/coll-of-any
-                       c/list-constraint
-                       c/vect-constraint
-                       c/seq-constraint
-                       c/fn-constraint
-                       c/not-container
-                       c/type-of-constraint
-                       c/inner-type-of-constraint
-                       c/sym-constraint
-                       c/substr-constraint
-                       c/strbuff-constraint
-                       c/string-constraint
-                       c/seq-or-str-constraint
-                       c/hash-coll-constraint
-                       c/array-constraint
-                       c/bitmap-constraint
-                       c/hashmap-constraint
+                       ;; c/empty-list-constraint
+                       ;; c/empty-vect-constraint
+                       ;; c/coll-of-any
+                       ;; c/list-constraint
+                       ;; c/vect-constraint
+                       ;; c/seq-constraint
+                       ;; c/fn-constraint
+                       ;; c/not-container
+                       ;; c/type-of-constraint
+                       ;; c/inner-type-of-constraint
+                       ;; c/sym-constraint
+                       ;; c/substr-constraint
+                       ;; c/strbuff-constraint
+                       ;; c/string-constraint
+                       ;; c/seq-or-str-constraint
+                       ;; c/hash-coll-constraint
+                       ;; c/array-constraint
+                       ;; c/bitmap-constraint
+                       ;; c/hashmap-constraint
                        c/int-constraint
-                       c/maybe-constraint
-                       c/set-constraint
-                       c/agent-constraint
-                       c/promise-constraint
-                       c/future-constraint
-                       c/opaque-constraint
-                       c/arity-constraint
+                       ;; c/maybe-constraint
+                       ;; c/set-constraint
+                       ;; c/agent-constraint
+                       ;; c/promise-constraint
+                       ;; c/future-constraint
+                       ;; c/opaque-constraint
+                       ;; c/arity-constraint
 
-                       int-list
-                       int-list-1
-                       int-list-2
-                       coll-of-int
+                       ;; int-list
+                       ;; int-list-1
+                       ;; int-list-2
+                       ;; coll-of-int
 
-                       int-vect
-                       int-vect-1
-                       int-vect-2
+                       ;; int-vect
+                       ;; int-vect-1
+                       ;; int-vect-2
 
-                       sym-c
-                       substr-c
-                       str-c
+                       ;; sym-c
+                       ;; substr-c
+                       ;; str-c
 
                        pos-int
                        neg-int
@@ -90,9 +90,9 @@
                        neg-1
                        neg-10
 
-                       maybe-str
-                       maybe-int
-                       maybe-sym
+                       ;; maybe-str
+                       ;; maybe-int
+                       ;; maybe-sym
                        ])
 
 (defn test-intersect [c1 c2]
