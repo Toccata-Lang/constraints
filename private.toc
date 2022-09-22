@@ -757,8 +757,8 @@
   (string-list [_]
     (list "(c/ComputedConstraint "
           "\n[" (to-str (interpose mods "\n"))
-          "]\n []"
-           " empty-list"
+          "]\n"
+           "empty-list"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)
           " " (str "\"" var "\"")
@@ -1086,7 +1086,8 @@
           y
 
           (or (instance? ParamConstraint y)
-              (instance? ComputedConstraint y))
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
           (intersect y x)
 
 
@@ -1112,6 +1113,45 @@
 
           (NoValues [x y]))))
 
+(extend-type SumConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? SumConstraint y)
+          (let [new-alts (for [a1 (.alts x)
+                               a2 (.alts y)
+                               :let [new-alt (intersect a1 a2)]
+                               :when-not (= bottom-type new-alt)]
+                           new-alt)
+                new-alts (reduce new-alts [] (fn [new-alts alt]
+                                               (either (and (some new-alts (partial =* alt))
+                                                            (maybe new-alts))
+                                                       (conj new-alts alt))))]
+            (either (or (and (empty? new-alts)
+                             (maybe (NoValues [x y])))
+                        (and (= 1 (count new-alts))
+                             (first new-alts)))
+                    (.alts x new-alts)))
+
+          (let [inters (map (.alts x) (partial intersect y))
+                goods (-> inters
+                          (remove (partial instance? NoValues))
+                          (reduce [] (fn [goods y]
+                                       (either (and (some goods (partial = y))
+                                                    (maybe goods))
+                                               (conj goods y)))))]
+            (either (or (and (empty? goods)
+                             (or (apply = inters)
+                                 (maybe (NoValues [y x]))))
+                        (and (= (count goods) 1)
+                             (first goods)))
+                    (.alts x goods))))))
+
 (extend-type ComputedConstraint
   Constraint
   (intersect [x y]
@@ -1120,6 +1160,9 @@
 
           (= bottom-type y)
           y
+
+          (instance? SumConstraint y)
+          (intersect y x)
 
           (instance? ComputedConstraint y)
           top-type
@@ -1135,7 +1178,8 @@
           (= bottom-type y)
           y
 
-          (instance? ComputedConstraint y)
+          (or (instance? SumConstraint y)
+              (instance? ComputedConstraint y))
           (intersect y x)
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))

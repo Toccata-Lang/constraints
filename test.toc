@@ -28,6 +28,10 @@
 (def pos-10 (p/IntegerConstraint 10 int-max int-min empty-list p/no-symbol ""))
 (def neg-1 (p/IntegerConstraint -1 int-max int-min empty-list p/no-symbol ""))
 (def neg-10 (p/IntegerConstraint -10 int-max int-min empty-list p/no-symbol ""))
+(def int-0 (p/IntegerConstraint 0 int-max int-min empty-list p/no-symbol ""))
+(def non-0 (p/SumConstraint [pos-int neg-int] empty-list p/no-symbol ""))
+
+(def int-or-str (p/SumConstraint [c/int-constraint c/string-constraint] empty-list p/no-symbol ""))
 
 (def maybe-str  (p/MaybeConstraint c/strbuff-constraint empty-list p/no-symbol ""))
 (def maybe-int  (p/MaybeConstraint c/substr-constraint empty-list p/no-symbol ""))
@@ -91,13 +95,14 @@
                        pos-10
                        neg-1
                        neg-10
+                       int-0
+                       non-0
 
                        ;; maybe-str
                        ;; maybe-int
                        ;; maybe-sym
 
-                       param
-                       ])
+                       param])
 
 (defn test-intersect [c1 c2]
   (let [final-1 (c/intersect c1 c2)
@@ -134,4 +139,13 @@
            (test-intersect c12 c23))))
 
 (main [_]
+  ;; (test-intersect
+  ;;  (p/SumConstraint
+  ;;   [(p/IntegerConstraint p/no-int 2147483647 1 empty-list p/no-symbol "")
+  ;;    (p/IntegerConstraint p/no-int -1 -2147483648 empty-list p/no-symbol "")]
+  ;;   empty-list p/no-symbol "")
+
+  ;;  (p/SumConstraint
+  ;;   [(p/ParamConstraint 'arity-1 0 empty-list p/no-symbol "")]
+  ;;   empty-list p/no-symbol ""))
   (print-err 'testing-constraints))
