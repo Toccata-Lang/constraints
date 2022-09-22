@@ -1,7 +1,93 @@
 
-;; intersect is commutative and associative
-;; defined for almost everything
-;; type ops may not be intersected with each other.
-;; ComputedConstraint may not be intersected with itself
-;; intersecting anything with a ComputedConstraint appends the constraint
-;; intersecting anything with a ParamConstraint produces a ComputedConstraint with ParamConstraint first
+(add-ns p (module "private.toc"))
+
+(def top-type (p/AllValues empty-list ""))
+(def bottom-type (p/NoValues []))
+(def empty-list-constraint (p/ListConstraint [] p/no-tail empty-list p/no-symbol ""))
+(def empty-vect-constraint (p/VectorConstraint [] p/no-tail empty-list p/no-symbol ""))
+(def coll-of-any (p/CollectionOf top-type empty-list p/no-symbol ""))
+(def list-constraint (p/ListConstraint [] top-type empty-list p/no-symbol ""))
+(def vect-constraint (p/VectorConstraint [] top-type empty-list p/no-symbol ""))
+(def seq-constraint (p/SumConstraint [vect-constraint list-constraint]
+                                   empty-list p/no-symbol ""))
+(def fn-constraint (p/FnConstraint []
+                                 {p/variadic (p/fn-arity p/no-symbol list-constraint top-type)
+                                  0 (p/fn-arity p/no-symbol empty-list-constraint
+                                              top-type)
+                                  1 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 1 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  2 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 2 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  3 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 3 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  4 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 4 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  5 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 5 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  6 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 6 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  7 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 7 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  8 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 8 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)
+                                  9 (p/fn-arity p/no-symbol (p/ListConstraint (repeat 9 top-type)
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                              top-type)}
+                                 empty-list p/no-symbol ""))
+(def not-container (p/ReifiedConstraint p/UnknownType {}
+                                      (symbol "Can not contain other values")
+                                      (.arities fn-constraint {}) empty-list p/no-symbol ""))
+(def type-of-constraint (p/TypeOfConstraint p/no-symbol empty-list p/no-symbol ""))
+(def inner-type-of-constraint (p/InnerTypeOfConstraint p/no-symbol empty-list p/no-symbol ""))
+(def sym-constraint (p/SymbolConstraint p/no-symbol empty-list p/no-symbol ""))
+(def substr-constraint (p/SubStrConstraint p/no-string empty-list p/no-symbol ""))
+(def strbuff-constraint (p/StrBuffConstraint p/no-string empty-list p/no-symbol ""))
+(def string-constraint (p/SumConstraint [strbuff-constraint substr-constraint]
+                                      empty-list p/no-symbol ""))
+(def seq-or-str-constraint (p/SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
+                                          empty-list p/no-symbol ""))
+(def hash-coll-constraint (p/HashMapConstraint p/HashCollisionNodeType {} top-type top-type empty-list p/no-symbol ""))
+(def array-constraint (p/HashMapConstraint p/ArrayNodeType {} top-type top-type empty-list p/no-symbol ""))
+(def bitmap-constraint (p/HashMapConstraint p/BitmapIndexedType {} top-type top-type empty-list p/no-symbol ""))
+(def hashmap-constraint (p/SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
+                                       empty-list p/no-symbol ""))
+(def int-constraint (p/IntegerConstraint p/no-int int-max int-min empty-list p/no-symbol ""))
+(def maybe-constraint  (p/MaybeConstraint top-type empty-list p/no-symbol ""))
+(def set-constraint (p/ReifiedConstraint p/HashSetType {(p/Field (symbol ".set-map")) hashmap-constraint}
+                                       'HashSet (.arities fn-constraint {}) empty-list p/no-symbol ""))
+(def agent-constraint (p/AgentConstraint top-type empty-list p/no-symbol ""))
+(def promise-constraint (p/PromiseConstraint top-type empty-list p/no-symbol ""))
+(def future-constraint (p/FutureConstraint empty-list p/no-symbol ""))
+(def opaque-constraint (p/OpaqueConstraint empty-list p/no-symbol ""))
+(def arity-constraint (p/ReifiedConstraint p/FnArityType {} 'FnArity (.arities fn-constraint {})
+                                         empty-list p/no-symbol ""))
+
+(def core-type-constraints {'Integer int-constraint
+                            'StringBuffer strbuff-constraint
+                            'SubString substr-constraint
+                            'FnArity arity-constraint
+                            'BitmapIndexedNode bitmap-constraint
+                            'ArrayNode array-constraint
+                            'HashCollisionNode hash-coll-constraint
+                            'Fn fn-constraint
+                            'List list-constraint
+                            'Maybe maybe-constraint
+                            'Vector vect-constraint
+                            'Symbol sym-constraint
+                            'HashMap hashmap-constraint
+                            'Promise promise-constraint
+                            'Future future-constraint
+                            'Agent agent-constraint
+                            'Opaque opaque-constraint})
+
+;; combine two constraints to produce a new constraint
+;; that is the same or more restrictive than either constraint
+(def intersect p/intersect)
