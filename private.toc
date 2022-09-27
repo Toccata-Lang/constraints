@@ -1062,6 +1062,9 @@
   (map [x f embed]
     (map (f fld) GetField)))
 
+(def SeqConstraint (any-of VectorConstraint
+                           ListConstraint))
+
 (def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
@@ -1093,6 +1096,19 @@
           top-type))
 
 (defprotocol Constraint
+
+  ;; Ensure constraint is as small as possible
+  (trim [c]
+    c)
+
+  ;; derive a new type by applying a type operation
+  (derive [op c]
+    (intersect c op))
+
+  ;; produces the the type required by the type operation
+  ;; (required [c op]
+  ;;   (intersect c op))
+
   (intersect [c1 c2]
 ;; 'intersect' is commutative and associative
 ;; defined for almost everything
@@ -1102,8 +1118,7 @@
 ;; intersecting anything with a ParamConstraint produces a ComputedConstraint with ParamConstraint first
 
     ;; 'top-type' is the undefined result
-    top-type)
-  )
+    top-type))
 
 (extend-type AllValues
   Constraint
@@ -1111,6 +1126,12 @@
 
 (extend-type NoValues
   Constraint
+  (trim [c]
+    (.constraints c (comp (remove (.constraints c) (partial instance? NoValues))
+                          (-> (.constraints c)
+                              (filter (partial instance? NoValues))
+                              (flat-map .constraints)))))
+
   (intersect [x _] x))
 
 (extend-type IntegerConstraint
@@ -1252,6 +1273,17 @@
 
 (extend-type SumConstraint
   Constraint
+  (trim [c]
+    (let [all-alts (flat-map (.alts c) (fn [c]
+                                         (either (map (instance? SumConstraint c) .alts)
+                                                 [c])))
+          trimmed (-> (sum-type all-alts)
+                      (.sym (.sym c)))]
+      (either (map (instance? SumConstraint trimmed)
+                   (fn [_]
+                     (.path trimmed (.path c))))
+              trimmed)))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1308,6 +1340,11 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (derive [op c]
+    (reduce (.mods op) c
+            (fn [c op]
+              (derive op c))))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1325,6 +1362,9 @@
 
 (extend-type ParamConstraint
   Constraint
+  (derive [op c]
+    c)
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1342,11 +1382,3 @@
 ;; Going to try and do without these
 ;; DebugConstraint
 ;; ResultConstraint
-
-;; 'implies' is used to collapse a ComputedConstraint
-;; implies is not commutative or associative
-;; implies is the same as intersect for constraints other than type ops
-;; for type ops, implies produces the a constraint that will give the resulting constraint
-
-;; 'reify' replaces ParamConstraints with 
-

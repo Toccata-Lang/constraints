@@ -109,6 +109,14 @@
 
                        param])
 
+(defn test [ex1 ex2 file line]
+  (either (= ex1 ex2)
+          (do
+            (print-err 'Failed-at file line
+                       "\nexpr 1" ex1
+                       "\nexpr 2" ex2)
+            (abort))))
+
 (defn test-intersect [c1 c2]
   (let [final-1 (c/intersect c1 c2)
         ;; _ (print-err 'final-1 final-1)
@@ -136,6 +144,44 @@
 
         (drop-until (rest coll) pred)))
 
+(def _ (test (c/trim (p/ListConstraint
+                        [c/sym-constraint]
+                        (p/ListConstraint [c/int-constraint] p/no-tail empty-list p/no-symbol "")
+                        empty-list p/no-symbol ""))
+             (p/ListConstraint [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                                (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")]
+                               p/no-tail empty-list p/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/trim (p/ListConstraint
+                        [c/int-constraint]
+                        (p/ListConstraint [c/sym-constraint]
+                                          (p/ListConstraint [c/int-constraint]
+                                                            p/no-tail empty-list p/no-symbol "")
+                                          empty-list p/no-symbol "")
+                        empty-list p/no-symbol ""))
+             (p/ListConstraint [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                                (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                                (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")]
+                               p/no-tail empty-list p/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (p/derive (-> param
+                             (c/intersect c/maybe-constraint)
+                             (c/intersect maybe-str))
+                         c/top-type)
+             maybe-str
+             _FILE_ _LINE_))
+
+(def _ (test (p/derive (-> param
+                             (c/intersect c/maybe-constraint)
+                             (c/intersect c/int-constraint)
+                             (c/intersect maybe-str))
+                         c/top-type)
+             (p/NoValues [(p/MaybeConstraint c/top-type empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
 ;; (def _ (for [c1 test-constraints
 ;;              c2 (drop-until test-constraints (partial = c1))
 ;;              c3 (drop-until test-constraints (partial = c2))]
@@ -144,8 +190,4 @@
 ;;            (test-intersect c12 c23))))
 
 (main [_]
-  (print-err)
-  (print-err (test-intersect
-              coll-of-sym
-              maybe-sym))
   (print-err 'testing-constraints))

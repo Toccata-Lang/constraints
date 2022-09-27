@@ -91,3 +91,10 @@
 ;; combine two constraints to produce a new constraint
 ;; that is the same or more restrictive than either constraint
 (def intersect p/intersect)
+
+(defn trim [c]
+  (cata p/trim c))
+
+(defn extract-items [c n]
+  (let [[items] ((p/get-items c) n)]
+    items))
