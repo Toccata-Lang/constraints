@@ -1096,6 +1096,11 @@
           top-type))
 
 (defprotocol Constraint
+  ;; get a minimum number of items from a list or vector
+  (get-items [c items-count]
+    (assert-result r (instance? Vector r))
+
+    [])
 
   ;; Ensure constraint is as small as possible
   (trim [c]
@@ -1122,6 +1127,9 @@
 
 (extend-type AllValues
   Constraint
+  (get-items [c items-count]
+    (repeat items-count c))
+
   (intersect [_ y] y))
 
 (extend-type NoValues
@@ -1263,9 +1271,6 @@
           (or (instance? MaybeConstraint y)
               (instance? CollectionOf y))
           (let [contents (intersect (.contents x) (.contents y))]
-            (print-err 'contents _LINE_ contents
-                       "\n\n" 'x (.contents x)
-                       "\n\n" 'y (.contents y))
             (either (= bottom-type contents)
                     (.contents x contents)))
 
@@ -1273,6 +1278,17 @@
 
 (extend-type SumConstraint
   Constraint
+  (get-items [c items-count]
+    (let [alts-items (-> (.alts c)
+                         (map (fn [alt]
+                                (get-items alt items-count)))
+                         (filter (fn [alt]
+                                   (= items-count (count alt)))))]
+      (-> (apply zip-lists alts-items)
+          (map (fn [alts]
+                 (sum-type (vec alts))))
+          vec)))
+
   (trim [c]
     (let [all-alts (flat-map (.alts c) (fn [c]
                                          (either (map (instance? SumConstraint c) .alts)
@@ -1323,6 +1339,9 @@
 
 (extend-type CollectionOf
   Constraint
+  (get-items [c items-count]
+    (repeat items-count (.contents c)))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1340,6 +1359,9 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (get-items [c items-count]
+    (get-items (derive c top-type) items-count))
+
   (derive [op c]
     (reduce (.mods op) c
             (fn [c op]

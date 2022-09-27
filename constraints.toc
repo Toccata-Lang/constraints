@@ -96,5 +96,5 @@
   (cata p/trim c))
 
 (defn extract-items [c n]
-  (let [[items] ((p/get-items c) n)]
+  (let [[items] (p/get-items c n)]
     items))
