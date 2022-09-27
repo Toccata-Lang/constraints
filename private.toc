@@ -1351,6 +1351,44 @@
 
           (NoValues [x y]))))
 
+(extend-type VectorConstraint
+  Constraint
+  (get-items [c items-count]
+    (let [fixed (take (.items c) items-count)
+          fixed-count (count fixed)]
+      (cond (= fixed-count items-count)
+            fixed
+            (comp fixed
+                  (get-items (.tail-c c) (- items-count fixed-count))))))
+
+  (trim [vc]
+    (either (map (instance? SeqConstraint (.tail-c vc))
+                 (fn [tail-c]
+                   (-> vc
+                       (.items (comp (.items vc) (.items tail-c)))
+                       (.tail-c (.tail-c tail-c)))))
+            vc))
+
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? VectorConstraint y)
+          (intersect-seqs x y)
+
+          (instance? CollectionOf y)
+          (intersect-seqs x (.tail-c empty-list-constraint y))
+
+          (NoValues [x y]))))
+
 (extend-type SumConstraint
   Constraint
   (get-items [c items-count]

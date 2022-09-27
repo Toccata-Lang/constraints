@@ -85,9 +85,9 @@
                        int-list-2
                        coll-of-int
 
-                       ;; int-vect
-                       ;; int-vect-1
-                       ;; int-vect-2
+                       int-vect
+                       int-vect-1
+                       int-vect-2
 
                        sym-c
 
@@ -230,6 +230,13 @@
 (def _ (test (c/intersect int-list-2
                           (p/ListConstraint [c/int-constraint c/sym-constraint]
                                             p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect int-vect-2
+                          (p/VectorConstraint [c/int-constraint c/sym-constraint]
+                                              p/no-tail empty-list p/no-symbol ""))
              (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
              _FILE_ _LINE_))
