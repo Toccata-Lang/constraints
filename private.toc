@@ -386,7 +386,7 @@
       (-> c
           (.tail-c new-tail-c)
           (.items new-items)))))
-(def empty-list-constraint)
+(def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
 
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
@@ -1125,6 +1125,11 @@
     ;; 'top-type' is the undefined result
     top-type))
 
+(extend-type NoTail
+  Constraint
+  (intersect [x y]
+    x))
+
 (extend-type AllValues
   Constraint
   (get-items [c items-count]
@@ -1273,6 +1278,76 @@
           (let [contents (intersect (.contents x) (.contents y))]
             (either (= bottom-type contents)
                     (.contents x contents)))
+
+          (NoValues [x y]))))
+
+(defn intersect-seqs [l1 l2]
+  (assert (instance? SeqConstraint l1))
+  (assert (instance? SeqConstraint l2))
+
+  (let [l1 (cata trim l1)
+        l1-tail (.tail-c l1)
+        l2 (cata trim l2)
+        l2-tail (.tail-c l2)
+        cnt-ic (count (.items l2))
+        cnt-c (count (.items l1))
+        max-cnt (either (> cnt-ic cnt-c)
+                        cnt-c)
+        items (map (zip-lists (get-items l2 max-cnt)
+                              (get-items l1 max-cnt))
+                   (fn [[c1 c2]]
+                     (intersect c1 c2)))
+        new-tail (intersect l2-tail l1-tail)
+        new-ic (-> l2
+                   (.tail-c new-tail)
+                   (.items (vec items)))]
+    (either (map (or (some items (partial = bottom-type))
+                     (= bottom-type new-tail))
+                 (fn [failure]
+                   (cond (empty? (.constraints failure))
+                         (NoValues [l1 l2])
+
+                         failure)))
+            (cond (< (count items) max-cnt)
+                  (NoValues [l1 l2])
+
+                  new-ic))))
+
+(extend-type ListConstraint
+  Constraint
+  (get-items [c items-count]
+    (let [fixed (take (.items c) items-count)
+          fixed-count (count fixed)]
+      (cond (= fixed-count items-count)
+            fixed
+            (comp fixed
+                  (get-items (.tail-c c) (- items-count fixed-count))))))
+
+  (trim [lc]
+    (either (map (instance? SeqConstraint (.tail-c lc))
+                 (fn [tail-c]
+                   (-> lc
+                       (.items (comp (.items lc) (.items tail-c)))
+                       (.tail-c (.tail-c tail-c)))))
+            lc))
+
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? ListConstraint y)
+          (intersect-seqs x y)
+
+          (instance? CollectionOf y)
+          (intersect-seqs x (.tail-c empty-list-constraint y))
 
           (NoValues [x y]))))
 

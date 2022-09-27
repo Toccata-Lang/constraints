@@ -4,12 +4,13 @@
 (add-ns p (module "private.toc"))
 (add-ns c (module "constraints.toc"))
 
-(def int-list (p/ListConstraint [] c/int-constraint empty-list p/no-symbol ""))
+(def coll-of-int (p/CollectionOf c/int-constraint empty-list p/no-symbol ""))
+(def int-list (p/ListConstraint [] coll-of-int empty-list p/no-symbol ""))
 (def int-list-1 (p/ListConstraint [c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 (def int-list-2 (p/ListConstraint [c/int-constraint c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 (def coll-of-int (p/CollectionOf c/int-constraint empty-list p/no-symbol ""))
 
-(def int-vect (p/ListConstraint [] c/int-constraint empty-list p/no-symbol ""))
+(def int-vect (p/ListConstraint [] coll-of-int empty-list p/no-symbol ""))
 (def int-vect-1 (p/ListConstraint [c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 (def int-vect-2 (p/ListConstraint [c/int-constraint c/int-constraint] p/no-tail empty-list p/no-symbol ""))
 
@@ -51,10 +52,10 @@
 
 (def test-constraints [c/top-type
                        c/bottom-type
-                       ;; c/empty-list-constraint
+                       c/empty-list-constraint
                        ;; c/empty-vect-constraint
-                       ;; c/coll-of-any
-                       ;; c/list-constraint
+                       c/coll-of-any
+                       c/list-constraint
                        ;; c/vect-constraint
                        ;; c/seq-constraint
                        ;; c/fn-constraint
@@ -79,9 +80,9 @@
                        ;; c/opaque-constraint
                        ;; c/arity-constraint
 
-                       ;; int-list
-                       ;; int-list-1
-                       ;; int-list-2
+                       int-list
+                       int-list-1
+                       int-list-2
                        coll-of-int
 
                        ;; int-vect
@@ -182,12 +183,63 @@
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
              _FILE_ _LINE_))
 
-;; (def _ (for [c1 test-constraints
-;;              c2 (drop-until test-constraints (partial = c1))
-;;              c3 (drop-until test-constraints (partial = c2))]
-;;          (let [c12 (test-intersect c1 c2)
-;;                c23 (test-intersect c2 c3)]
-;;            (test-intersect c12 c23))))
+(def _ (test (p/get-items c/top-type 3)
+             [c/top-type c/top-type c/top-type]
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items coll-of-int 2)
+             [c/int-constraint c/int-constraint]
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items (p/sum-type [coll-of-int
+                                       int-list-1
+                                       coll-of-sym])
+                          2)
+             [(p/SumConstraint
+               [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")]
+               empty-list p/no-symbol "")
+              (p/SumConstraint
+               [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")]
+               empty-list p/no-symbol "")]
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items (p/sum-type [coll-of-int
+                                       (p/ListConstraint []
+                                                         (p/CollectionOf pos-int empty-list p/no-symbol "")
+                                                         empty-list p/no-symbol "")
+                                       coll-of-sym])
+                          2)
+             [(p/SumConstraint
+               [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                pos-int
+                (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")]
+               empty-list p/no-symbol "")
+              (p/SumConstraint
+               [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                pos-int]
+               empty-list p/no-symbol "")]
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect int-list-1 c/coll-of-any)
+             int-list-1
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect int-list-2
+                          (p/ListConstraint [c/int-constraint c/sym-constraint]
+                                            p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (for [c1 test-constraints
+             c2 (drop-until test-constraints (partial = c1))
+             c3 (drop-until test-constraints (partial = c2))]
+         (let [c12 (test-intersect c1 c2)
+               c23 (test-intersect c2 c3)]
+           (test-intersect c12 c23))))
 
 (main [_]
   (print-err 'testing-constraints))
