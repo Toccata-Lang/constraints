@@ -43,10 +43,11 @@
 
 (def param (p/ParamConstraint 'arity-1 0 empty-list p/no-symbol ""))
 
+(def opaque-constraint (p/OpaqueConstraint empty-list p/no-symbol ""))
+
 ;; (def agent-constraint (AgentConstraint top-type empty-list p/no-symbol ""))
 ;; (def promise-constraint (PromiseConstraint top-type empty-list p/no-symbol ""))
 ;; (def future-constraint (FutureConstraint empty-list p/no-symbol ""))
-;; (def opaque-constraint (OpaqueConstraint empty-list p/no-symbol ""))
 ;; (def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity (.arities fn-constraint {})
 ;;                                          empty-list p/no-symbol ""))
 
@@ -80,6 +81,7 @@
                        ;; c/opaque-constraint
                        ;; c/arity-constraint
 
+                       opaque-constraint
                        int-list
                        int-list-1
                        int-list-2
@@ -221,6 +223,20 @@
                 (p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
                 pos-int]
                empty-list p/no-symbol "")]
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items int-list-1 2)
+             []
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items int-vect-1 2)
+             []
+             _FILE_ _LINE_))
+
+(def _ (test (p/get-items (p/sum-type [int-list-1
+                                       (p/ListConstraint [c/sym-constraint] p/no-tail empty-list p/no-symbol "")])
+                          2)
+             []
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect int-list-1 c/coll-of-any)

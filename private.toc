@@ -280,12 +280,19 @@
   (string-list [_]
     (list "(c/OpaqueConstraint " "empty-list "
           ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+          (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
     (and (instance? OpaqueConstraint y)
-         (maybe x))))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
 
 ;; atomic and container types
 (deftype StrBuffConstraint [static-value path sym var]
@@ -1320,6 +1327,10 @@
           fixed-count (count fixed)]
       (cond (= fixed-count items-count)
             fixed
+
+            (= no-tail (.tail-c c))
+            []
+
             (comp fixed
                   (get-items (.tail-c c) (- items-count fixed-count))))))
 
@@ -1358,6 +1369,10 @@
           fixed-count (count fixed)]
       (cond (= fixed-count items-count)
             fixed
+
+            (= no-tail (.tail-c c))
+            []
+
             (comp fixed
                   (get-items (.tail-c c) (- items-count fixed-count))))))
 
@@ -1397,10 +1412,11 @@
                                 (get-items alt items-count)))
                          (filter (fn [alt]
                                    (= items-count (count alt)))))]
-      (-> (apply zip-lists alts-items)
-          (map (fn [alts]
-                 (sum-type (vec alts))))
-          vec)))
+      (either (empty? alts-items)
+              (-> (apply zip-lists alts-items)
+                  (map (fn [alts]
+                         (sum-type (vec alts))))
+                  vec))))
 
   (trim [c]
     (let [all-alts (flat-map (.alts c) (fn [c]
@@ -1512,6 +1528,38 @@
           (intersect y x)
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
+
+(extend-type OpaqueConstraint
+  Constraint
+  (intersect [x y]
+    (cond (or (=* x y)
+              (=* y top-type))
+          x
+
+          (= y bottom-type)
+          y
+
+          (or (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
+          (NoValues [x y]))))
+
+;; (extend-type ReifiedConstraint)
+;; (extend-type HashMapConstraint)
+;; (extend-type AgentConstraint)
+;; (extend-type FutureConstraint)
+;; (extend-type PromiseConstraint)
+;; (extend-type FnConstraint)
+;; (extend-type TypeOfConstraint)
+;; (extend-type InnerTypeOfConstraint)
+;; (extend-type ModSeqType)
+;; (extend-type ArgOf)
+;; (extend-type ResultOf)
+;; (extend-type CallValue)
+;; (extend-type SetField)
+;; (extend-type GetField)
+
 
 ;; misc
 ;; Going to try and do without these
