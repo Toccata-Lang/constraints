@@ -1545,12 +1545,69 @@
 
           (NoValues [x y]))))
 
+(extend-type AgentConstraint
+  Constraint
+  (intersect [x y]
+    (cond (= top-type y)
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? AgentConstraint y)
+          (let [contents (intersect (.contents x) (.contents y))]
+            (either (= bottom-type contents)
+                    (.contents x contents)))
+
+          (NoValues [x y]))))
+
+(extend-type FutureConstraint
+  Constraint
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (NoValues [x y]))))
+
+(extend-type PromiseConstraint
+    Constraint
+    (intersect [x y]
+      (cond (or (=* x y)
+                (= top-type y))
+            x
+
+            (= bottom-type y)
+            y
+
+            (or (instance? ParamConstraint y)
+                (instance? ComputedConstraint y)
+                (instance? SumConstraint y))
+            (intersect y x)
+
+          (instance? Promise y)
+          (let [contents (intersect (.contents x) (.contents y))]
+            (either (= bottom-type contents)
+                    (.contents x contents)))
+
+            (NoValues [x y]))))
+
+;; (extend-type FnConstraint)
 ;; (extend-type ReifiedConstraint)
 ;; (extend-type HashMapConstraint)
-;; (extend-type AgentConstraint)
-;; (extend-type FutureConstraint)
-;; (extend-type PromiseConstraint)
-;; (extend-type FnConstraint)
 ;; (extend-type TypeOfConstraint)
 ;; (extend-type InnerTypeOfConstraint)
 ;; (extend-type ModSeqType)

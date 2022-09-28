@@ -45,9 +45,10 @@
 
 (def opaque-constraint (p/OpaqueConstraint empty-list p/no-symbol ""))
 
-;; (def agent-constraint (AgentConstraint top-type empty-list p/no-symbol ""))
-;; (def promise-constraint (PromiseConstraint top-type empty-list p/no-symbol ""))
-;; (def future-constraint (FutureConstraint empty-list p/no-symbol ""))
+(def agent-constraint (p/AgentConstraint c/top-type empty-list p/no-symbol ""))
+(def promise-constraint (p/PromiseConstraint c/top-type empty-list p/no-symbol ""))
+(def future-constraint (p/FutureConstraint empty-list p/no-symbol ""))
+
 ;; (def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity (.arities fn-constraint {})
 ;;                                          empty-list p/no-symbol ""))
 
@@ -82,6 +83,10 @@
                        ;; c/arity-constraint
 
                        opaque-constraint
+                       agent-constraint
+                       promise-constraint
+                       future-constraint
+
                        int-list
                        int-list-1
                        int-list-2
@@ -253,6 +258,18 @@
 (def _ (test (c/intersect int-vect-2
                           (p/VectorConstraint [c/int-constraint c/sym-constraint]
                                               p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/AgentConstraint c/sym-constraint empty-list p/no-symbol "")
+                          (p/AgentConstraint c/int-constraint empty-list p/no-symbol ""))
+             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/PromiseConstraint c/sym-constraint empty-list p/no-symbol "")
+                          (p/PromiseConstraint c/int-constraint empty-list p/no-symbol ""))
              (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
              _FILE_ _LINE_))
