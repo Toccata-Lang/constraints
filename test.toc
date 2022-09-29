@@ -274,6 +274,32 @@
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
              _FILE_ _LINE_))
 
+(def computed-bottom (p/ComputedConstraint [param
+                                            c/int-constraint
+                                            c/string-constraint]
+                                           empty-list p/no-symbol ""))
+
+(def _ (test (cata p/find-bottom computed-bottom)
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (cata p/find-bottom (.items c/list-constraint [computed-bottom]))
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (cata p/find-bottom (.tail-c c/vect-constraint computed-bottom))
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (cata p/find-bottom (.contents c/coll-of-any computed-bottom))
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (cata p/find-bottom (p/SumConstraint [computed-bottom]
+                                                  empty-list p/no-symbol ""))
+             c/bottom-type
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial = c1))
              c3 (drop-until test-constraints (partial = c2))]

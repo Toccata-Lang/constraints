@@ -54,8 +54,8 @@
   (=* [x y]
     (instance? NoSymbol y)))
 
-(def TypeSym (any-of NoSymbol
-                     Symbol))
+(def OptionalSym (any-of NoSymbol
+                         Symbol))
 
 (def no-symbol (NoSymbol))
 
@@ -216,7 +216,7 @@
   (assert (instance? (any-of Integer
                              NoInt) min))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -244,9 +244,9 @@
     (embed x)))
 
 (deftype SymbolConstraint [static-value path sym var]
-  (assert (instance? TypeSym static-value))
+  (assert (instance? OptionalSym static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -273,7 +273,7 @@
 
 (deftype OpaqueConstraint [path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -299,7 +299,7 @@
   (assert (instance? (any-of String
                              NoString) static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -329,7 +329,7 @@
   (assert (instance? (any-of String
                              NoString) static-value))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -362,7 +362,7 @@
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -398,7 +398,7 @@
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -432,7 +432,7 @@
 
 (deftype MaybeConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -458,7 +458,7 @@
 
 (deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -506,7 +506,7 @@
 
 (deftype AgentConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -532,7 +532,7 @@
 
 (deftype FutureConstraint [path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -555,7 +555,7 @@
 
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -581,7 +581,7 @@
 
 
 (deftype fn-arity [arity-id param-consts result-const]
-  (assert (instance? TypeSym arity-id))
+  (assert (instance? OptionalSym arity-id))
   (assert (instance? ListConstraint param-consts))
 
   Stringable
@@ -619,7 +619,7 @@
   ;; (assert (instance? (map-of ArityRank fn-arity) arities))
   (assert (instance? (vector-of Integer) required-arities))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -651,7 +651,7 @@
   (assert (instance? HashMap fields))
   (assert (instance? FnConstraint invoke-fn))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -702,7 +702,7 @@
 ;; type attributes
 (deftype CollectionOf [contents path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -735,7 +735,7 @@
 (deftype SumConstraint [alts path sym var]
   (assert (instance? Vector alts))
   (assert (instance? (min-count 1) alts))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? (list-of Vector) path))
   (assert (instance? String var))
 
@@ -768,7 +768,7 @@
 
 ;; computed types
 (deftype ComputedConstraint [mods path sym var]
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
 
   Stringable
   (string-list [_]
@@ -797,7 +797,7 @@
            (.mods x new-mods)))))
 
 (deftype ParamConstraint [arity param-index path sym var]
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
 
   Stringable
   (string-list [_]
@@ -825,7 +825,7 @@
 
 (deftype TypeOfConstraint [param-sym path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -851,7 +851,7 @@
 ;; type operations
 (deftype InnerTypeOfConstraint [param-sym path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -870,13 +870,13 @@
 
   Container
   (map [x f]
-    (cond (instance? TypeSym param-sym)
+    (cond (instance? OptionalSym param-sym)
           x
 
           (.param-sym x (f param-sym))))
 
   (map [x f embed]
-    (cond (instance? TypeSym param-sym)
+    (cond (instance? OptionalSym param-sym)
           (embed x)
 
           (map (f param-sym)
@@ -942,7 +942,7 @@
   (assert (instance? Symbol fn-sym))
   (assert (instance? Integer arg-position))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -970,7 +970,7 @@
 (deftype ResultOf [fn-sym path sym var]
   (assert (instance? Symbol fn-sym))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -996,7 +996,7 @@
 
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
-  (assert (instance? TypeSym sym))
+  (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
@@ -1103,6 +1103,10 @@
           top-type))
 
 (defprotocol Constraint
+  ;; is the constraint a NoValues type, or contains one
+  (find-bottom [c]
+    c)
+  
   ;; get a minimum number of items from a list or vector
   (get-items [c items-count]
     (assert-result r (instance? Vector r))
@@ -1268,6 +1272,9 @@
 
 (extend-type MaybeConstraint
   Constraint
+  (find-bottom [c]
+    (.contents c))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1322,6 +1329,11 @@
 
 (extend-type ListConstraint
   Constraint
+  (find-bottom [c]
+    (either (or (some (.items c) (partial = bottom-type))
+                (= bottom-type (.tail-c c)))
+            c))
+
   (get-items [c items-count]
     (let [fixed (take (.items c) items-count)
           fixed-count (count fixed)]
@@ -1364,6 +1376,11 @@
 
 (extend-type VectorConstraint
   Constraint
+  (find-bottom [c]
+    (either (or (some (.items c) (partial = bottom-type))
+                (= bottom-type (.tail-c c)))
+            c))
+
   (get-items [c items-count]
     (let [fixed (take (.items c) items-count)
           fixed-count (count fixed)]
@@ -1406,6 +1423,11 @@
 
 (extend-type SumConstraint
   Constraint
+  (find-bottom [c]
+    (either (flat-map (every (.alts c) (partial = bottom-type))
+                      first)
+            (.alts c (remove (.alts c) (partial = bottom-type)))))
+
   (get-items [c items-count]
     (let [alts-items (-> (.alts c)
                          (map (fn [alt]
@@ -1468,6 +1490,10 @@
 
 (extend-type CollectionOf
   Constraint
+  (find-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
+
   (get-items [c items-count]
     (repeat items-count (.contents c)))
 
@@ -1488,6 +1514,9 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (find-bottom [c]
+    (derive c top-type))
+
   (get-items [c items-count]
     (get-items (derive c top-type) items-count))
 
@@ -1547,6 +1576,10 @@
 
 (extend-type AgentConstraint
   Constraint
+  (find-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1584,28 +1617,116 @@
           (NoValues [x y]))))
 
 (extend-type PromiseConstraint
-    Constraint
-    (intersect [x y]
-      (cond (or (=* x y)
-                (= top-type y))
-            x
+  Constraint
+  (find-bottom [c]
+    (either (= bottom-type (.contents c))
+            c))
 
-            (= bottom-type y)
-            y
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
 
-            (or (instance? ParamConstraint y)
-                (instance? ComputedConstraint y)
-                (instance? SumConstraint y))
-            (intersect y x)
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
 
           (instance? Promise y)
           (let [contents (intersect (.contents x) (.contents y))]
             (either (= bottom-type contents)
                     (.contents x contents)))
 
-            (NoValues [x y]))))
+          (NoValues [x y]))))
 
-;; (extend-type FnConstraint)
+(extend-type fn-arity
+  Constraint
+  (find-bottom [c]
+    (either (or (= bottom-type (.param-consts c))
+                (= bottom-type (.result-const c)))
+            c))
+
+  (intersect [ar1 ar2]
+    (assert (instance? fn-arity ar2))
+
+    (let [param-cs (intersect (.param-consts ar1) (.param-consts ar2))
+          result-c (intersect (.result-const ar1) (.result-const ar2))
+          arity-id (cond (= no-symbol (.arity-id ar1))
+                         (.arity-id ar2)
+
+                         (.arity-id ar1))]
+      (either (or (= bottom-type (cata find-bottom param-cs))
+                  (= bottom-type (cata find-bottom result-c)))
+
+              (-> ar1
+                  (.arity-id arity-id)
+                  (.param-consts param-cs)
+                  (.result-const result-c))))))
+
+;; (defn intersect-fns [y x]
+;;   (either (or (=* x y)
+;;               (and (empty? (.arities x))
+;;                    (maybe y))
+;;               (and (empty? (.arities y))
+;;                    (maybe x)))
+;;           (let [maybe-variadic-x (get-in x [.arities variadic])
+;;                 maybe-variadic-y (get-in y [.arities variadic])
+;;                 new-arities (reduce (vec (.arities y)) {}
+;;                                     (fn [arities [idx y-arity]]
+;;                                       (either (for [_ (instance? Integer idx)
+;;                                                     x-arity (or (get-in x [.arities idx])
+;;                                                                 maybe-variadic-x)]
+;;                                                 (assoc arities idx (intersect x-arity y-arity)))
+;;                                               arities)))
+;;                 new-arities (reduce (vec (.arities x)) new-arities
+;;                                     (fn [arities [idx x-arity]]
+;;                                       (cond (get arities idx)
+;;                                             arities
+
+;;                                             (either (for [_ (instance? Integer idx)
+;;                                                           y-arity (or (get-in y [.arities idx])
+;;                                                                       maybe-variadic-y)]
+;;                                                       (assoc arities idx (intersect x-arity y-arity)))
+;;                                                     arities))))
+;;                 new-arities (either (for [variadic-x maybe-variadic-x
+;;                                           variadic-y maybe-variadic-y]
+;;                                       (assoc new-arities variadic (intersect variadic-x variadic-y)))
+;;                                     new-arities)
+;;                 new-arities (reduce (vec new-arities) {}
+;;                                     (fn [new-arities [k v]]
+;;                                       (cond (= bottom-type v)
+;;                                             new-arities
+
+;;                                             (assoc new-arities k v))))]
+;;             (cond (empty? new-arities)
+;;                   (NoValues [x y])
+
+;;                   (.arities x new-arities)))))
+
+;; (extend-type FnConstraint
+;;   Constraint
+;;   (intersect [x y]
+;;     (cond (or (=* x y)
+;;               (= top-type y))
+;;           x
+
+;;           (= bottom-type y)
+;;           y
+
+;;           (or (instance? ParamConstraint y)
+;;               (instance? ComputedConstraint y)
+;;               (instance? SumConstraint y)
+;;               (instance? ReifiedConstraint y))
+;;           (intersect y x)
+
+;;           (instance? FnConstraint y)
+;;           (intersect-fns x y)
+
+;;           (NoValues [x y]))))
+
 ;; (extend-type ReifiedConstraint)
 ;; (extend-type HashMapConstraint)
 ;; (extend-type TypeOfConstraint)
