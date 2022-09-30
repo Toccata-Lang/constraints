@@ -652,9 +652,8 @@
 (deftype ReifiedConstraint [type-num fields type-sym invoke-fn path sym var]
   (assert (instance? Integer type-num))
   ;; TODO: put this in
-  ;; (assert (instance? (min-value TypeCount) type-num))
+  ;; (assert (instance? (min-value 1) type-num))
   (assert (instance? HashMap fields))
-  (assert (instance? FnConstraint invoke-fn))
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
@@ -686,7 +685,7 @@
                             [(f fld) (f fld-c)]))
                      (reduce {} (fn [m [k v]]
                                   (assoc m k v)))))
-        (.invoke-fn (map (.invoke-fn tc) f))))
+        (.invoke-fn (f (.invoke-fn tc)))))
 
   (map [tc f embed]
     (for [new-fields (-> (.fields tc)
@@ -699,7 +698,7 @@
                          (map (fn [new-flds]
                                 (reduce new-flds {} (fn [m [k v]]
                                                       (assoc m k v))))))
-          new-invoke (map (.invoke-fn tc) f embed)]
+          new-invoke (f (.invoke-fn tc))]
       (-> tc
           (.fields new-fields)
           (.invoke-fn new-invoke)))))
@@ -1752,7 +1751,39 @@
 
           (NoValues [x y]))))
 
-;; (extend-type ReifiedConstraint)
+(extend-type ReifiedConstraint
+  Constraint
+  (find-bottom [c]
+    (either (or (some (seq (.fields c)) (fn [[fld-c val-c]]
+                                          (or (= bottom-type fld-c)
+                                              (= bottom-type val-c))))
+                (= bottom-type (.invoke-fn c)))
+            c))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? FnConstraint y)
+          (let [new-invoke (intersect-fns (.invoke-fn x) y)]
+            (either (= bottom-type new-invoke)
+                    (.invoke-fn x new-invoke)))
+
+          (and (instance? ReifiedConstraint y)
+               (= (.type-num x) (.type-num y)))
+          (cata find-bottom (.fields x (merge-with intersect (.fields y) (.fields x))))
+
+          (NoValues [x y]))))
+
 ;; (extend-type HashMapConstraint)
 ;; (extend-type TypeOfConstraint)
 ;; (extend-type InnerTypeOfConstraint)

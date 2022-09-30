@@ -43,15 +43,6 @@
 
 (def param (p/ParamConstraint 'arity-1 0 empty-list p/no-symbol ""))
 
-(def opaque-constraint (p/OpaqueConstraint empty-list p/no-symbol ""))
-
-(def agent-constraint (p/AgentConstraint c/top-type empty-list p/no-symbol ""))
-(def promise-constraint (p/PromiseConstraint c/top-type empty-list p/no-symbol ""))
-(def future-constraint (p/FutureConstraint empty-list p/no-symbol ""))
-
-;; (def arity-constraint (ReifiedConstraint FnArityType {} 'FnArity (.arities fn-constraint {})
-;;                                          empty-list p/no-symbol ""))
-
 (def test-constraints [c/top-type
                        c/bottom-type
                        c/empty-list-constraint
@@ -80,12 +71,7 @@
                        c/promise-constraint
                        c/future-constraint
                        c/opaque-constraint
-                       ;; c/arity-constraint
-
-                       opaque-constraint
-                       agent-constraint
-                       promise-constraint
-                       future-constraint
+                       c/arity-constraint
 
                        int-list
                        int-list-1
@@ -314,6 +300,16 @@
              c/bottom-type
              _FILE_ _LINE_))
 
+(def _ (test (cata p/find-bottom
+                   (.invoke-fn c/arity-constraint
+                               (.arities c/fn-constraint
+                                         {1 (p/fn-arity p/no-symbol
+                                                        (.items c/list-constraint [computed-bottom])
+                                                        c/int-constraint)})))
+             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                          (p/StrBuffConstraint p/no-string empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
 (def _ (test (c/intersect c/fn-constraint
                           (p/FnConstraint [1]
                                           {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
@@ -373,6 +369,16 @@
                                           {1 (p/fn-arity p/no-symbol int-list-1 c/sym-constraint)}
                                           empty-list p/no-symbol "")])
              _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/ReifiedConstraint
+                           10 {(p/Field 'field) c/int-constraint}
+                           p/no-symbol c/fn-constraint empty-list p/no-symbol "")
+                          (p/ReifiedConstraint
+                           10 {(p/Field 'field) c/sym-constraint}
+                           p/no-symbol c/fn-constraint empty-list p/no-symbol ""))
+             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
+                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+        _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial = c1))
