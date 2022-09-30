@@ -55,19 +55,19 @@
 (def test-constraints [c/top-type
                        c/bottom-type
                        c/empty-list-constraint
-                       ;; c/empty-vect-constraint
+                       c/empty-vect-constraint
                        c/coll-of-any
                        c/list-constraint
-                       ;; c/vect-constraint
-                       ;; c/seq-constraint
+                       c/vect-constraint
+                       c/seq-constraint
                        ;; c/fn-constraint
                        ;; c/not-container
                        ;; c/type-of-constraint
                        ;; c/inner-type-of-constraint
-                       ;; c/substr-constraint
-                       ;; c/strbuff-constraint
-                       ;; c/string-constraint
-                       ;; c/seq-or-str-constraint
+                       c/substr-constraint
+                       c/strbuff-constraint
+                       c/string-constraint
+                       c/seq-or-str-constraint
                        ;; c/hash-coll-constraint
                        ;; c/array-constraint
                        ;; c/bitmap-constraint
@@ -76,10 +76,10 @@
                        c/sym-constraint
                        c/maybe-constraint
                        ;; c/set-constraint
-                       ;; c/agent-constraint
-                       ;; c/promise-constraint
-                       ;; c/future-constraint
-                       ;; c/opaque-constraint
+                       c/agent-constraint
+                       c/promise-constraint
+                       c/future-constraint
+                       c/opaque-constraint
                        ;; c/arity-constraint
 
                        opaque-constraint
@@ -98,8 +98,8 @@
 
                        sym-c
 
-                       ;; substr-c
-                       ;; str-c
+                       substr-c
+                       str-c
                        coll-of-str
 
                        pos-int
