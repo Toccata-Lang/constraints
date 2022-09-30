@@ -651,6 +651,8 @@
 ;; product type
 (deftype ReifiedConstraint [type-num fields type-sym invoke-fn path sym var]
   (assert (instance? Integer type-num))
+  ;; TODO: put this in
+  ;; (assert (instance? (min-value TypeCount) type-num))
   (assert (instance? HashMap fields))
   (assert (instance? FnConstraint invoke-fn))
   (assert (instance? (list-of Vector) path))
@@ -1648,7 +1650,12 @@
 (extend-type fn-arity
   Constraint
   (find-bottom [c]
-    (either (or (= bottom-type (.param-consts c))
+    (either (or (-> (.param-consts c)
+                    .items
+                    (some (partial = bottom-type)))
+                (-> (.param-consts c)
+                    .tail-c
+                    (= bottom-type))
                 (= bottom-type (.result-const c)))
             c))
 
@@ -1722,6 +1729,10 @@
 
 (extend-type FnConstraint
   Constraint
+  (find-bottom [c]
+    (either (some (vals (.arities c)) (partial = bottom-type))
+            c))
+
   (intersect [x y]
     (cond (or (=* x y)
               (= top-type y))

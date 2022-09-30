@@ -300,6 +300,20 @@
              c/bottom-type
              _FILE_ _LINE_))
 
+(def _ (test (cata p/find-bottom (.arities c/fn-constraint
+                                           {1 (p/fn-arity p/no-symbol
+                                                          (.items c/list-constraint [computed-bottom])
+                                                          c/int-constraint)}))
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (cata p/find-bottom (.arities c/fn-constraint
+                                           {1 (p/fn-arity p/no-symbol
+                                                          (.items c/list-constraint [c/int-constraint])
+                                                          computed-bottom)}))
+             c/bottom-type
+             _FILE_ _LINE_))
+
 (def _ (test (c/intersect c/fn-constraint
                           (p/FnConstraint [1]
                                           {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
