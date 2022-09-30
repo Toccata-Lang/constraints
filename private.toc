@@ -633,6 +633,9 @@
   Eq
   (=* [x y]
     (and (instance? FnConstraint y)
+         (= (count required-arities) (count (.required-arities y)))
+         (every (.required-arities y) (fn [arity-rank]
+                                       (some required-arities (partial = arity-rank))))
          (=* arities (.arities y))
          (maybe x)))
 
@@ -1666,66 +1669,77 @@
                   (.param-consts param-cs)
                   (.result-const result-c))))))
 
-;; (defn intersect-fns [y x]
-;;   (either (or (=* x y)
-;;               (and (empty? (.arities x))
-;;                    (maybe y))
-;;               (and (empty? (.arities y))
-;;                    (maybe x)))
-;;           (let [maybe-variadic-x (get-in x [.arities variadic])
-;;                 maybe-variadic-y (get-in y [.arities variadic])
-;;                 new-arities (reduce (vec (.arities y)) {}
-;;                                     (fn [arities [idx y-arity]]
-;;                                       (either (for [_ (instance? Integer idx)
-;;                                                     x-arity (or (get-in x [.arities idx])
-;;                                                                 maybe-variadic-x)]
-;;                                                 (assoc arities idx (intersect x-arity y-arity)))
-;;                                               arities)))
-;;                 new-arities (reduce (vec (.arities x)) new-arities
-;;                                     (fn [arities [idx x-arity]]
-;;                                       (cond (get arities idx)
-;;                                             arities
+(defn intersect-fns [y x]
+  (either (or (=* x y)
+              (and (empty? (.arities x))
+                   (maybe y))
+              (and (empty? (.arities y))
+                   (maybe x)))
+          (let [new-required (reduce (.required-arities x) (.required-arities y)
+                                     (fn [new-reqd arity-rank]
+                                       (cond (some new-reqd (partial = arity-rank))
+                                             new-reqd
 
-;;                                             (either (for [_ (instance? Integer idx)
-;;                                                           y-arity (or (get-in y [.arities idx])
-;;                                                                       maybe-variadic-y)]
-;;                                                       (assoc arities idx (intersect x-arity y-arity)))
-;;                                                     arities))))
-;;                 new-arities (either (for [variadic-x maybe-variadic-x
-;;                                           variadic-y maybe-variadic-y]
-;;                                       (assoc new-arities variadic (intersect variadic-x variadic-y)))
-;;                                     new-arities)
-;;                 new-arities (reduce (vec new-arities) {}
-;;                                     (fn [new-arities [k v]]
-;;                                       (cond (= bottom-type v)
-;;                                             new-arities
+                                             (conj new-reqd arity-rank))))
+                maybe-variadic-x (get-in x [.arities variadic])
+                maybe-variadic-y (get-in y [.arities variadic])
+                new-arities (reduce (vec (.arities y)) {}
+                                    (fn [arities [idx y-arity]]
+                                      (either (for [_ (instance? Integer idx)
+                                                    x-arity (or (get-in x [.arities idx])
+                                                                maybe-variadic-x)]
+                                                (assoc arities idx (intersect x-arity y-arity)))
+                                              arities)))
+                new-arities (reduce (vec (.arities x)) new-arities
+                                    (fn [arities [idx x-arity]]
+                                      (cond (get arities idx)
+                                            arities
 
-;;                                             (assoc new-arities k v))))]
-;;             (cond (empty? new-arities)
-;;                   (NoValues [x y])
+                                            (either (for [_ (instance? Integer idx)
+                                                          y-arity (or (get-in y [.arities idx])
+                                                                      maybe-variadic-y)]
+                                                      (assoc arities idx (intersect x-arity y-arity)))
+                                                    arities))))
+                new-arities (either (for [variadic-x maybe-variadic-x
+                                          variadic-y maybe-variadic-y]
+                                      (assoc new-arities variadic (intersect variadic-x variadic-y)))
+                                    new-arities)
+                new-arities (reduce (vec new-arities) {}
+                                    (fn [new-arities [k v]]
+                                      (cond (= bottom-type v)
+                                            new-arities
 
-;;                   (.arities x new-arities)))))
+                                            (assoc new-arities k v))))]
+            (cond (empty? new-arities)
+                  (NoValues [x y])
 
-;; (extend-type FnConstraint
-;;   Constraint
-;;   (intersect [x y]
-;;     (cond (or (=* x y)
-;;               (= top-type y))
-;;           x
+                  (every new-required (partial get new-arities))
+                  (-> x
+                      (.required-arities new-required)
+                      (.arities new-arities))
 
-;;           (= bottom-type y)
-;;           y
+                  (NoValues [x y])))))
 
-;;           (or (instance? ParamConstraint y)
-;;               (instance? ComputedConstraint y)
-;;               (instance? SumConstraint y)
-;;               (instance? ReifiedConstraint y))
-;;           (intersect y x)
+(extend-type FnConstraint
+  Constraint
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
 
-;;           (instance? FnConstraint y)
-;;           (intersect-fns x y)
+          (= bottom-type y)
+          y
 
-;;           (NoValues [x y]))))
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y)
+              (instance? ReifiedConstraint y))
+          (intersect y x)
+
+          (instance? FnConstraint y)
+          (intersect-fns x y)
+
+          (NoValues [x y]))))
 
 ;; (extend-type ReifiedConstraint)
 ;; (extend-type HashMapConstraint)

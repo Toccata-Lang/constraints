@@ -60,7 +60,7 @@
                        c/list-constraint
                        c/vect-constraint
                        c/seq-constraint
-                       ;; c/fn-constraint
+                       c/fn-constraint
                        ;; c/not-container
                        ;; c/type-of-constraint
                        ;; c/inner-type-of-constraint
@@ -298,6 +298,66 @@
 (def _ (test (cata p/find-bottom (p/SumConstraint [computed-bottom]
                                                   empty-list p/no-symbol ""))
              c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/fn-constraint
+                          (p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
+                                          empty-list p/no-symbol ""))
+             (p/FnConstraint [1]
+                             {1 (p/fn-arity p/no-symbol int-list-1 p/top-type)}
+                             empty-list p/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
+                                          empty-list p/no-symbol "")
+                          (p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol
+                                                         (p/ListConstraint [c/string-constraint]
+                                                                           p/no-tail empty-list p/no-symbol "")
+                                                         c/top-type)}
+                                          empty-list p/no-symbol ""))
+             (p/NoValues [(p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol
+                                                         (p/ListConstraint [c/string-constraint]
+                                                                           p/no-tail empty-list p/no-symbol "")
+                                                         c/top-type)}
+                                          empty-list p/no-symbol "")
+                          (p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
+                                          empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (-> c/fn-constraint
+                              (.required-arities [3])
+                              (.arities (select-keys (.arities c/fn-constraint) [3])))
+                          (p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
+                                          empty-list p/no-symbol ""))
+             (p/NoValues [(p/FnConstraint [1]
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
+                                          empty-list p/no-symbol "")
+                          (p/FnConstraint [3]
+                                          {3 (p/fn-arity p/no-symbol
+                                                         (p/ListConstraint [c/top-type c/top-type c/top-type]
+                                                                           p/no-tail empty-list p/no-symbol "")
+                                                         c/top-type)}
+                                          empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/FnConstraint []
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/int-constraint)}
+                                          empty-list p/no-symbol "")
+                          (p/FnConstraint []
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/sym-constraint)}
+                                          empty-list p/no-symbol ""))
+             (p/NoValues [(p/FnConstraint []
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/int-constraint)}
+                                          empty-list p/no-symbol "")
+                          (p/FnConstraint []
+                                          {1 (p/fn-arity p/no-symbol int-list-1 c/sym-constraint)}
+                                          empty-list p/no-symbol "")])
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
