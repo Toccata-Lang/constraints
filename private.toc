@@ -1123,8 +1123,7 @@
     c)
 
   ;; derive a new type by applying a type operation
-  (derive [op c]
-    (intersect c op))
+  (derive [op])
 
   ;; produces the the type required by the type operation
   ;; (required [c op]
@@ -1143,11 +1142,19 @@
 
 (extend-type NoTail
   Constraint
+  (derive [op]
+    (fn [c]
+      op))
+
   (intersect [x y]
     x))
 
 (extend-type AllValues
   Constraint
+  (derive [op]
+    (fn [c]
+      c))
+
   (get-items [c items-count]
     (repeat items-count c))
 
@@ -1155,6 +1162,10 @@
 
 (extend-type NoValues
   Constraint
+  (derive [op]
+    (fn [c]
+      op))
+
   (trim [c]
     (.constraints c (comp (remove (.constraints c) (partial instance? NoValues))
                           (-> (.constraints c)
@@ -1165,6 +1176,10 @@
 
 (extend-type IntegerConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1205,6 +1220,10 @@
 
 (extend-type SymbolConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1242,6 +1261,10 @@
 
 (extend-type StrConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
   (intersect [x y]
     (cond (= top-type y)
           x
@@ -1277,6 +1300,12 @@
 
 (extend-type MaybeConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (.contents c))
 
@@ -1334,6 +1363,12 @@
 
 (extend-type ListConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (or (some (.items c) (partial = bottom-type))
                 (= bottom-type (.tail-c c)))
@@ -1381,6 +1416,12 @@
 
 (extend-type VectorConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (or (some (.items c) (partial = bottom-type))
                 (= bottom-type (.tail-c c)))
@@ -1428,6 +1469,12 @@
 
 (extend-type SumConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (flat-map (every (.alts c) (partial = bottom-type))
                       first)
@@ -1495,6 +1542,12 @@
 
 (extend-type CollectionOf
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (= bottom-type (.contents c))
             c))
@@ -1519,16 +1572,17 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (reduce (.mods op) c
+              (fn [c op-fn]
+                (op-fn c)))))
+
   (find-bottom [c]
-    (derive c top-type))
+    ((cata derive c) top-type))
 
   (get-items [c items-count]
-    (get-items (derive c top-type) items-count))
-
-  (derive [op c]
-    (reduce (.mods op) c
-            (fn [c op]
-              (derive op c))))
+    (get-items ((cata derive c) top-type) items-count))
 
   (intersect [x y]
     (cond (= top-type y)
@@ -1547,8 +1601,9 @@
 
 (extend-type ParamConstraint
   Constraint
-  (derive [op c]
-    c)
+  (derive [op]
+    (fn [c]
+      c))
 
   (intersect [x y]
     (cond (= top-type y)
@@ -1565,6 +1620,10 @@
 
 (extend-type OpaqueConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
   (intersect [x y]
     (cond (or (=* x y)
               (=* y top-type))
@@ -1581,6 +1640,12 @@
 
 (extend-type AgentConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (= bottom-type (.contents c))
             c))
@@ -1606,6 +1671,10 @@
 
 (extend-type FutureConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
   (intersect [x y]
     (cond (or (=* x y)
               (= top-type y))
@@ -1623,6 +1692,12 @@
 
 (extend-type PromiseConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (= bottom-type (.contents c))
             c))
@@ -1649,6 +1724,12 @@
 
 (extend-type fn-arity
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (or (-> (.param-consts c)
                     .items
@@ -1729,6 +1810,12 @@
 
 (extend-type FnConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (some (vals (.arities c)) (partial = bottom-type))
             c))
@@ -1754,6 +1841,12 @@
 
 (extend-type ReifiedConstraint
   Constraint
+  (derive [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
   (find-bottom [c]
     (either (or (some (seq (.fields c)) (fn [[fld-c val-c]]
                                           (or (= bottom-type fld-c)
@@ -1787,6 +1880,12 @@
 
 ;; (extend-type ArgOf
 ;;   Constraint
+;; (derive [op]
+;;   (fn [c]
+;;     (intersect (map op (fn [contents]
+;;                          (contents top-type)))
+;;                c)))
+
 ;;   (intersect [x y]
 ;;     (cond (or (=* x y)
 ;;               (= top-type y))
@@ -1802,19 +1901,20 @@
 
 ;;           (instance? FnConstraint y)
 ;;           (let [arg-pos (.arg-position x)
-;;                 num-args (inc arg-pos)]
-;;             (-> (.arities y)
-;;                 vals
-;;                 (map (fn [arity]
-;;                        (assert (instance? fn-arity arity))
-;;                        (either (-> (.param-consts arity)
-;;                                    (get-items num-args)
-;;                                    (nth arg-pos))
-;;                                bottom-type)))
-;;                 (remove (partial = bottom-type))
-;;                 (map required)
-;;                 vec
-;;                 sum-type))
+;;                 num-args (inc arg-pos)
+;;                 arity-args (-> (.arities y)
+;;                                vals
+;;                                (reduce [] (fn [arities arity]
+;;                                             (assert (instance? fn-arity arity))
+;;                                             (either (map (-> (.param-consts arity)
+;;                                                              (get-items num-args)
+;;                                                              (nth arg-pos))
+;;                                                          (partial conj arities))
+;;                                                     arities))))]
+;;             (cond (empty? arity-args)
+;;                   (NoValues [x y])
+
+;;                   (sum-type arity-args)))
 
 ;;           (instance? ReifiedConstraint y)
 ;;           (intersect (.arg-position x (inc (.arg-position x)))

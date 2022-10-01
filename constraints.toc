@@ -98,3 +98,6 @@
 (defn extract-items [c n]
   (let [[items] (p/get-items c n)]
     items))
+
+(defn derive [op c]
+  ((cata p/derive op) c))

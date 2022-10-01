@@ -160,14 +160,21 @@
                                p/no-tail empty-list p/no-symbol "")
              _FILE_ _LINE_))
 
-(def _ (test (p/derive (-> param
+(def _ (test (c/derive (p/MaybeConstraint (c/intersect param c/int-constraint)
+                                          empty-list p/no-symbol "")
+                       maybe-str)
+             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
+                          (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")])
+             _FILE_ _LINE_))
+
+(def _ (test (c/derive (-> param
                            (c/intersect c/maybe-constraint)
                            (c/intersect maybe-str))
                        c/top-type)
              maybe-str
              _FILE_ _LINE_))
 
-(def _ (test (p/derive (-> param
+(def _ (test (c/derive (-> param
                              (c/intersect c/maybe-constraint)
                              (c/intersect c/int-constraint)
                              (c/intersect maybe-str))
