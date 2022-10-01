@@ -161,9 +161,9 @@
              _FILE_ _LINE_))
 
 (def _ (test (p/derive (-> param
-                             (c/intersect c/maybe-constraint)
-                             (c/intersect maybe-str))
-                         c/top-type)
+                           (c/intersect c/maybe-constraint)
+                           (c/intersect maybe-str))
+                       c/top-type)
              maybe-str
              _FILE_ _LINE_))
 

@@ -827,6 +827,7 @@
   (map [x f embed]
     (embed x)))
 
+;; Get's replaced with the constraint of the param-sym, so not many implementations for it
 (deftype TypeOfConstraint [param-sym path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -853,14 +854,14 @@
     (embed x)))
 
 ;; type operations
-(deftype InnerTypeOfConstraint [param-sym path sym var]
+(deftype InnerTypeOfConstraint [param path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(c/InnerTypeOfConstraint " (str "'" param-sym) " "
+    (list "(c/InnerTypeOfConstraint " (str "'" param) " "
           "empty-list "
           ;; (str (cons 'list path))
           " " (sym-str sym) " \"" (str var) "\")" ))
@@ -868,23 +869,23 @@
   Eq
   (=* [x y]
     (and (instance? InnerTypeOfConstraint y)
-         (or (= param-sym (.param-sym y))
-             (= (.param-sym y) param-sym))
+         (or (= param (.param y))
+             (= (.param y) param))
          (maybe x)))
 
   Container
   (map [x f]
-    (cond (instance? OptionalSym param-sym)
+    (cond (instance? OptionalSym param)
           x
 
-          (.param-sym x (f param-sym))))
+          (.param x (f param))))
 
   (map [x f embed]
-    (cond (instance? OptionalSym param-sym)
+    (cond (instance? OptionalSym param)
           (embed x)
 
-          (map (f param-sym)
-               (partial .param-sym x)))))
+          (map (f param)
+               (partial .param x)))))
 
 (def VectFrom (reify
                 Stringable
@@ -1784,8 +1785,43 @@
 
           (NoValues [x y]))))
 
-;; (extend-type HashMapConstraint)
-;; (extend-type TypeOfConstraint)
+;; (extend-type ArgOf
+;;   Constraint
+;;   (intersect [x y]
+;;     (cond (or (=* x y)
+;;               (= top-type y))
+;;           x
+
+;;           (= bottom-type y)
+;;           y
+
+;;           (or (instance? ParamConstraint y)
+;;               (instance? ComputedConstraint y)
+;;               (instance? SumConstraint y))
+;;           (intersect y x)
+
+;;           (instance? FnConstraint y)
+;;           (let [arg-pos (.arg-position x)
+;;                 num-args (inc arg-pos)]
+;;             (-> (.arities y)
+;;                 vals
+;;                 (map (fn [arity]
+;;                        (assert (instance? fn-arity arity))
+;;                        (either (-> (.param-consts arity)
+;;                                    (get-items num-args)
+;;                                    (nth arg-pos))
+;;                                bottom-type)))
+;;                 (remove (partial = bottom-type))
+;;                 (map required)
+;;                 vec
+;;                 sum-type))
+
+;;           (instance? ReifiedConstraint y)
+;;           (intersect (.arg-position x (inc (.arg-position x)))
+;;                      (.invoke-fn y))
+
+;;           (NoValues [x y]))))
+
 ;; (extend-type InnerTypeOfConstraint)
 ;; (extend-type ModSeqType)
 ;; (extend-type ArgOf)
@@ -1793,6 +1829,7 @@
 ;; (extend-type CallValue)
 ;; (extend-type SetField)
 ;; (extend-type GetField)
+;; (extend-type HashMapConstraint)
 
 
 ;; misc
