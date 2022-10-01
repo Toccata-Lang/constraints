@@ -1833,7 +1833,8 @@
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
               (instance? ArgOf y)
-              (instance? ResultOf y))
+              (instance? ResultOf y)
+              (instance? CallValue y))
           (intersect y x)
 
           (instance? FnConstraint y)
@@ -1868,7 +1869,8 @@
               (instance? ComputedConstraint y)
               (instance? SumConstraint y)
               (instance? ArgOf y)
-              (instance? ResultOf y))
+              (instance? ResultOf y)
+              (instance? CallValue y))
           (intersect y x)
 
           (instance? FnConstraint y)
@@ -1945,21 +1947,62 @@
 
           (instance? FnConstraint y)
           (-> (.arities y)
-                  vals
-                  (reduce [] (fn [arities arity]
-                               (assert (instance? fn-arity arity))
-                               (conj arities (.result-const arity))))
-                  sum-type)
+              vals
+              (reduce [] (fn [arities arity]
+                           (assert (instance? fn-arity arity))
+                           (conj arities (.result-const arity))))
+              sum-type)
 
           (instance? ReifiedConstraint y)
           (intersect x (.invoke-fn y))
 
           (NoValues [x y]))))
 
+;; (extend-type CallValue
+;;   Constraint
+;;   (derive [op]
+;;     (fn [c]
+;;       (intersect op c)))
+
+;;   (intersect [x y]
+;;     (cond (or (=* x y)
+;;               (= top-type y))
+;;           x
+
+;;           (= bottom-type y)
+;;           y
+
+;;           (or (instance? ParamConstraint y)
+;;               (instance? ComputedConstraint y)
+;;               (instance? SumConstraint y))
+;;           (intersect y x)
+
+;;           (instance? FnConstraint y)
+;;           (let [args (.args x)]
+;;             (either (or (map (instance? NoArgs args)
+;;                              (fn [_]
+;;                                (-> (.arities y)
+;;                                    vals
+;;                                    (reduce [] (fn [arities arity]
+;;                                                 (assert (instance? fn-arity arity))
+;;                                                 (conj arities (.result-const arity))))
+;;                                    sum-type)))
+;;                         (map (or (get-in y [.arities (count args)])
+;;                                  (get-in y [.arities variadic]))
+;;                              (fn [arity]
+;;                                (let [[reified] ((cata reify-const arity se/state-error)
+;;                                                 args)])
+;;                                (cata find-bottom reified))))
+
+;;                     (NoValues [x y])))
+
+;;           (instance? ReifiedConstraint y)
+;;           (intersect x (.invoke-fn y))
+
+;;           (NoValues [x y]))))
+
 ;; (extend-type InnerTypeOfConstraint)
 ;; (extend-type ModSeqType)
-;; (extend-type ResultOf)
-;; (extend-type CallValue)
 ;; (extend-type SetField)
 ;; (extend-type GetField)
 ;; (extend-type HashMapConstraint)
