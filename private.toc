@@ -1832,7 +1832,8 @@
               (instance? ComputedConstraint y)
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
-              (instance? ArgOf y))
+              (instance? ArgOf y)
+              (instance? ResultOf y))
           (intersect y x)
 
           (instance? FnConstraint y)
@@ -1865,7 +1866,9 @@
 
           (or (instance? ParamConstraint y)
               (instance? ComputedConstraint y)
-              (instance? SumConstraint y))
+              (instance? SumConstraint y)
+              (instance? ArgOf y)
+              (instance? ResultOf y))
           (intersect y x)
 
           (instance? FnConstraint y)
@@ -1918,6 +1921,38 @@
           (instance? ReifiedConstraint y)
           (intersect (.arg-position x (inc (.arg-position x)))
                      (.invoke-fn y))
+
+          (NoValues [x y]))))
+
+(extend-type ResultOf
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
+
+          (= bottom-type y)
+          y
+
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (instance? FnConstraint y)
+          (-> (.arities y)
+                  vals
+                  (reduce [] (fn [arities arity]
+                               (assert (instance? fn-arity arity))
+                               (conj arities (.result-const arity))))
+                  sum-type)
+
+          (instance? ReifiedConstraint y)
+          (intersect x (.invoke-fn y))
 
           (NoValues [x y]))))
 

@@ -41,8 +41,19 @@
 (def maybe-int  (p/MaybeConstraint pos-10 empty-list p/no-symbol ""))
 (def maybe-sym  (p/MaybeConstraint sym-c empty-list p/no-symbol ""))
 
+(def reified-val (p/ReifiedConstraint
+                  10 {} p/no-symbol
+                  (p/FnConstraint [3]
+                                  {3 (p/fn-arity p/no-symbol
+                                                 (p/ListConstraint [c/top-type c/top-type pos-int]
+                                                                   p/no-tail empty-list p/no-symbol "")
+                                                 c/top-type)}
+                                  empty-list p/no-symbol "")
+                  empty-list p/no-symbol ""))
+
 (def param (p/ParamConstraint 'arity-1 0 empty-list p/no-symbol ""))
 (def arg-of (p/ArgOf 'fn-sym 1 empty-list p/no-symbol ""))
+(def result-of (p/ResultOf 'fn-sym empty-list p/no-symbol ""))
 
 (def test-constraints [c/top-type
                        c/bottom-type
@@ -102,7 +113,10 @@
                        maybe-int
                        maybe-sym
 
+                       reified-val
+
                        arg-of
+                       result-of
                        param])
 
 (defn test [ex1 ex2 file line]
@@ -389,17 +403,14 @@
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
         _FILE_ _LINE_))
 
+(def _ (test (c/intersect reified-val
+                          arg-of)
+             pos-int
+        _FILE_ _LINE_))
+
 (def _ (test (c/intersect arg-of
                           (p/SumConstraint
-                           [(p/ReifiedConstraint
-                             10 {} p/no-symbol
-                             (p/FnConstraint [3]
-                                             {3 (p/fn-arity p/no-symbol
-                                                            (p/ListConstraint [c/top-type c/top-type pos-int]
-                                                                              p/no-tail empty-list p/no-symbol "")
-                                                            c/top-type)}
-                                             empty-list p/no-symbol "")
-                             empty-list p/no-symbol "")
+                           [reified-val
                             (p/FnConstraint []
                                             {2 (p/fn-arity p/no-symbol
                                                            (p/ListConstraint [c/top-type coll-of-sym]
@@ -408,6 +419,27 @@
                                             empty-list p/no-symbol "")]
                            empty-list p/no-symbol ""))
              (p/SumConstraint [pos-int coll-of-sym] empty-list p/no-symbol "")
+        _FILE_ _LINE_))
+
+(def _ (test (c/intersect result-of
+                          (p/SumConstraint
+                           [(p/ReifiedConstraint
+                             10 {} p/no-symbol
+                             (p/FnConstraint [1]
+                                             {1 (p/fn-arity p/no-symbol
+                                                            (p/ListConstraint [c/top-type] p/no-tail
+                                                                              empty-list p/no-symbol "")
+                                                            pos-int)}
+                                             empty-list p/no-symbol "")
+                             empty-list p/no-symbol "")
+                            (p/FnConstraint []
+                                            {2 (p/fn-arity p/no-symbol
+                                                           (p/ListConstraint [c/top-type coll-of-sym]
+                                                                             p/no-tail empty-list p/no-symbol "")
+                                                           c/sym-constraint)}
+                                            empty-list p/no-symbol "")]
+                           empty-list p/no-symbol ""))
+             (p/SumConstraint [pos-int c/sym-constraint] empty-list p/no-symbol "")
         _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
