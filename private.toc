@@ -907,18 +907,35 @@
               (string-list [_]
                 (list "c/ButLastOf"))))
 
-(def FirstOf (reify
-               Stringable
-               (string-list [_]
-                 (list "c/FirstOf"))))
-
 (def LastOf (reify
                Stringable
                (string-list [_]
                  (list "c/LastOf"))))
 
 ;; TODO: enum doesn't work
-;; (def SeqTypeOps (enum ListFrom VectFrom FirstOf LastOf RestOf ButLastOf))
+;; (def SeqTypeOps (enum ListFrom VectFrom LastOf RestOf ButLastOf))
+
+(deftype FirstOf [base-sym path sym var]
+  (assert (instance? Symbol base-sym))
+
+  Stringable
+  (string-list [_]
+    (list "(c/FirstOf " (str "'" base-sym) " "
+          "empty-list "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? FirstOf y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
 
 (deftype ModSeqType [op base-sym path sym var]
   (assert (instance? Symbol base-sym))
@@ -1403,7 +1420,14 @@
 
           (or (instance? ParamConstraint y)
               (instance? ComputedConstraint y)
-              (instance? SumConstraint y))
+              (instance? SumConstraint y)
+              (instance? FirstOf y)
+              ;; (instance? LastOf y)
+              ;; (instance? RestOf y)
+              ;; (instance? ButLastOf y)
+              ;; (instance? ListFrom y)
+              ;; (instance? VectFrom y)
+              )
           (intersect y x)
 
           (instance? ListConstraint y)
@@ -1456,7 +1480,14 @@
 
           (or (instance? ParamConstraint y)
               (instance? ComputedConstraint y)
-              (instance? SumConstraint y))
+              (instance? SumConstraint y)
+              (instance? FirstOf y)
+              ;; (instance? LastOf y)
+              ;; (instance? RestOf y)
+              ;; (instance? ButLastOf y)
+              ;; (instance? ListFrom y)
+              ;; (instance? VectFrom y)
+              )
           (intersect y x)
 
           (instance? VectorConstraint y)
@@ -1597,6 +1628,9 @@
           (instance? ComputedConstraint y)
           top-type
 
+          (instance? FirstOf y)
+          (.mods x (comp (.mods x) [y (MaybeConstraint top-type empty-list no-symbol "")]))
+
           (.mods x (conj (.mods x) y)))))
 
 (extend-type ParamConstraint
@@ -1615,6 +1649,10 @@
           (or (instance? SumConstraint y)
               (instance? ComputedConstraint y))
           (intersect y x)
+
+          (instance? FirstOf y)
+          (ComputedConstraint [x y (MaybeConstraint top-type empty-list no-symbol "")]
+                              (.path x) (.sym x) (.var x))
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
 
@@ -1956,6 +1994,32 @@
           (instance? ReifiedConstraint y)
           (intersect x (.invoke-fn y))
 
+          (NoValues [x y]))))
+
+(extend-type FirstOf
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
+
+          (= bottom-type y)
+          y
+
+          (instance? SeqConstraint y)
+          (MaybeConstraint (either (first (get-items y 1))
+                                   top-type)
+                           empty-list no-symbol "")
+
+          (or (instance? SumConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+     
           (NoValues [x y]))))
 
 ;; (extend-type CallValue
