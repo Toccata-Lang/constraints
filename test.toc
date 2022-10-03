@@ -56,6 +56,7 @@
 (def result-of (p/ResultOf 'fn-sym empty-list p/no-symbol ""))
 (def first-of (p/FirstOf 'val-sym empty-list p/no-symbol ""))
 (def last-of (p/LastOf 'val-sym empty-list p/no-symbol ""))
+(def rest-of (p/RestOf 'val-sym empty-list p/no-symbol ""))
 
 (def test-constraints [c/top-type
                        c/bottom-type
@@ -119,6 +120,7 @@
 
                        first-of
                        last-of
+                       rest-of
 
                        arg-of
                        result-of
@@ -469,6 +471,18 @@
 
 (def _ (test (c/intersect int-vect-1 last-of)
              maybe-int
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect rest-of c/empty-vect-constraint)
+             c/empty-vect-constraint
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect rest-of int-list-1)
+             c/empty-list-constraint
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect int-vect-2 rest-of)
+             int-vect-1
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints

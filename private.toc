@@ -897,19 +897,12 @@
                 (string-list [_]
                   (list "c/ListFrom"))))
 
-(def RestOf (reify
-              Stringable
-              (string-list [_]
-                (list "c/RestOf"))))
-
 (def ButLastOf (reify
               Stringable
               (string-list [_]
                 (list "c/ButLastOf"))))
 
-;; TODO: enum doesn't work
-;; (def SeqTypeOps (enum ListFrom VectFrom LastOf RestOf ButLastOf))
-
+;; TODO: make this be NthOf
 (deftype FirstOf [base-sym path sym var]
   (assert (instance? Symbol base-sym))
 
@@ -954,20 +947,19 @@
   (map [x f embed]
     (embed x)))
 
-(deftype ModSeqType [op base-sym path sym var]
+(deftype RestOf [base-sym path sym var]
   (assert (instance? Symbol base-sym))
 
   Stringable
   (string-list [_]
-    (list "(c/ModSeqType " (str op) " " (str "'" base-sym) " "
+    (list "(c/RestOf " (str "'" base-sym) " "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
-    (and (instance? ModSeqType y)
-         (identical op (.op y))
+    (and (instance? RestOf y)
          (maybe x)))
 
   Container
@@ -1088,25 +1080,25 @@
           new-c (f (.fld-c x))]
       (SetField new-fld new-c))))
 
-(deftype GetField [fld]
+(deftype GetFrom [fld]
   (assert (instance? Vector fld))
 
   Stringable
   (string-list [_]
-    (list "(c/GetField " (str fld) ")"))
+    (list "(c/GetFrom " (str fld) ")"))
 
   Eq
   (=* [x y]
-    (and (instance? GetField y)
+    (and (instance? GetFrom y)
          (= fld (.fld y))
          (maybe x)))
 
   Container
   (map [x f]
-    (GetField (f fld)))
+    (GetFrom (f fld)))
 
   (map [x f embed]
-    (map (f fld) GetField)))
+    (map (f fld) GetFrom)))
 
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
@@ -1420,7 +1412,7 @@
               (instance? SumConstraint y)
               (instance? FirstOf y)
               (instance? LastOf y)
-              ;; (instance? RestOf y)
+              (instance? RestOf y)
               ;; (instance? ButLastOf y)
               ;; (instance? ListFrom y)
               ;; (instance? VectFrom y)
@@ -1476,7 +1468,7 @@
               (instance? SumConstraint y)
               (instance? FirstOf y)
               (instance? LastOf y)
-              ;; (instance? RestOf y)
+              (instance? RestOf y)
               ;; (instance? ButLastOf y)
               ;; (instance? ListFrom y)
               ;; (instance? VectFrom y)
@@ -2010,6 +2002,24 @@
           (intersect y x)
 
           (NoValues [x y]))))
+
+(extend-type RestOf
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (instance? SeqConstraint y)
+          (let [y (cata trim y)]
+            (.items y (rest (.items y))))
+
+          (or (instance? SumConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2061,7 +2071,7 @@
 
 ;; (extend-type InnerTypeOfConstraint)
 ;; (extend-type SetField)
-;; (extend-type GetField)
+;; (extend-type GetFrom)
 ;; (extend-type HashMapConstraint)
 
 
