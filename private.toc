@@ -429,6 +429,7 @@
       (-> c
           (.tail-c new-tail-c)
           (.items new-items)))))
+(def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
 
 (deftype MaybeConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
@@ -887,21 +888,6 @@
           (map (f param)
                (partial .param x)))))
 
-(def VectFrom (reify
-                Stringable
-                (string-list [_]
-                  (list "c/VectFrom"))))
-
-(def ListFrom (reify
-                Stringable
-                (string-list [_]
-                  (list "c/ListFrom"))))
-
-(def ButLastOf (reify
-              Stringable
-              (string-list [_]
-                (list "c/ButLastOf"))))
-
 ;; TODO: make this be NthOf
 (deftype FirstOf [base-sym path sym var]
   (assert (instance? Symbol base-sym))
@@ -960,6 +946,72 @@
   Eq
   (=* [x y]
     (and (instance? RestOf y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
+(deftype ButLastOf [base-sym path sym var]
+  (assert (instance? Symbol base-sym))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ButLastOf " (str "'" base-sym) " "
+          "empty-list "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? ButLastOf y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
+(deftype ListFrom [base-sym path sym var]
+  (assert (instance? Symbol base-sym))
+
+  Stringable
+  (string-list [_]
+    (list "(c/ListFrom " (str "'" base-sym) " "
+          "empty-list "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? ListFrom y)
+         (maybe x)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
+(deftype VectFrom [base-sym path sym var]
+  (assert (instance? Symbol base-sym))
+
+  Stringable
+  (string-list [_]
+    (list "(c/VectFrom " (str "'" base-sym) " "
+          "empty-list "
+          ;; (str (cons 'list path))
+          (sym-str sym) " \"" (str var) "\")" ))
+
+  Eq
+  (=* [x y]
+    (and (instance? VectFrom y)
          (maybe x)))
 
   Container
@@ -1413,10 +1465,9 @@
               (instance? FirstOf y)
               (instance? LastOf y)
               (instance? RestOf y)
-              ;; (instance? ButLastOf y)
-              ;; (instance? ListFrom y)
-              ;; (instance? VectFrom y)
-              )
+              (instance? ButLastOf y)
+              (instance? ListFrom y)
+              (instance? VectFrom y))
           (intersect y x)
 
           (instance? ListConstraint y)
@@ -1469,10 +1520,9 @@
               (instance? FirstOf y)
               (instance? LastOf y)
               (instance? RestOf y)
-              ;; (instance? ButLastOf y)
-              ;; (instance? ListFrom y)
-              ;; (instance? VectFrom y)
-              )
+              (instance? ButLastOf y)
+              (instance? ListFrom y)
+              (instance? VectFrom y))
           (intersect y x)
 
           (instance? VectorConstraint y)
@@ -2024,6 +2074,90 @@
               (instance? ParamConstraint y))
           (intersect y x)
      
+          (NoValues [x y]))))
+
+(extend-type ButLastOf
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (instance? SeqConstraint y)
+          (let [y (cata trim y)]
+            (cond (= (.tail-c y) no-tail)
+                  (.items y (butlast (.items y)))
+
+                  y))
+
+          (or (instance? SumConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
+          (NoValues [x y]))))
+
+(extend-type ListFrom
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (instance? ListConstraint y)
+          y
+
+          (instance? VectorConstraint y)
+          (let [y (cata trim y)]
+            (-> empty-list-constraint
+                (.items (.items y))
+                (.tail-c (.tail-c y))
+                (.path (comp (.path y) (.path x)))))
+
+          (or (instance? SumConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
+          (NoValues [x y]))))
+
+(extend-type VectFrom
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (instance? VectorConstraint y)
+          y
+
+          (instance? ListConstraint y)
+          (let [y (cata trim y)]
+            (-> empty-vect-constraint
+                (.items (.items y))
+                (.tail-c (.tail-c y))
+                (.path (comp (.path y) (.path x)))))
+
+          (or (instance? SumConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
           (NoValues [x y]))))
 
 ;; (extend-type CallValue
