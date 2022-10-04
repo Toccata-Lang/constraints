@@ -1,4 +1,8 @@
 
+(add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
+                           "state-error.toc"
+                           :sha "f48adc3"))
+
 (defn sym-str [s]
   (either (or (and (instance? Symbol s)
                    (maybe (str "'" s))))
@@ -1186,6 +1190,12 @@
           top-type))
 
 (defprotocol Constraint
+  ;; replace and ParamConstraints for 'arity' with their corresponding values
+  (reify-const [c arity]
+    (assert-result r (instance? se/StateError r))
+
+    (se/state-error (cata find-bottom c)))
+
   ;; is the constraint a NoValues type, or contains one
   (find-bottom [c]
     c)
@@ -1240,6 +1250,9 @@
 
 (extend-type NoValues
   Constraint
+  (reify-const [c arity]
+    (se/state-error c))
+
   (derive [op]
     (fn [c]
       op))
@@ -1632,6 +1645,9 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (reify-const [c arity]
+    (se/state-error ((cata derive c) top-type)))
+
   (derive [op]
     (fn [c]
       (reduce (.mods op) c
@@ -1639,7 +1655,8 @@
                 (op-fn c)))))
 
   (find-bottom [c]
-    ((cata derive c) top-type))
+    (either (= bottom-type ((cata derive c) top-type))
+            c))
 
   (get-items [c items-count]
     (get-items ((cata derive c) top-type) items-count))
@@ -1661,6 +1678,12 @@
 
 (extend-type ParamConstraint
   Constraint
+  (reify-const [c arity]
+    (cond (= (.arity c) arity)
+          (se/get-val (.param-index c) top-type)
+
+          (se/state-error c)))
+
   (derive [op]
     (fn [c]
       c))
@@ -2160,48 +2183,63 @@
 
           (NoValues [x y]))))
 
-;; (extend-type CallValue
-;;   Constraint
-;;   (derive [op]
-;;     (fn [c]
-;;       (intersect op c)))
+(extend-type CallValue
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
 
-;;   (intersect [x y]
-;;     (cond (or (=* x y)
-;;               (= top-type y))
-;;           x
+  (intersect [x y]
+    (cond (or (=* x y)
+              (= top-type y))
+          x
 
-;;           (= bottom-type y)
-;;           y
+          (= bottom-type y)
+          y
 
-;;           (or (instance? ParamConstraint y)
-;;               (instance? ComputedConstraint y)
-;;               (instance? SumConstraint y))
-;;           (intersect y x)
+          (or (instance? ParamConstraint y)
+              (instance? ComputedConstraint y)
+              (instance? SumConstraint y))
+          (intersect y x)
 
-;;           (instance? FnConstraint y)
-;;           (let [args (.args x)]
-;;             (either (or (map (instance? NoArgs args)
-;;                              (fn [_]
-;;                                (-> (.arities y)
-;;                                    vals
-;;                                    (reduce [] (fn [arities arity]
-;;                                                 (assert (instance? fn-arity arity))
-;;                                                 (conj arities (.result-const arity))))
-;;                                    sum-type)))
-;;                         (map (or (get-in y [.arities (count args)])
-;;                                  (get-in y [.arities variadic]))
-;;                              (fn [arity]
-;;                                (let [[reified] ((cata reify-const arity se/state-error)
-;;                                                 args)])
-;;                                (cata find-bottom reified))))
+          (instance? FnConstraint y)
+          (let [args (.args x)]
+            (either (or (map (instance? NoArgs args)
+                             (fn [_]
+                               (-> (.arities y)
+                                   vals
+                                   (reduce [] (fn [arities arity]
+                                                (assert (instance? fn-arity arity))
+                                                (conj arities (.result-const arity))))
+                                   sum-type)))
+                        (map (or (get-in y [.arities (count args)])
+                                 (get-in y [.arities variadic]))
+                             (fn [arity]
+                               ;; TODO: make sure all arg constraints < param constraints
+                               (let [new-args (intersect (.items empty-list-constraint args)
+                                                         (.param-consts arity))
+                                     [reified] (cond (= bottom-type new-args)
+                                                     [new-args]
 
-;;                     (NoValues [x y])))
+                                                     ((cata (fn [c]
+                                                              (reify-const c (.arity-id arity)))
+                                                            arity
+                                                            se/state-error)
+                                                      (get-items new-args (count args))))
+                                     reified (cata find-bottom reified)]
+                                 (either (= bottom-type reified)
+                                         (.result-const reified))))))
 
-;;           (instance? ReifiedConstraint y)
-;;           (intersect x (.invoke-fn y))
+                    (NoValues [x y])))
 
-;;           (NoValues [x y]))))
+          (instance? ReifiedConstraint y)
+          (cond (instance? NoArgs (.args x))
+                (intersect x (.invoke-fn y)) 
+
+                (intersect (.args x (comp [y] (.args x)))
+                           (.invoke-fn y)))
+
+          (NoValues [x y]))))
 
 ;; (extend-type InnerTypeOfConstraint)
 ;; (extend-type SetField)
