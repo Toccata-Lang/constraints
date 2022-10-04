@@ -1054,33 +1054,6 @@
   (map [x f embed]
     (embed x)))
 
-(deftype ResultOf [fn-sym path sym var]
-  (assert (instance? Symbol fn-sym))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/ResultOf " (sym-str fn-sym)
-          " empty-list"
-          ;; (str " " (cons 'list path))
-          " " (sym-str sym)
-          " " (str "\"" var "\"")
-          ")"))
-
-  Eq
-  (=* [x y]
-    (and (instance? ResultOf y)
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
-
 (deftype CallValue [args path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -1905,7 +1878,6 @@
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
               (instance? ArgOf y)
-              (instance? ResultOf y)
               (instance? CallValue y))
           (intersect y x)
 
@@ -1939,7 +1911,6 @@
               (instance? ComputedConstraint y)
               (instance? SumConstraint y)
               (instance? ArgOf y)
-              (instance? ResultOf y)
               (instance? CallValue y))
           (intersect y x)
 
@@ -1991,36 +1962,6 @@
           (instance? ReifiedConstraint y)
           (intersect (.arg-position x (inc (.arg-position x)))
                      (.invoke-fn y))
-
-          (NoValues [x y]))))
-
-(extend-type ResultOf
-  Constraint
-  (derive [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (instance? FnConstraint y)
-          (-> (.arities y)
-              vals
-              (reduce [] (fn [arities arity]
-                           (assert (instance? fn-arity arity))
-                           (conj arities (.result-const arity))))
-              sum-type)
-
-          (instance? ReifiedConstraint y)
-          (intersect x (.invoke-fn y))
 
           (NoValues [x y]))))
 
