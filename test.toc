@@ -73,7 +73,7 @@
                        c/fn-constraint
                        ;; c/not-container
                        ;; c/type-of-constraint
-                       ;; c/inner-type-of-constraint
+                       c/inner-type-of-constraint
                        c/substr-constraint
                        c/strbuff-constraint
                        c/string-constraint
@@ -91,6 +91,9 @@
                        c/future-constraint
                        c/opaque-constraint
                        c/arity-constraint
+
+                       (p/ListConstraint [c/top-type pos-int] p/no-tail empty-list p/no-symbol "")
+                       (p/VectorConstraint [sym-c pos-int] p/no-tail empty-list p/no-symbol "")
 
                        int-list
                        int-list-1
@@ -194,8 +197,7 @@
 (def _ (test (c/derive (p/MaybeConstraint (c/intersect param c/int-constraint)
                                           empty-list p/no-symbol "")
                        maybe-str)
-             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
-                          (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/derive (-> param
@@ -210,8 +212,7 @@
                              (c/intersect c/int-constraint)
                              (c/intersect maybe-str))
                          c/top-type)
-             (p/NoValues [(p/MaybeConstraint c/top-type empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (p/get-items c/top-type 3)
@@ -275,27 +276,23 @@
 (def _ (test (c/intersect int-list-2
                           (p/ListConstraint [c/int-constraint c/sym-constraint]
                                             p/no-tail empty-list p/no-symbol ""))
-             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect int-vect-2
                           (p/VectorConstraint [c/int-constraint c/sym-constraint]
                                               p/no-tail empty-list p/no-symbol ""))
-             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/AgentConstraint c/sym-constraint empty-list p/no-symbol "")
                           (p/AgentConstraint c/int-constraint empty-list p/no-symbol ""))
-             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/PromiseConstraint c/sym-constraint empty-list p/no-symbol "")
                           (p/PromiseConstraint c/int-constraint empty-list p/no-symbol ""))
-             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def computed-bottom (p/ComputedConstraint [param
@@ -344,8 +341,7 @@
                                          {1 (p/fn-arity p/no-symbol
                                                         (.items c/list-constraint [computed-bottom])
                                                         c/int-constraint)})))
-             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
-                          (p/StrBuffConstraint p/no-string empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/fn-constraint
@@ -366,15 +362,7 @@
                                                                            p/no-tail empty-list p/no-symbol "")
                                                          c/top-type)}
                                           empty-list p/no-symbol ""))
-             (p/NoValues [(p/FnConstraint [1]
-                                          {1 (p/fn-arity p/no-symbol
-                                                         (p/ListConstraint [c/string-constraint]
-                                                                           p/no-tail empty-list p/no-symbol "")
-                                                         c/top-type)}
-                                          empty-list p/no-symbol "")
-                          (p/FnConstraint [1]
-                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
-                                          empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (-> c/fn-constraint
@@ -383,15 +371,7 @@
                           (p/FnConstraint [1]
                                           {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
                                           empty-list p/no-symbol ""))
-             (p/NoValues [(p/FnConstraint [1]
-                                          {1 (p/fn-arity p/no-symbol int-list-1 c/top-type)}
-                                          empty-list p/no-symbol "")
-                          (p/FnConstraint [3]
-                                          {3 (p/fn-arity p/no-symbol
-                                                         (p/ListConstraint [c/top-type c/top-type c/top-type]
-                                                                           p/no-tail empty-list p/no-symbol "")
-                                                         c/top-type)}
-                                          empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/FnConstraint []
@@ -400,12 +380,7 @@
                           (p/FnConstraint []
                                           {1 (p/fn-arity p/no-symbol int-list-1 c/sym-constraint)}
                                           empty-list p/no-symbol ""))
-             (p/NoValues [(p/FnConstraint []
-                                          {1 (p/fn-arity p/no-symbol int-list-1 c/int-constraint)}
-                                          empty-list p/no-symbol "")
-                          (p/FnConstraint []
-                                          {1 (p/fn-arity p/no-symbol int-list-1 c/sym-constraint)}
-                                          empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/ReifiedConstraint
@@ -414,8 +389,7 @@
                           (p/ReifiedConstraint
                            10 {(p/Field 'field) c/sym-constraint}
                            p/no-symbol c/fn-constraint empty-list p/no-symbol ""))
-             (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
-                          (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
+             c/bottom-type
         _FILE_ _LINE_))
 
 (def _ (test (c/intersect reified-val
@@ -515,8 +489,7 @@
                                                          (c/intersect param
                                                                       c/int-constraint))}
                                           empty-list p/no-symbol ""))
-             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
-                          (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/CallValue [str-c c/int-constraint] empty-list p/no-symbol "")
@@ -526,11 +499,7 @@
 
 (def _ (test (c/intersect (p/CallValue [str-c int-vect-2] empty-list p/no-symbol "")
                           reified-val)
-             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 1 empty-list p/no-symbol "")
-                          (p/VectorConstraint
-                           [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
-                            (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")]
-                           p/no-tail empty-list p/no-symbol "")])
+             c/bottom-type
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/CallValue [c/string-constraint] empty-list p/no-symbol "")
@@ -553,13 +522,37 @@
                                                           (p/ParamConstraint 'arity-1 1 empty-list p/no-symbol ""))}
                                            empty-list p/no-symbol "")
                            empty-list p/no-symbol ""))
-             (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 1 empty-list p/no-symbol "")
-                          (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")])
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/int-constraint
+                          c/inner-type-of-constraint)
+             c/bottom-type
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/empty-list-constraint
+                          c/inner-type-of-constraint)
+             c/top-type
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect maybe-int
+                          c/inner-type-of-constraint)
+             c/int-constraint
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/ListConstraint [c/top-type pos-int] p/no-tail empty-list p/no-symbol "")
+                          c/inner-type-of-constraint)
+             pos-int
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/VectorConstraint [sym-c pos-int] p/no-tail empty-list p/no-symbol "")
+                          c/inner-type-of-constraint)
+             (p/sum-type [sym-c pos-int])
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
-             c2 (drop-until test-constraints (partial = c1))
-             c3 (drop-until test-constraints (partial = c2))]
+             c2 (drop-until test-constraints (partial identical c1))
+             c3 (drop-until test-constraints (partial identical c2))]
          (let [c12 (test-intersect c1 c2)
                c23 (test-intersect c2 c3)]
            (test-intersect c12 c23))))

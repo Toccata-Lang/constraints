@@ -891,6 +891,7 @@
 
           (map (f param)
                (partial .param x)))))
+(def inner-type-of-constraint (InnerTypeOfConstraint no-symbol empty-list no-symbol ""))
 
 ;; TODO: make this be NthOf
 (deftype FirstOf [base-sym path sym var]
@@ -1138,6 +1139,10 @@
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
+(def not-container (ReifiedConstraint UnknownType {}
+                                      (symbol "Can not contain other values")
+                                      (FnConstraint [] {} empty-list no-symbol "")
+                                      empty-list no-symbol ""))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1163,6 +1168,9 @@
           top-type))
 
 (defprotocol Constraint
+  (contents-constraint [c]
+    (NoValues [c not-container]))
+
   ;; replace and ParamConstraints for 'arity' with their corresponding values
   (reify-const [c arity]
     (assert-result r (instance? se/StateError r))
@@ -1203,15 +1211,18 @@
 
 (extend-type NoTail
   Constraint
+  (contents-constraint [c]
+    (NoValues [c not-container]))
+
   (derive [op]
     (fn [c]
-      op))
-
-  (intersect [x y]
-    x))
+      op)))
 
 (extend-type AllValues
   Constraint
+  (contents-constraint [c]
+    c)
+
   (derive [op]
     (fn [c]
       c))
@@ -1223,6 +1234,9 @@
 
 (extend-type NoValues
   Constraint
+  (contents-constraint [c]
+    c)
+
   (reify-const [c arity]
     (se/state-error c))
 
@@ -1249,6 +1263,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1289,6 +1304,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1317,6 +1333,9 @@
 
 (extend-type StrConstraint
   Constraint
+  (contents-constraint [c]
+    (.static-value c no-string))
+
   (derive [op]
     (fn [c]
       (intersect op c)))
@@ -1326,6 +1345,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1352,6 +1372,9 @@
 
 (extend-type MaybeConstraint
   Constraint
+  (contents-constraint [c]
+    (.contents c))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1366,6 +1389,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1393,7 +1417,9 @@
                               (get-items l1 max-cnt))
                    (fn [[c1 c2]]
                      (intersect c1 c2)))
-        new-tail (intersect l2-tail l1-tail)
+        new-tail (either (or (= no-tail l1-tail)
+                             (= no-tail l2-tail))
+                         (intersect l2-tail l1-tail))
         new-ic (-> l2
                    (.tail-c new-tail)
                    (.items (vec items)))]
@@ -1411,6 +1437,18 @@
 
 (extend-type ListConstraint
   Constraint
+  (contents-constraint [c]
+    (cond (and (empty? (.items c))
+               (= no-tail (.tail-c c)))
+          top-type
+
+          (-> (.items c)
+              (conj (either (map (= no-tail (.tail-c c)) (fn [_]
+                                                           top-type))
+                            (.tail-c c)))
+              (remove (partial = top-type))
+              sum-type)))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1452,6 +1490,7 @@
               (instance? LastOf y)
               (instance? RestOf y)
               (instance? ButLastOf y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -1466,6 +1505,18 @@
 
 (extend-type VectorConstraint
   Constraint
+  (contents-constraint [c]
+    (cond (and (empty? (.items c))
+               (= no-tail (.tail-c c)))
+          top-type
+
+          (-> (.items c)
+              (conj (either (map (= no-tail (.tail-c c)) (fn [_]
+                                                           top-type))
+                            (.tail-c c)))
+              (remove (partial = top-type))
+              sum-type)))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1507,6 +1558,7 @@
               (instance? LastOf y)
               (instance? RestOf y)
               (instance? ButLastOf y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -1521,6 +1573,9 @@
 
 (extend-type SumConstraint
   Constraint
+  (contents-constraint [c]
+    c)
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1594,6 +1649,9 @@
 
 (extend-type CollectionOf
   Constraint
+  (contents-constraint [c]
+    (.contents c))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1618,6 +1676,9 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (contents-constraint [c]
+    (intersect c inner-type-of-constraint))
+
   (reify-const [c arity]
     (se/state-error ((cata derive c) top-type)))
 
@@ -1651,6 +1712,9 @@
 
 (extend-type ParamConstraint
   Constraint
+  (contents-constraint [c]
+    (intersect c inner-type-of-constraint))
+
   (reify-const [c arity]
     (cond (= (.arity c) arity)
           (se/get-val (.param-index c) top-type)
@@ -1688,6 +1752,7 @@
           (or (instance? ComputedConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
 
@@ -1695,6 +1760,9 @@
 
 (extend-type AgentConstraint
   Constraint
+  (contents-constraint [c]
+    (.contents c))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1710,6 +1778,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1734,6 +1803,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1741,6 +1811,9 @@
 
 (extend-type PromiseConstraint
   Constraint
+  (contents-constraint [c]
+    (.contents c))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -1759,6 +1832,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1878,6 +1952,7 @@
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
               (instance? ArgOf y)
+              (instance? InnerTypeOfConstraint y)
               (instance? CallValue y))
           (intersect y x)
 
@@ -1911,6 +1986,7 @@
               (instance? ComputedConstraint y)
               (instance? SumConstraint y)
               (instance? ArgOf y)
+              (instance? InnerTypeOfConstraint y)
               (instance? CallValue y))
           (intersect y x)
 
@@ -1939,6 +2015,7 @@
               (instance? AllValues y)
               (instance? NoValues y)
               (instance? ComputedConstraint y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -1983,6 +2060,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2011,6 +2089,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2034,6 +2113,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2060,6 +2140,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2089,6 +2170,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2118,6 +2200,7 @@
           (or (instance? SumConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? ComputedConstraint y)
               (instance? ParamConstraint y))
           (intersect y x)
@@ -2131,15 +2214,14 @@
       (intersect op c)))
 
   (intersect [x y]
-    (cond (or (=* x y)
-              (= top-type y))
+    (cond (=* x y)
           x
-
-          (= bottom-type y)
-          y
 
           (or (instance? ParamConstraint y)
               (instance? ComputedConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? InnerTypeOfConstraint y)
               (instance? SumConstraint y))
           (intersect y x)
 
@@ -2182,7 +2264,19 @@
 
           (NoValues [x y]))))
 
-;; (extend-type InnerTypeOfConstraint)
+(extend-type InnerTypeOfConstraint
+  Constraint
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (or (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? SumConstraint y))
+          (intersect y x)
+
+          (contents-constraint y))))
+
 ;; (extend-type SetField)
 ;; (extend-type GetFrom)
 ;; (extend-type HashMapConstraint)
