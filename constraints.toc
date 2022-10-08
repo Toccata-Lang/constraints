@@ -42,9 +42,8 @@
                                                                                 p/no-tail empty-list p/no-symbol "")
                                                   top-type)}
                                    empty-list p/no-symbol ""))
-(def not-container (p/ReifiedConstraint p/UnknownType {}
-                                        (symbol "Can not contain other values")
-                                        (.arities fn-constraint {}) empty-list p/no-symbol ""))
+(def not-container (p/ReifiedConstraint p/UnknownType (symbol "Can not contain other values")
+                                        {} {} (.arities fn-constraint {}) empty-list p/no-symbol ""))
 (def type-of-constraint (p/TypeOfConstraint p/no-symbol empty-list p/no-symbol ""))
 (def inner-type-of-constraint (p/InnerTypeOfConstraint p/no-symbol empty-list p/no-symbol ""))
 (def sym-constraint (p/SymbolConstraint p/no-symbol empty-list p/no-symbol ""))
@@ -61,13 +60,16 @@
                                          empty-list p/no-symbol ""))
 (def int-constraint (p/IntegerConstraint p/no-int int-max int-min empty-list p/no-symbol ""))
 (def maybe-constraint  (p/MaybeConstraint top-type empty-list p/no-symbol ""))
-(def set-constraint (p/ReifiedConstraint p/HashSetType {(p/Field (symbol ".set-map")) hashmap-constraint}
-                                         'HashSet (.arities fn-constraint {}) empty-list p/no-symbol ""))
+(def set-constraint (p/ReifiedConstraint p/HashSetType 'HashSet
+                                         {(p/Field (symbol ".set-map")) hashmap-constraint}
+                                         {(p/Field (symbol ".set-map")) hashmap-constraint}
+                                         (.arities fn-constraint {}) empty-list p/no-symbol ""))
 (def agent-constraint (p/AgentConstraint top-type empty-list p/no-symbol ""))
 (def promise-constraint (p/PromiseConstraint top-type empty-list p/no-symbol ""))
 (def future-constraint (p/FutureConstraint empty-list p/no-symbol ""))
 (def opaque-constraint (p/OpaqueConstraint empty-list p/no-symbol ""))
-(def arity-constraint (p/ReifiedConstraint p/FnArityType {} 'FnArity (.arities fn-constraint {})
+(def arity-constraint (p/ReifiedConstraint p/FnArityType 'FnArity {} {}
+                                           (.arities fn-constraint {})
                                            empty-list p/no-symbol ""))
 
 (def core-type-constraints {'Integer int-constraint

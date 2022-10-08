@@ -654,7 +654,7 @@
            (.arities x a)))))
 
 ;; product type
-(deftype ReifiedConstraint [type-num fields type-sym invoke-fn path sym var]
+(deftype ReifiedConstraint [type-num type-sym field-consts fields invoke-fn path sym var]
   (assert (instance? Integer type-num))
   ;; TODO: put this in
   ;; (assert (instance? (min-value 1) type-num))
@@ -665,9 +665,9 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ReifiedConstraint " (str type-num) " " (str fields)
-          "\n"
-          (str " (symbol \"" type-sym "\")")
+    (list "(c/ReifiedConstraint " (str type-num) " " (str " (symbol \"" type-sym "\")")
+          "\n" (str field-consts)
+          "\n" (str fields)
           "\n" (str invoke-fn)
           ;; (str (interpose (cons 'list path) " "))
           " empty-list "
@@ -684,6 +684,12 @@
   Container
   (map [tc f]
     (-> tc
+        (.field-consts (-> (.field-consts tc)
+                           vec
+                           (map (fn [[fld fld-c]]
+                                  [(f fld) (f fld-c)]))
+                           (reduce {} (fn [m [k v]]
+                                        (assoc m k v)))))
         (.fields (-> (.fields tc)
                      vec
                      (map (fn [[fld fld-c]]
@@ -693,7 +699,17 @@
         (.invoke-fn (f (.invoke-fn tc)))))
 
   (map [tc f embed]
-    (for [new-fields (-> (.fields tc)
+    (for [new-field-cs (-> (.field-consts tc)
+                           vec
+                           (map (fn [[fld fld-c]]
+                                  (for [new-fld (f fld)
+                                        new-c (f fld-c)]
+                                    [new-fld new-c]))
+                                embed)
+                           (map (fn [new-flds]
+                                  (reduce new-flds {} (fn [m [k v]]
+                                                        (assoc m k v))))))
+          new-fields (-> (.fields tc)
                          vec
                          (map (fn [[fld fld-c]]
                                 (for [new-fld (f fld)
@@ -705,6 +721,7 @@
                                                       (assoc m k v))))))
           new-invoke (f (.invoke-fn tc))]
       (-> tc
+          (.field-consts new-field-cs)
           (.fields new-fields)
           (.invoke-fn new-invoke)))))
 
@@ -1110,25 +1127,25 @@
           new-c (f (.fld-c x))]
       (SetField new-fld new-c))))
 
-(deftype GetFrom [fld]
-  (assert (instance? Vector fld))
+(deftype GetFrom [fld-path]
+  (assert (instance? Vector fld-path))
 
   Stringable
   (string-list [_]
-    (list "(c/GetFrom " (str fld) ")"))
+    (list "(c/GetFrom " (str fld-path) ")"))
 
   Eq
   (=* [x y]
     (and (instance? GetFrom y)
-         (= fld (.fld y))
+         (= fld-path (.fld-path y))
          (maybe x)))
 
   Container
   (map [x f]
-    (GetFrom (f fld)))
+    (GetFrom (map fld-path f)))
 
   (map [x f embed]
-    (map (f fld) GetFrom)))
+    (map fld-path GetFrom embed)))
 
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
@@ -1139,9 +1156,8 @@
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
-(def not-container (ReifiedConstraint UnknownType {}
-                                      (symbol "Can not contain other values")
-                                      (FnConstraint [] {} empty-list no-symbol "")
+(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
+                                      {} {} (FnConstraint [] {} empty-list no-symbol "")
                                       empty-list no-symbol ""))
 
 (defn sum-type [const-cs]
@@ -1167,7 +1183,15 @@
                          (maybe (SumConstraint const-cs empty-list no-symbol ""))))))
           top-type))
 
+(defn missing-field [fld]
+  (ReifiedConstraint UnknownType (symbol (str "Field/index '" fld "' required"))
+                     {} {} (FnConstraint [] {} empty-list no-symbol "")
+                     empty-list no-symbol ""))
+
 (defprotocol Constraint
+  (get-from [x fld]
+    (NoValues [x (missing-field fld)]))
+
   (contents-constraint [c]
     (NoValues [c not-container]))
 
@@ -1437,6 +1461,14 @@
 
 (extend-type ListConstraint
   Constraint
+  (get-from [x idx]
+    (either (for [_ (instance? IntegerConstraint idx)
+                  :let [idx (.static-value idx)]
+                  :when-not (= idx no-int)
+                  item (nth (get-items x (inc idx)) idx)]
+              item)
+            (NoValues [x (missing-field idx)])))
+
   (contents-constraint [c]
     (cond (and (empty? (.items c))
                (= no-tail (.tail-c c)))
@@ -1491,6 +1523,7 @@
               (instance? RestOf y)
               (instance? ButLastOf y)
               (instance? InnerTypeOfConstraint y)
+              (instance? GetFrom y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -1505,6 +1538,14 @@
 
 (extend-type VectorConstraint
   Constraint
+  (get-from [x idx]
+    (either (for [_ (instance? IntegerConstraint idx)
+                  :let [idx (.static-value idx)]
+                  :when-not (= idx no-int)
+                  item (nth (get-items x (inc idx)) idx)]
+              item)
+            (NoValues [x (missing-field idx)])))
+
   (contents-constraint [c]
     (cond (and (empty? (.items c))
                (= no-tail (.tail-c c)))
@@ -1559,6 +1600,7 @@
               (instance? RestOf y)
               (instance? ButLastOf y)
               (instance? InnerTypeOfConstraint y)
+              (instance? GetFrom y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -1963,6 +2005,11 @@
 
 (extend-type ReifiedConstraint
   Constraint
+  (get-from [c fld-c]
+    (either (or (get (.fields c) fld-c)
+                (get (.field-consts c) fld-c))
+            (NoValues [c (missing-field fld-c)])))
+
   (derive [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -2277,8 +2324,43 @@
 
           (contents-constraint y))))
 
+(extend-type GetFrom
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
+    (cond (empty? (.fld-path x))
+          y
+
+          (cond (=* x y)
+                x
+
+                (empty? (.fld-path x))
+                y
+
+                (or (instance? ParamConstraint y)
+                    (instance? ComputedConstraint y)
+                    (instance? AllValues y)
+                    (instance? NoValues y)
+                    (instance? SumConstraint y))
+                (intersect y x)
+
+                (or (instance? ListConstraint y)
+                    (instance? VectorConstraint y)
+                    (instance? ReifiedConstraint y))
+                (either (map (first (.fld-path x))
+                             (fn [fld]
+                               (intersect (.fld-path x (rest (.fld-path x)))
+                                          (get-from y fld))))
+
+                        y)
+
+                (NoValues [x y])))))
+
 ;; (extend-type SetField)
-;; (extend-type GetFrom)
 ;; (extend-type HashMapConstraint)
 
 
