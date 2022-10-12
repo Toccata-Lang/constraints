@@ -1103,29 +1103,29 @@
     (map (map args f embed)
          (partial .args x))))
 
-(deftype SetField [fld fld-c]
-  (assert (instance? Vector fld))
+(deftype SetTo [fld-path fld-c]
+  (assert (instance? Vector fld-path))
 
   Stringable
   (string-list [_]
-    (list "(c/SetField " (str fld) " " (str fld-c) ")"))
+    (list "(c/SetField " (str fld-path) " " (str fld-c) ")"))
 
   Eq
   (=* [x y]
-    (and (instance? SetField y)
-         (= fld (.fld y))
+    (and (instance? SetTo y)
+         (= fld-path (.fld-path y))
          (= fld-c (.fld-c y))
          (maybe x)))
 
   Container
   (map [x f]
-    (let [new-fld (map (.fld x) f)]
-      (SetField new-fld (f (.fld-c x)))))
+    (let [new-fld-path (map (.fld-path x) f)]
+      (SetTo new-fld-path (f (.fld-c x)))))
 
   (map [x f embed]
-    (for [new-fld (map (.fld x) f)
+    (for [new-fld-path (map (.fld-path x) f)
           new-c (f (.fld-c x))]
-      (SetField new-fld new-c))))
+      (SetTo new-fld-path new-c))))
 
 (deftype GetFrom [fld-path]
   (assert (instance? Vector fld-path))
@@ -1188,7 +1188,21 @@
                      {} {} (FnConstraint [] {} empty-list no-symbol "")
                      empty-list no-symbol ""))
 
+(defn cant-set-contents [x fld-path]
+  (either (map (first fld-path)
+               (fn [fld]
+                 (NoValues [x (missing-field fld)])))
+          (NoValues [x (ReifiedConstraint UnknownType (symbol "Unable to set contents")
+                                          {} {} (FnConstraint [] {} empty-list no-symbol "")
+                                          empty-list no-symbol "")])))
+
 (defprotocol Constraint
+  (set-to [x fld-path fld-c]
+    (cond (empty? fld-path)
+          fld-c
+
+          (cant-set-contents x fld-path)))
+
   (get-from [x fld]
     (NoValues [x (missing-field fld)]))
 
@@ -1373,7 +1387,8 @@
               (instance? SumConstraint y))
           (intersect y x)
 
-          (instance? StrConstraint y)
+          (and (instance? StrConstraint y)
+               (= (get-type x) (get-type y)))
           (either (map (or (= (.static-value x) (.static-value y))
                            (and (= (.static-value x) no-string)
                                 (maybe (.static-value y)))
@@ -1461,6 +1476,26 @@
 
 (extend-type ListConstraint
   Constraint
+  (set-to [x fld-path fld-c]
+    (-> (cond (empty? fld-path)
+              fld-c
+
+              (either (for [idx (first fld-path)
+                            _ (instance? IntegerConstraint idx)
+                            :let [idx (.static-value idx)]
+                            :when-not (= idx no-int)
+                            :let [items-count (inc idx)
+                                  old-items (cond (<= items-count (count (.items x)))
+                                                  (.items x)
+
+                                                  (get-items x items-count))]
+                            old-item (nth old-items idx)
+                            new-items (store old-items idx
+                                             (set-to old-item (rest fld-path) fld-c))]
+                        (.items x new-items))
+                      (cant-set-contents x fld-path)))
+        find-bottom))
+
   (get-from [x idx]
     (either (for [_ (instance? IntegerConstraint idx)
                   :let [idx (.static-value idx)]
@@ -1524,6 +1559,7 @@
               (instance? ButLastOf y)
               (instance? InnerTypeOfConstraint y)
               (instance? GetFrom y)
+              (instance? SetTo y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -1538,6 +1574,26 @@
 
 (extend-type VectorConstraint
   Constraint
+  (set-to [x fld-path fld-c]
+    (-> (cond (empty? fld-path)
+              fld-c
+
+              (either (for [idx (first fld-path)
+                            _ (instance? IntegerConstraint idx)
+                            :let [idx (.static-value idx)]
+                            :when-not (= idx no-int)
+                            :let [items-count (inc idx)
+                                  old-items (cond (<= items-count (count (.items x)))
+                                                  (.items x)
+
+                                                  (get-items x items-count))]
+                            old-item (nth old-items idx)
+                            new-items (store old-items idx
+                                             (set-to old-item (rest fld-path) fld-c))]
+                        (.items x new-items))
+                      (cant-set-contents x fld-path)))
+        find-bottom))
+
   (get-from [x idx]
     (either (for [_ (instance? IntegerConstraint idx)
                   :let [idx (.static-value idx)]
@@ -1601,6 +1657,7 @@
               (instance? ButLastOf y)
               (instance? InnerTypeOfConstraint y)
               (instance? GetFrom y)
+              (instance? SetTo y)
               (instance? ListFrom y)
               (instance? VectFrom y))
           (intersect y x)
@@ -2005,6 +2062,21 @@
 
 (extend-type ReifiedConstraint
   Constraint
+  (set-to [x fld-path fld-c]
+    (-> (cond (empty? fld-path)
+              fld-c
+
+              (either (for [fld (first fld-path)
+                            field-check (get (.field-consts x) fld)
+                            curr-field (get (.fields x) fld)
+                            :let [new-field (set-to curr-field (rest fld-path) fld-c)
+                                  final-field (intersect field-check new-field)]
+                            final-field (or (= bottom-type final-field)
+                                            (= final-field new-field))]
+                        (.fields x (assoc (.fields x) fld final-field)))
+                      (cant-set-contents x fld-path)))
+        find-bottom))
+
   (get-from [c fld-c]
     (either (or (get (.fields c) fld-c)
                 (get (.field-consts c) fld-c))
@@ -2034,6 +2106,8 @@
               (instance? SumConstraint y)
               (instance? ArgOf y)
               (instance? InnerTypeOfConstraint y)
+              (instance? GetFrom y)
+              (instance? SetTo y)
               (instance? CallValue y))
           (intersect y x)
 
@@ -2360,7 +2434,37 @@
 
                 (NoValues [x y])))))
 
-;; (extend-type SetField)
+(extend-type SetTo
+  Constraint
+  (derive [op]
+    (fn [c]
+      (intersect op c)))
+
+  (intersect [x y]
+    ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
+    (cond (empty? (.fld-path x))
+          y
+
+          (cond (=* x y)
+                x
+
+                (empty? (.fld-path x))
+                y
+
+                (or (instance? ParamConstraint y)
+                    (instance? ComputedConstraint y)
+                    (instance? AllValues y)
+                    (instance? NoValues y)
+                    (instance? SumConstraint y))
+                (intersect y x)
+
+                (or (instance? ListConstraint y)
+                    (instance? VectorConstraint y)
+                    (instance? ReifiedConstraint y))
+                (set-to y (.fld-path x) (.fld-c x))
+
+                (NoValues [x y])))))
+
 ;; (extend-type HashMapConstraint)
 
 

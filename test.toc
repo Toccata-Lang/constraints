@@ -52,7 +52,11 @@
 (def list-from (p/ListFrom 'val-sym empty-list p/no-symbol ""))
 (def vect-from (p/VectFrom 'val-sym empty-list p/no-symbol ""))
 (def get-first (p/GetFrom [(.static-value c/int-constraint 0)]))
+(def set-second (p/SetTo [(.static-value c/int-constraint 1)] non-0))
 
+(def empty-reified (p/ReifiedConstraint 0 p/no-symbol {} {}
+                                        (p/FnConstraint [] {} empty-list p/no-symbol "")
+                                        empty-list  p/no-symbol ""))
 (def reified-val (p/ReifiedConstraint
                   10 p/no-symbol {} {}
                   (p/FnConstraint [3]
@@ -62,6 +66,18 @@
                                                  param)}
                                   empty-list p/no-symbol "")
                   empty-list p/no-symbol ""))
+(def reified-11 (p/ReifiedConstraint
+                 11 p/no-symbol
+                 {(p/Field 'field) c/top-type}
+                 {(p/Field 'field) c/int-constraint}
+                 (p/FnConstraint [] {} empty-list p/no-symbol "")
+                 empty-list p/no-symbol ""))
+(def reified-12 (p/ReifiedConstraint
+                 12 p/no-symbol
+                 {(p/Field 'other) c/string-constraint}
+                 {(p/Field 'other) str-c}
+                 (p/FnConstraint [] {} empty-list p/no-symbol "")
+                 empty-list p/no-symbol ""))
 
 (def test-constraints [c/top-type
                        c/bottom-type
@@ -90,7 +106,7 @@
                        ;; c/array-constraint
                        ;; c/bitmap-constraint
                        ;; c/hashmap-constraint
-                       ;; c/set-constraint
+                       c/set-constraint
 
                        (p/ListConstraint [c/top-type pos-int] p/no-tail empty-list p/no-symbol "")
                        (p/VectorConstraint [sym-c pos-int] p/no-tail empty-list p/no-symbol "")
@@ -124,6 +140,9 @@
                        maybe-sym
 
                        reified-val
+                       reified-11
+                       reified-12
+                       empty-reified
 
                        first-of
                        last-of
@@ -132,6 +151,7 @@
                        list-from
                        vect-from
                        get-first
+                       set-second
 
                        arg-of
                        result-of
@@ -158,8 +178,7 @@
             (print-err 'Failed-at file line
                        "\nexpr 1" ex1
                        "\n\nexpr 2" ex2)
-            ;; (abort)
-            )))
+            (abort))))
 
 (defn test-intersect [c1 c2]
   (let [final-1 (c/intersect c1 c2)
@@ -468,16 +487,8 @@
                 empty-list p/no-symbol "")])
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (p/ReifiedConstraint
-                           10 p/no-symbol
-                           {(p/Field 'field) c/int-constraint}
-                           {(p/Field 'field) c/int-constraint}
-                           c/fn-constraint empty-list p/no-symbol "")
-                          (p/ReifiedConstraint
-                           10 p/no-symbol
-                           {(p/Field 'field) c/sym-constraint}
-                           {(p/Field 'field) c/sym-constraint}
-                           c/fn-constraint empty-list p/no-symbol ""))
+(def _ (test (c/intersect (assoc-in reified-11 [.fields (p/Field 'field)] c/int-constraint)
+                          (assoc-in reified-11 [.fields (p/Field 'field)] c/sym-constraint))
              (p/NoValues [(p/SymbolConstraint p/no-symbol empty-list p/no-symbol "")
                           (p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")])
         _FILE_ _LINE_))
@@ -502,15 +513,13 @@
 
 (def _ (test (c/intersect result-of
                           (p/SumConstraint
-                           [(p/ReifiedConstraint
-                             10 p/no-symbol {} {}
-                             (p/FnConstraint [1]
-                                             {1 (p/fn-arity p/no-symbol
-                                                            (p/ListConstraint [c/top-type] p/no-tail
-                                                                              empty-list p/no-symbol "")
-                                                            pos-int)}
-                                             empty-list p/no-symbol "")
-                             empty-list p/no-symbol "")
+                           [(.invoke-fn reified-val
+                                        (p/FnConstraint [1]
+                                                        {1 (p/fn-arity p/no-symbol
+                                                                       (p/ListConstraint [c/top-type] p/no-tail
+                                                                                         empty-list p/no-symbol "")
+                                                                       pos-int)}
+                                                        empty-list p/no-symbol ""))
                             (p/FnConstraint []
                                             {2 (p/fn-arity p/no-symbol
                                                            (p/ListConstraint [c/top-type coll-of-sym]
@@ -608,15 +617,14 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/CallValue [str-c] empty-list p/no-symbol "")
-                          (p/ReifiedConstraint
-                           10 p/no-symbol {} {}
-                           (p/FnConstraint [2]
-                                           {2 (p/fn-arity 'arity-1
-                                                          (p/ListConstraint [c/top-type pos-int]
-                                                                            p/no-tail empty-list p/no-symbol "")
-                                                          (p/ParamConstraint 'arity-1 1 empty-list p/no-symbol ""))}
-                                           empty-list p/no-symbol "")
-                           empty-list p/no-symbol ""))
+                          (.invoke-fn reified-val
+                                      (p/FnConstraint
+                                       [2]
+                                       {2 (p/fn-arity 'arity-1
+                                                      (p/ListConstraint [c/top-type pos-int]
+                                                                        p/no-tail empty-list p/no-symbol "")
+                                                      (p/ParamConstraint 'arity-1 1 empty-list p/no-symbol ""))}
+                                       empty-list p/no-symbol "")))
              (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 1 empty-list p/no-symbol "")
                           (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")])
              _FILE_ _LINE_))
@@ -624,12 +632,7 @@
 (def _ (test (c/intersect c/int-constraint
                           c/inner-type-of-constraint)
              (p/NoValues [(p/IntegerConstraint p/no-int 2147483647 -2147483648 empty-list p/no-symbol "")
-                          (p/ReifiedConstraint
-                           0 (symbol "Can not contain other values")
-                           {} {}
-                           (p/FnConstraint []
-                                           {}
-                                           empty-list p/no-symbol "") empty-list  p/no-symbol "")])
+                          empty-reified])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/empty-list-constraint
@@ -668,65 +671,158 @@
              str-c
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (p/GetFrom [(p/Field 'field)])
-                          (p/ReifiedConstraint
-                           10 p/no-symbol
-                           {(p/Field 'field) c/int-constraint}
-                           {(p/Field 'field) pos-int}
-                           c/fn-constraint empty-list p/no-symbol ""))
+(def _ (test (c/intersect (assoc-in reified-11 [.fields (p/Field 'field)] pos-int)
+                          (p/GetFrom [(p/Field 'field)]))
              pos-int
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/GetFrom [(p/Field 'field)])
-                          (p/ReifiedConstraint
-                           10 p/no-symbol
-                           {(p/Field 'field) c/int-constraint}
-                           {} c/fn-constraint empty-list p/no-symbol ""))
+                          reified-11)
              c/int-constraint
              _FILE_ _LINE_))
 
 
 (def _ (test (c/intersect (p/GetFrom [(p/Field 'field) (.static-value c/int-constraint 1)])
-                          (p/ReifiedConstraint
-                           10 p/no-symbol
-                           {(p/Field 'field) c/int-constraint}
-                           {(p/Field 'field) (p/VectorConstraint [pos-int str-c] p/no-tail
-                                                                 empty-list p/no-symbol "")}
-                           c/fn-constraint empty-list p/no-symbol ""))
+                          (assoc-in reified-11 [.fields (p/Field 'field)]
+                                    (p/VectorConstraint [pos-int str-c] p/no-tail
+                                                        empty-list p/no-symbol "")))
              str-c
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (p/GetFrom [(.static-value c/int-constraint 1) (p/Field 'field)])
+(def _ (test (c/intersect (p/GetFrom [(.static-value c/int-constraint 1) (p/Field 'other)])
                           (p/VectorConstraint [pos-int
-                                               (p/ReifiedConstraint
-                                                10 p/no-symbol
-                                                {(p/Field 'field) c/int-constraint}
-                                                {(p/Field 'field) str-c}
-                                                c/fn-constraint empty-list p/no-symbol "")]
+                                               (assoc-in reified-12 [.fields (p/Field 'other)] str-c)]
                                               p/no-tail empty-list p/no-symbol ""))
              str-c
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (p/GetFrom [(.static-value c/int-constraint 1) (p/Field 'missing-field)])
                           (p/VectorConstraint [pos-int
-                                               (p/ReifiedConstraint
-                                                10 p/no-symbol
-                                                {(p/Field 'field) c/int-constraint}
-                                                {(p/Field 'field) str-c}
-                                                (p/FnConstraint [] {} empty-list p/no-symbol "")
-                                                empty-list p/no-symbol "")]
+                                               (assoc-in reified-12 [.fields (p/Field 'other)] str-c)]
                                               p/no-tail empty-list p/no-symbol ""))
              (p/NoValues
-              [(p/ReifiedConstraint
-                10  (symbol "p/no-symbol")
-                {(p/Field (symbol "field")) (p/IntegerConstraint p/no-int 2147483647 -2147483648
-                                                                 empty-list p/no-symbol "")}
-                {(p/Field (symbol "field")) (p/StrBuffConstraint "buffr" empty-list p/no-symbol "")}
-                (p/FnConstraint [] {} empty-list p/no-symbol "")
-                empty-list  p/no-symbol "")
-               (p/ReifiedConstraint 0  p/no-symbol
-                                    {} {} (p/FnConstraint [] {} empty-list p/no-symbol "")
-                                    empty-list  p/no-symbol "")])
+              [(assoc-in reified-12 [.fields (p/Field 'other)] str-c)
+               empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect set-second
+                          (p/ListConstraint [pos-int str-c]
+                                            p/no-tail empty-list p/no-symbol ""))
+             (c/intersect set-second
+                          (p/ListConstraint [pos-int non-0]
+                                            p/no-tail empty-list p/no-symbol ""))
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (.items int-list [pos-int])
+                          set-second)
+             (.items int-list [pos-int non-0])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect set-second
+                          (p/ListConstraint [pos-int] p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/ListConstraint [pos-int] p/no-tail empty-list p/no-symbol "")
+                          empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (.items int-vect [pos-int])
+                          set-second)
+             (.items int-vect [pos-int non-0])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect set-second
+                          (p/VectorConstraint [pos-int] p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/VectorConstraint [pos-int] p/no-tail empty-list p/no-symbol "")
+                          empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/SetTo [(.static-value c/int-constraint 0)
+                                    (.static-value c/int-constraint 0)]
+                                   non-0)
+                          (p/VectorConstraint [(p/ListConstraint [pos-int] p/no-tail empty-list p/no-symbol "")]
+                                              p/no-tail empty-list p/no-symbol ""))
+             (p/VectorConstraint [(p/ListConstraint [non-0] p/no-tail empty-list p/no-symbol "")]
+                                 p/no-tail empty-list p/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (p/SetTo [(.static-value c/int-constraint 0)
+                                    (.static-value c/int-constraint 2)]
+                                   non-0)
+                          (p/VectorConstraint [(p/ListConstraint [pos-int] p/no-tail empty-list p/no-symbol "")]
+                                              p/no-tail empty-list p/no-symbol ""))
+             (p/NoValues [(p/ListConstraint [pos-int] p/no-tail empty-list p/no-symbol "")
+                          empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect reified-11
+                          (p/SetTo [(p/Field 'field)] pos-int))
+             (assoc-in reified-11 [.fields (p/Field 'field)] pos-int) 
+             _FILE_ _LINE_))
+
+(def nested-reified (c/intersect reified-11 (p/SetTo [(p/Field 'field)] reified-12)))
+
+(def _ (test nested-reified
+             (assoc-in reified-11 [.fields (p/Field 'field)] reified-12) 
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect nested-reified
+                          (p/SetTo [(p/Field 'field) (p/Field 'other)]
+                                   substr-c))
+             (assoc-in nested-reified [.fields (p/Field 'field) .fields (p/Field 'other)] substr-c) 
+             _FILE_ _LINE_))
+
+(def reified-vect (p/VectorConstraint [reified-12] p/no-tail empty-list p/no-symbol ""))
+(def reified-list (p/ListConstraint [] (p/CollectionOf
+                                        (c/intersect reified-11
+                                                     (p/SetTo [(p/Field 'field)] reified-vect))
+                                        empty-list p/no-symbol "")
+                                    empty-list p/no-symbol ""))
+
+(def _ (test (c/intersect reified-list
+                          (p/SetTo [(.static-value c/int-constraint 1)
+                                    (p/Field 'field)
+                                    (.static-value c/int-constraint 0)
+                                    (p/Field 'other)]
+                                   substr-c))
+             (p/ListConstraint
+              [(p/ReifiedConstraint 11  (symbol "c/no-symbol")
+                                    {(p/Field (symbol "field")) p/top-type}
+                                    {(p/Field (symbol "field")) reified-vect}
+                                    (p/FnConstraint [] {} empty-list p/no-symbol "")
+                                    empty-list  p/no-symbol "")
+               (p/ReifiedConstraint 11  (symbol "p/no-symbol")
+                                    {(p/Field (symbol "field")) p/top-type}
+                                    {(p/Field (symbol "field"))
+                                     (p/VectorConstraint [(p/intersect reified-12
+                                                                       (p/SetTo [(p/Field 'other)] substr-c))]
+                                                         p/no-tail empty-list p/no-symbol "")}
+                                    (p/FnConstraint [] {} empty-list p/no-symbol "")
+                                    empty-list  p/no-symbol "")]
+              (p/CollectionOf
+               (p/ReifiedConstraint 11  (symbol "p/no-symbol")
+                                    {(p/Field (symbol "field")) p/top-type}
+                                    {(p/Field (symbol "field")) reified-vect}
+                                    (p/FnConstraint [] {} empty-list p/no-symbol "")
+                                    empty-list  p/no-symbol "")
+               empty-list p/no-symbol "")
+              empty-list p/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect reified-list
+                          (p/SetTo [(.static-value c/int-constraint 1)
+                                    (p/Field 'field)
+                                    (.static-value c/int-constraint 0)
+                                    (p/Field 'field)]
+                                   substr-c))
+             (p/NoValues [reified-12 empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect reified-list
+                          (p/SetTo [(.static-value c/int-constraint 1)
+                                    (p/Field 'field)
+                                    (.static-value c/int-constraint 1)
+                                    (p/Field 'other)]
+                                   substr-c))
+             (p/NoValues [reified-vect empty-reified])
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
