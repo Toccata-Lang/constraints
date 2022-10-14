@@ -1,4 +1,25 @@
 
+(def SymbolOrString (any-of Symbol
+                            String))
+
+(deftype Location [file line]
+  (assert (instance? SymbolOrString file))
+  (assert (instance? Integer line))
+
+  Stringable
+  (string-list [_]
+    (list (either (and (= file 'core)
+                       (maybe "core"))
+                  (str file))
+          ": " (str line)))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
 (defn sym-str [s]
   (either (or (and (instance? Symbol s)
                    (maybe (str "'" s))))
@@ -354,9 +375,6 @@
 
   (map [x f embed]
     (embed x)))
-
-(def StrConstraint (any-of StrBuffConstraint
-                           SubStrConstraint))
 
 ;; container types
 (deftype ListConstraint [items tail-c path sym var]
@@ -1143,6 +1161,23 @@
   (map [x f embed]
     (map fld-path GetFrom embed)))
 
+(def StrConstraint (any-of StrBuffConstraint
+                           SubStrConstraint))
+
+(def CoreValConstraint (any-of IntegerConstraint
+                               SymbolConstraint
+                               VectorConstraint
+                               ListConstraint
+                               StrConstraint
+                               ;; TODO: make sure this gets included eventually
+                               ;; HashMapConstraint
+                               MaybeConstraint
+                               AgentConstraint
+                               FutureConstraint
+                               OpaqueConstraint
+                               PromiseConstraint
+                               FnConstraint))
+
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
 
@@ -1193,6 +1228,14 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (assertion-path [x])
+
+  (format-path [x n]
+    (assert-result r (instance? (list-of String) r)))
+
+  (show-full [c]
+    (assert-result b (instance? (list-of String) b)))
+
   (set-to [x fld-path fld-c]
     (cond (empty? fld-path)
           fld-c
@@ -1241,6 +1284,45 @@
     ;; 'top-type' is the undefined result
     top-type))
 
+(defn format-path* [path desired-len]
+  (assert (instance? List path))
+  (assert (instance? Integer desired-len))
+
+  (either (map (first path)
+               (fn [[header]]
+                 (let [path (-> (rest path)
+                                (remove (fn [[file line]]
+                                          (either (and (instance? Symbol file)
+                                                       (maybe nothing))
+                                                  (or (empty? file)
+                                                      (= 0 line)))))
+                                (map (fn [[file line]]
+                                       (let [file (str file)]
+                                         (str (either (-> file
+                                                          str
+                                                          (split-string (partial = "/"))
+                                                          last
+                                                          (map (fn [file]
+                                                                 (either (and (flat-map (first file)
+                                                                                        (partial = "/"))
+                                                                              (maybe file))
+                                                                         file))))
+                                                      file)
+                                              ": " line)))))
+                       max-width (reduce path (count header)
+                                         (fn [max s]
+                                           (let [n (count s)]
+                                             (either (> max n)
+                                                     n))))
+                       path (either (and (< (count path) desired-len)
+                                         (maybe (comp path (repeat (- desired-len (count path))
+                                                                   (spaces max-width)))))
+                                    path)]
+                   (map (cons header path)
+                        (fn [x]
+                          (str x (spaces (- max-width (count x)))))))))
+          path))
+
 (defn trim [c]
   (cata trim-const c))
 
@@ -1249,6 +1331,14 @@
 
 (extend-type NoTail
   Constraint
+  (assertion-path [_] empty-list)
+
+  (format-path [_ n]
+    (list "No Tail for sequence"))
+
+  (show-full [c]
+    (list "c/no-tail"))
+
   (contents-constraint [c]
     (NoValues [c not-container]))
 
@@ -1258,6 +1348,12 @@
 
 (extend-type AllValues
   Constraint
+  (format-path [x desired-len]
+    (list "<Unknown Type>"))
+
+  (show-full [c]
+    (format-path c 0))
+
   (contents-constraint [c]
     c)
 
@@ -1272,6 +1368,26 @@
 
 (extend-type NoValues
   Constraint
+  (format-path [c n]
+    (let [max-len (-> (trim c)
+                      .constraints
+                      (map (fn [c] (count (assertion-path c))))
+                      (reduce n (fn [max-len path-len]
+                                  (either (> max-len path-len)
+                                          path-len)))
+                      inc)]
+      (-> (.constraints c)
+          (map (fn [c]
+                 (format-path c max-len)))
+          (list-zipper empty-list)
+          (map (fn [strs]
+                 (str (to-str (interpose strs "    "))
+                      "\n"))))))
+
+  (show-full [c]
+    (comp (list "Conflicting types")
+          (map (.constraints c) (partial str "  "))))
+
   (contents-constraint [c]
     c)
 
@@ -1292,6 +1408,15 @@
 
 (extend-type IntegerConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [c desired-len]
+    (format-path* (cons [(str "Integer " (.static-value c) " from:") ""] (.path c))
+                  desired-len))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -1333,6 +1458,18 @@
 
 (extend-type SymbolConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Symbol " (either (= no-symbol (.static-value x))
+                                                (str "'" (.static-value x)))
+                              " from:") ""]
+                        (.path x))
+                  desired-len))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -1371,6 +1508,18 @@
 
 (extend-type StrConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "String " (either (= no-string (.static-value x))
+                                                (str "'" (.static-value x) "'"))
+                              " from:") ""]
+                        (.path x))
+                  desired-len))
+
   (contents-constraint [c]
     (.static-value c no-string))
 
@@ -1411,6 +1560,19 @@
 
 (extend-type MaybeConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Maybe from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (cond (= (show-full bottom-type) (.contents c))
+                ""
+                (comp ["--contains--"]
+                      (map (.contents c) (partial str "  "))))))
+
   (contents-constraint [c]
     (.contents c))
 
@@ -1476,6 +1638,25 @@
 
 (extend-type ListConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["List from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (cond (= (show-full bottom-type) (.tail-c c))
+                []
+                (comp ["--tail--"]
+                      (map (.tail-c c) (partial str "  "))))
+          ["===="]))
+
   (set-to [x fld-path fld-c]
     (-> (cond (empty? fld-path)
               fld-c
@@ -1574,6 +1755,25 @@
 
 (extend-type VectorConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Vector from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (cond (= (show-full bottom-type) (.tail-c c))
+                []
+                (comp ["--tail--"]
+                      (map (.tail-c c) (partial str "  "))))
+          ["===="]))
+
   (set-to [x fld-path fld-c]
     (-> (cond (empty? fld-path)
               fld-c
@@ -1672,6 +1872,22 @@
 
 (extend-type SumConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [c n]
+    (let [sum-sym (either (and (every (.alts c) (partial instance? CoreValConstraint))
+                               (apply = (map (.alts c) get-type-sym)))
+                          "Sum Type")]
+      (format-path* (cons [(str sum-sym " from") ""] path)
+                    n)))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (-> (.alts c)
+              (interpose ["----"])
+              (flat-map (fn [alt-strs]
+                          (map alt-strs (partial str "  ")))))))
+
   (contents-constraint [c]
     c)
 
@@ -1748,6 +1964,16 @@
 
 (extend-type CollectionOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Contents from" ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (map contents (partial str "  "))))
+
   (contents-constraint [c]
     (.contents c))
 
@@ -1775,6 +2001,19 @@
 
 (extend-type ComputedConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Type computed by" ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (-> (.mods c) 
+              (interpose (list "---"))
+              (flat-map (fn [mod-strs]
+                          (map mod-strs (partial str "  ")))))))
+
   (contents-constraint [c]
     (intersect c inner-type-of-constraint))
 
@@ -1811,6 +2050,15 @@
 
 (extend-type ParamConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Parameter " param-index " from") ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (contents-constraint [c]
     (intersect c inner-type-of-constraint))
 
@@ -1841,6 +2089,15 @@
 
 (extend-type OpaqueConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Opaque pointer from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -1860,6 +2117,16 @@
 
 (extend-type AgentConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Agent from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (map contents (partial str "  "))))
+
   (contents-constraint [c]
     (.contents c))
 
@@ -1891,6 +2158,15 @@
 
 (extend-type FutureConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Future from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -1911,6 +2187,16 @@
 
 (extend-type PromiseConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Promise from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (map contents (partial str "  "))))
+
   (contents-constraint [c]
     (.contents c))
 
@@ -1945,6 +2231,21 @@
 
 (extend-type fn-arity
   Constraint
+  (show-full [c]
+    (comp (list (str "arity: " arity-id)
+                "--parameters--")
+          (-> (.items param-consts)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (let [tail-c (.tail-c param-consts)]
+            (cond (first tail-c)
+                  (comp ["--variadic params--"]
+                        (map tail-c (partial str "  ")))
+                  []))
+          ["--result--"]
+          (map result-const (partial str "  "))))
+
   (derive-const [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -2031,6 +2332,20 @@
 
 (extend-type FnConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Function from" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["---------"]
+          (-> (vals arities)
+              (interpose ["----"])
+              flatten
+              (map (partial str "  ")))))
+
   (derive-const [op]
     (fn [c]
       (intersect (map op (fn [contents]
@@ -2063,6 +2378,17 @@
 
 (extend-type ReifiedConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "'" type-sym "' from") ""]
+                        path)
+                  desired-len))
+
+  (show-full [c]
+    (cons (str "Type: " type-sym)
+          (show-full invoke-fn)))
+
   (set-to [x fld-path fld-c]
     (-> (cond (empty? fld-path)
               fld-c
@@ -2125,6 +2451,17 @@
 
 (extend-type ArgOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [_ desired-len]
+    (format-path* (cons [(str "Argument " arg-position " of") ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path* (cons [(str "Argument " arg-position " of") ""] path)
+                        0)
+          ["===="]))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2166,6 +2503,15 @@
 
 (extend-type FirstOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "First value of seq:") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2191,6 +2537,15 @@
 
 (extend-type LastOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Last value of seq:") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2220,6 +2575,15 @@
 
 (extend-type RestOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Rest of seq:") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2244,6 +2608,15 @@
 
 (extend-type ButLastOf
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "All but the last value of seq:") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2271,6 +2644,15 @@
 
 (extend-type ListFrom
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "List from value") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2301,6 +2683,15 @@
 
 (extend-type VectFrom
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str "Vector from value") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2331,6 +2722,20 @@
 
 (extend-type CallValue
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [_ desired-len]
+    (format-path* (cons ["Called at " ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path* (cons ["Called with args at" ""] path)
+                        0)
+          ["--args--"]
+          (flat-map (.args c) (fn [arg-strs]
+                                (map arg-strs (partial str "  "))))
+          ["===="]))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2388,6 +2793,15 @@
 
 (extend-type InnerTypeOfConstraint
   Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Inner type of value from" ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
   (intersect [x y]
     (cond (=* x y)
           x
@@ -2401,6 +2815,9 @@
 
 (extend-type GetFrom
   Constraint
+  (show-full [c]
+    (string-list c))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2437,6 +2854,9 @@
 
 (extend-type SetTo
   Constraint
+  (show-full [c]
+    (string-list c))
+
   (derive-const [op]
     (fn [c]
       (intersect op c)))
@@ -2465,6 +2885,22 @@
                 (set-to y (.fld-path x) (.fld-c x))
 
                 (NoValues [x y])))))
+
+(extend-type Field
+  Constraint
+  (show-full [c]
+    (list "Field " (str sym))))
+
+(extend-type TypeOfConstraint
+  Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Type of value from" ""] path)
+                  desired-len))
+
+  (show-full [c]
+    (string-list c)))
 
 ;; (extend-type HashMapConstraint)
 
