@@ -1,8 +1,4 @@
 
-(add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
-                           "state-error.toc"
-                           :sha "f48adc3"))
-
 (defn sym-str [s]
   (either (or (and (instance? Symbol s)
                    (maybe (str "'" s))))
@@ -1210,10 +1206,8 @@
     (NoValues [c not-container]))
 
   ;; replace and ParamConstraints for 'arity' with their corresponding values
-  (reify-const [c arity]
-    (assert-result r (instance? se/StateError r))
-
-    (se/state-error (cata find-bottom c)))
+  (reify-const [c arity args]
+    (cata find-bottom c))
 
   ;; is the constraint a NoValues type, or contains one
   (find-bottom [c]
@@ -1275,8 +1269,8 @@
   (contents-constraint [c]
     c)
 
-  (reify-const [c arity]
-    (se/state-error c))
+  (reify-const [c arity args]
+    c)
 
   (derive [op]
     (fn [c]
@@ -1778,8 +1772,8 @@
   (contents-constraint [c]
     (intersect c inner-type-of-constraint))
 
-  (reify-const [c arity]
-    (se/state-error ((cata derive c) top-type)))
+  (reify-const [c arity args]
+    (derive c))
 
   (derive [op]
     (fn [c]
@@ -1814,11 +1808,12 @@
   (contents-constraint [c]
     (intersect c inner-type-of-constraint))
 
-  (reify-const [c arity]
+  (reify-const [c arity args]
     (cond (= (.arity c) arity)
-          (se/get-val (.param-index c) top-type)
+          (either (get args (.param-index c))
+                  top-type)
 
-          (se/state-error c)))
+          c))
 
   (derive [op]
     (fn [c]
@@ -2362,14 +2357,14 @@
                                ;; TODO: make sure all arg constraints < param constraints
                                (let [new-args (intersect (.items empty-list-constraint args)
                                                          (.param-consts arity))
-                                     [reified] (cond (= bottom-type new-args)
-                                                     [new-args]
+                                     reified (cond (= bottom-type new-args)
+                                                   new-args
 
-                                                     ((cata (fn [c]
-                                                              (reify-const c (.arity-id arity)))
-                                                            arity
-                                                            se/state-error)
-                                                      (get-items new-args (count args))))
+                                                   (let [new-args (get-items new-args (count args))]
+                                                     (cata (fn [c]
+                                                             (reify-const c (.arity-id arity)
+                                                                          new-args))
+                                                           arity)))
                                      reified (cata find-bottom reified)]
                                  (either (= bottom-type reified)
                                          (.result-const reified))))))
