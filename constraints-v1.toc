@@ -697,9 +697,7 @@
   Constraint
   (is-bottom [c] c)
 
-  (get-type-num [c]
-    SymbolType)
-
+  (get-type-num [c] SymbolType)
   (get-type-sym [_] 'Symbol))
 
 ;; TODO: change back to reified
@@ -769,9 +767,7 @@
   Constraint
   (is-bottom [c] c)
 
-  (get-type-num [c]
-    StringBufferType)
-
+  (get-type-num [c] StringBufferType)
   (get-type-sym [_] 'String))
 
 (deftype SubStrConstraint [static-value path sym var]
@@ -932,8 +928,7 @@
                       (map tail-c (partial str "  "))))
           ["===="]))
 
-  (get-type-num [c]
-    ListType)
+  (get-type-num [c] ListType)
 
   (get-type-sym [_] 'List)
 
@@ -990,8 +985,7 @@
           (map tail-c (partial str "  "))
           ["===="]))
 
-  (get-type-num [c]
-    VectorType)
+  (get-type-num [c] VectorType)
 
   (get-type-sym [_] 'Vector))
 
@@ -1058,9 +1052,7 @@
     (comp (format-path c 0)
           (map contents (partial str "  "))))
 
-  (get-type-num [c]
-    AgentType)
-
+  (get-type-num [c] AgentType)
   (get-type-sym [_] 'Agent))
 
 (deftype FutureConstraint [path sym var]
@@ -1086,8 +1078,7 @@
   (show-full [c]
     (format-path c 0))
 
-  (get-type-num [c]
-    FutureType)
+  (get-type-num [c] FutureType)
 
   (get-type-sym [_] 'Future))
 
@@ -1111,8 +1102,7 @@
   (is-bottom [c]
     c)
 
-  (get-type-num [c]
-    OpaqueType)
+  (get-type-num [c] OpaqueType)
 
   (get-type-sym [_] 'Opaque))
 
@@ -1144,8 +1134,7 @@
     (comp (format-path c 0)
           (map contents (partial str "  "))))
 
-  (get-type-num [c]
-    PromiseType)
+  (get-type-num [c] PromiseType)
 
   (get-type-sym [_] 'Promise))
 
@@ -1257,8 +1246,7 @@
               flatten
               (map (partial str "  ")))))
 
-  (get-type-num [c]
-    FunctionType)
+  (get-type-num [c] FunctionType)
 
   (get-type-sym [_] 'Fn))
 
