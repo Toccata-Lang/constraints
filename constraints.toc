@@ -1179,6 +1179,25 @@
                                PromiseConstraint
                                FnConstraint))
 
+(def SymbolConstraints (any-of CoreValConstraint
+                               CollectionOf
+                               SumConstraint
+                               ReifiedConstraint
+                               InnerTypeOfConstraint
+                               TypeOfConstraint
+                               FirstOf
+                               LastOf
+                               RestOf
+                               ButLastOf
+                               ParamConstraint
+                               ComputedConstraint))
+
+(def ValueConstraint (any-of SymbolConstraints
+                             AllValues))
+
+(def Constraints (any-of ValueConstraint
+                         NoValues))
+
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
 
@@ -1229,6 +1248,9 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (add-to-path [constraint file-name line-number]
+    constraint)
+
   (type-num [c]
     (assert-result r (instance? Integer r)))
 
@@ -1330,11 +1352,29 @@
                           (str x (spaces (- max-width (count x)))))))))
           path))
 
+(defn update-path
+  ([c loc]
+   (assert (instance? Location loc))
+   (update-path c (.file loc) (.line loc)))
+
+  ([c file-name line-number]
+   (cata (fn [c]
+           (add-to-path c file-name line-number))
+         c)))
+
 (defn trim [c]
   (cata trim-const c))
 
 (defn derive [op c]
   ((cata derive-const op) c))
+
+(extend-type ValueConstraint
+  Constraint
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some (.path c) (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c))))))
 
 (extend-type NoTail
   Constraint
@@ -2971,7 +3011,6 @@
 ;; misc
 ;; Going to try and do without these
 ;; DebugConstraint
-;; ResultConstraint
 
 (def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
@@ -3068,3 +3107,22 @@
 (defn extract-items [c n]
   (let [[items] (get-items c n)]
     items))
+
+(defn is-bottom [c]
+  (cata find-bottom c))
+
+(defn set-items [c items]
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (RecurseFinal (.items c items))
+
+               (RecurseWith c)))
+       c))
+
+(defn set-tail [c tail]
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (RecurseFinal (.tail-c c tail))
+
+               (RecurseWith c)))
+       c))
