@@ -1248,6 +1248,11 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (update-sym [c new-sym]
+    (assert (instance? Symbol new-sym))
+
+    c)
+
   (add-to-path [constraint file-name line-number]
     constraint)
 
@@ -1277,7 +1282,7 @@
   (contents-constraint [c]
     (NoValues [c not-container]))
 
-  ;; replace and ParamConstraints for 'arity' with their corresponding values
+  ;; replace any ParamConstraints for 'arity' with their corresponding values
   (reify-const [c arity args]
     (cata find-bottom c))
 
@@ -1375,6 +1380,11 @@
               (some (.path c) (partial = [file line])))
           c
           (.path c (cons [file line] (.path c))))))
+
+(extend-type SymbolConstraint
+  Constraint
+  (update-sym [c new-sym]
+    (.sym c new-sym)))
 
 (extend-type NoTail
   Constraint
@@ -2868,7 +2878,7 @@
                         (map (or (get-in y [.arities (count args)])
                                  (get-in y [.arities variadic]))
                              (fn [arity]
-                               ;; TODO: make sure all arg constraints < param constraints
+                               ;; TODO: make sure all param constraints are satisfied by the arg constraints
                                (let [new-args (intersect (.items empty-list-constraint args)
                                                          (.param-consts arity))
                                      reified (cond (= bottom-type new-args)
@@ -3126,3 +3136,25 @@
 
                (RecurseWith c)))
        c))
+
+(defn reify-type-constraint [c arity arg-cs loc]
+  (assert (instance? Vector arg-cs))
+
+  ;; (or (= (.file loc) 'core)
+  ;;     (= (.line loc) 0)
+  ;;     (do
+  ;;       (print-err 'reifying loc arity "\n"
+  ;;                  c "\n\n"
+  ;;                  'params param-cs)
+  ;;       nothing))
+  (let [r (cata (fn [c]
+                  (reify-const c (.arity-id arity)
+                               arg-cs))
+                arity)]
+    ;; (or (= (.file loc) 'core)
+    ;;     (= (.line loc) 0)
+    ;;     (do
+    ;;       (print-err 'reified loc arity "\n"
+    ;;                  r)
+    ;;       nothing))
+    (update-path r loc)))
