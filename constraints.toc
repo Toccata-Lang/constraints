@@ -1203,13 +1203,87 @@
 
 (def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
+(def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol ""))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
 (def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
-                                      {} {} (FnConstraint [] {} empty-list no-symbol "")
+                                      {} {} empty-fn-constraint
                                       empty-list no-symbol ""))
+(def empty-reified (ReifiedConstraint 0 no-symbol {} {}
+                                      empty-fn-constraint
+                                      empty-list  no-symbol ""))
+
+(def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
+(def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
+(def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
+(def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
+(def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
+(def seq-constraint (SumConstraint [vect-constraint list-constraint]
+                                     empty-list no-symbol ""))
+(def fn-constraint (FnConstraint []
+                                   {variadic (fn-arity no-symbol list-constraint top-type)
+                                    0 (fn-arity no-symbol empty-list-constraint
+                                                  top-type)
+                                    1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)
+                                    9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
+                                                                                no-tail empty-list no-symbol "")
+                                                  top-type)}
+                                   empty-list no-symbol ""))
+(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
+                                        {} {} (.arities fn-constraint {}) empty-list no-symbol ""))
+(def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
+(def inner-type-of-constraint (InnerTypeOfConstraint no-symbol empty-list no-symbol ""))
+(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
+(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
+(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
+(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
+                                        empty-list no-symbol ""))
+(def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
+                                            empty-list no-symbol ""))
+(def hash-coll-constraint (HashMapConstraint HashCollisionNodeType {} top-type top-type empty-list no-symbol ""))
+(def array-constraint (HashMapConstraint ArrayNodeType {} top-type top-type empty-list no-symbol ""))
+(def bitmap-constraint (HashMapConstraint BitmapIndexedType {} top-type top-type empty-list no-symbol ""))
+(def hashmap-constraint (SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
+                                         empty-list no-symbol ""))
+(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
+(def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
+(def set-constraint (ReifiedConstraint HashSetType 'HashSet
+                                         {(Field (symbol ".set-map")) hashmap-constraint}
+                                         {(Field (symbol ".set-map")) hashmap-constraint}
+                                         (.arities fn-constraint {}) empty-list no-symbol ""))
+(def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
+(def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
+(def future-constraint (FutureConstraint empty-list no-symbol ""))
+(def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
+(def arity-constraint (ReifiedConstraint FnArityType 'FnArity {} {}
+                                         (.arities fn-constraint {})
+                                         empty-list no-symbol ""))
+
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1236,7 +1310,7 @@
 
 (defn missing-field [fld]
   (ReifiedConstraint UnknownType (symbol (str "Field/index '" fld "' required"))
-                     {} {} (FnConstraint [] {} empty-list no-symbol "")
+                     {} {} empty-fn-constraint
                      empty-list no-symbol ""))
 
 (defn cant-set-contents [x fld-path]
@@ -1244,10 +1318,15 @@
                (fn [fld]
                  (NoValues [x (missing-field fld)])))
           (NoValues [x (ReifiedConstraint UnknownType (symbol "Unable to set contents")
-                                          {} {} (FnConstraint [] {} empty-list no-symbol "")
+                                          {} {} empty-fn-constraint
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (extract-sym [tc]
+    (assert-result r (instance? (maybe-of Symbol) r))
+
+    nothing)
+
   (update-sym [c new-sym]
     (assert (instance? Symbol new-sym))
 
@@ -1301,7 +1380,8 @@
     c)
 
   ;; derive a new type by applying a type operation
-  (derive-const [op])
+  (derive-const [op]
+    (constantly op))
 
   ;; produces the the type required by the type operation
   ;; (required [c op]
@@ -1381,8 +1461,11 @@
           c
           (.path c (cons [file line] (.path c))))))
 
-(extend-type SymbolConstraint
+(extend-type SymbolConstraints
   Constraint
+  (extract-sym [c]
+    (instance? Symbol (.sym c)))
+
   (update-sym [c new-sym]
     (.sym c new-sym)))
 
@@ -1397,11 +1480,7 @@
     (list "c/no-tail"))
 
   (contents-constraint [c]
-    (NoValues [c not-container]))
-
-  (derive-const [op]
-    (fn [c]
-      op)))
+    (NoValues [c not-container])))
 
 (extend-type AllValues
   Constraint
@@ -1450,10 +1529,6 @@
 
   (reify-const [c arity args]
     c)
-
-  (derive-const [op]
-    (fn [c]
-      op))
 
   (trim-const [c]
     (.constraints c (comp (remove (.constraints c) (partial instance? NoValues))
@@ -1960,8 +2035,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c n]
-    (let [sum-sym (either (and (every (.alts c) (partial instance? CoreValConstraint))
-                               (apply = (map (.alts c) type-sym)))
+    (let [sum-sym (either (apply = (map (.alts c) type-sym))
                           "Sum Type")]
       (format-path* (cons [(str sum-sym " from") ""] (.path c))
                     n)))
@@ -3022,77 +3096,6 @@
 ;; Going to try and do without these
 ;; DebugConstraint
 
-(def top-type (AllValues empty-list ""))
-(def bottom-type (NoValues []))
-(def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
-(def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
-(def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
-(def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
-(def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
-(def seq-constraint (SumConstraint [vect-constraint list-constraint]
-                                     empty-list no-symbol ""))
-(def fn-constraint (FnConstraint []
-                                   {variadic (fn-arity no-symbol list-constraint top-type)
-                                    0 (fn-arity no-symbol empty-list-constraint
-                                                  top-type)
-                                    1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)}
-                                   empty-list no-symbol ""))
-(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
-                                        {} {} (.arities fn-constraint {}) empty-list no-symbol ""))
-(def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
-(def inner-type-of-constraint (InnerTypeOfConstraint no-symbol empty-list no-symbol ""))
-(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
-(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
-(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
-(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
-                                        empty-list no-symbol ""))
-(def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
-                                            empty-list no-symbol ""))
-(def hash-coll-constraint (HashMapConstraint HashCollisionNodeType {} top-type top-type empty-list no-symbol ""))
-(def array-constraint (HashMapConstraint ArrayNodeType {} top-type top-type empty-list no-symbol ""))
-(def bitmap-constraint (HashMapConstraint BitmapIndexedType {} top-type top-type empty-list no-symbol ""))
-(def hashmap-constraint (SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
-                                         empty-list no-symbol ""))
-(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
-(def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def set-constraint (ReifiedConstraint HashSetType 'HashSet
-                                         {(Field (symbol ".set-map")) hashmap-constraint}
-                                         {(Field (symbol ".set-map")) hashmap-constraint}
-                                         (.arities fn-constraint {}) empty-list no-symbol ""))
-(def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
-(def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
-(def future-constraint (FutureConstraint empty-list no-symbol ""))
-(def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
-(def arity-constraint (ReifiedConstraint FnArityType 'FnArity {} {}
-                                           (.arities fn-constraint {})
-                                           empty-list no-symbol ""))
-
 (def core-type-constraints {'Integer int-constraint
                             'StringBuffer strbuff-constraint
                             'SubString substr-constraint
@@ -3137,7 +3140,7 @@
                (RecurseWith c)))
        c))
 
-(defn reify-type-constraint [c arity arg-cs loc]
+(defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
 
   ;; (or (= (.file loc) 'core)
@@ -3148,8 +3151,7 @@
   ;;                  'params param-cs)
   ;;       nothing))
   (let [r (cata (fn [c]
-                  (reify-const c (.arity-id arity)
-                               arg-cs))
+                  (reify-const c arity-id arg-cs))
                 arity)]
     ;; (or (= (.file loc) 'core)
     ;;     (= (.line loc) 0)
@@ -3158,3 +3160,57 @@
     ;;                  r)
     ;;       nothing))
     (update-path r loc)))
+
+(def TypeOps (any-of FirstOf
+                     RestOf
+                     LastOf
+                     ButLastOf
+                     VectFrom
+                     ListFrom
+                     CallValue
+                     InnerTypeOfConstraint
+                     SetTo
+                     GetFrom
+                     ArgOf))
+
+(defn merge-mods [mods1 mods2 new-c]
+  (assert (instance? Sequence mods1))
+  (assert (instance? Sequence mods2))
+  (assert (instance? ComputedConstraint new-c))
+
+  (cond (empty? mods1)
+        (.mods new-c (comp (.mods new-c) mods2))
+
+        (empty? mods2)
+        (.mods new-c (comp (.mods new-c) mods1))
+
+        (let [[mod1 & rest-mods1] mods1
+              [mod2 & rest-mods2] mods2]
+          (cond (and (instance? TypeOps mod1)
+                     (instance? TypeOps mod2))
+                (either (map (= mod1 mod2)
+                             (fn [_]
+                               (merge-mods rest-mods1 rest-mods2
+                                           (.mods new-c (conj (.mods new-c) mod1)))))
+                        (intersect mod1 mod2))
+
+                (instance? ComputedConstraint mod1)
+                (merge-mods (comp (.mods mod1) rest-mods1) mods2
+                            new-c)
+
+                (instance? ComputedConstraint mod2)
+                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
+                            new-c)
+
+                (instance? TypeOps mod1)
+                (merge-mods mods1 rest-mods2
+                            (.mods new-c (conj (.mods new-c) mod2)))
+
+                (instance? TypeOps mod2)
+                (merge-mods rest-mods1 mods2
+                            (.mods new-c (conj (.mods new-c) mod1)))
+
+                (let [new-mod (intersect mod1 mod2)]
+                  (either (= bottom-type new-mod)
+                          (merge-mods rest-mods1 rest-mods2
+                                      (.mods new-c (conj (.mods new-c) new-mod)))))))))
