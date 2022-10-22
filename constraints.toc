@@ -229,41 +229,6 @@
              (maybe x)))))
 
 ;; atomic types
-(deftype IntegerConstraint [static-value max min path sym var]
-  (assert (instance? (any-of Integer
-                             NoInt) static-value))
-  (assert (instance? (any-of Integer
-                             NoInt) max))
-  (assert (instance? (any-of Integer
-                             NoInt) min))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/IntegerConstraint " (str static-value) " " (str max) " " (str min) " "
-          "empty-list "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? IntegerConstraint y)
-         (or (= static-value (.static-value y))
-             (= no-int static-value)
-             (= no-int (.static-value y)))
-         (= max (.max y))
-         (= min (.min y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
-
 (deftype SymbolConstraint [static-value path sym var]
   (assert (instance? OptionalSym static-value))
   (assert (instance? (list-of Vector) path))
@@ -708,7 +673,10 @@
         (.fields (-> (.fields tc)
                      vec
                      (map (fn [[fld fld-c]]
-                            [(f fld) (f fld-c)]))
+                            [(either (instance? Symbol fld)
+                                     (f fld))
+                             (either (instance? Integer fld-c)
+                                     (f fld-c))]))
                      (reduce {} (fn [m [k v]]
                                   (assoc m k v)))))
         (.invoke-fn (f (.invoke-fn tc)))))
@@ -727,8 +695,10 @@
           new-fields (-> (.fields tc)
                          vec
                          (map (fn [[fld fld-c]]
-                                (for [new-fld (f fld)
-                                      new-c (f fld-c)]
+                                (for [new-fld (either (map (instance? Symbol fld) embed)
+                                                      (f fld))
+                                      new-c (either (map (instance? Integer fld-c) embed)
+                                                      (f fld-c))]
                                   [new-fld new-c]))
                               embed)
                          (map (fn [new-flds]
@@ -1165,8 +1135,7 @@
 (def StrConstraint (any-of StrBuffConstraint
                            SubStrConstraint))
 
-(def CoreValConstraint (any-of IntegerConstraint
-                               SymbolConstraint
+(def SymbolConstraints (any-of SymbolConstraint
                                VectorConstraint
                                ListConstraint
                                StrConstraint
@@ -1177,9 +1146,7 @@
                                FutureConstraint
                                OpaqueConstraint
                                PromiseConstraint
-                               FnConstraint))
-
-(def SymbolConstraints (any-of CoreValConstraint
+                               FnConstraint
                                CollectionOf
                                SumConstraint
                                ReifiedConstraint
@@ -1214,6 +1181,12 @@
 (def empty-reified (ReifiedConstraint 0 no-symbol {} {}
                                       empty-fn-constraint
                                       empty-list  no-symbol ""))
+
+(defn IntegerConstraint [static-value max min path sym var]
+  (ReifiedConstraint IntegerType 'Integer {}
+                     {'static-value static-value 'max max 'min min}
+                     empty-fn-constraint
+                     path sym var))
 
 (def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
 (def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
@@ -1538,59 +1511,6 @@
 
   (intersect [x _] x))
 
-(extend-type IntegerConstraint
-  Constraint
-  (type-num [_] IntegerType)
-  (type-sym [_] 'Integer)
-
-  (assertion-path [c] (.path c))
-
-  (show-full [c]
-    (format-path c 0))
-
-  (format-path [c desired-len]
-    (format-path* (cons [(str "Integer " (.static-value c) " from:") ""] (.path c))
-                  desired-len))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? InnerTypeOfConstraint y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-
-          (instance? IntegerConstraint y)
-          (let [new-min (either (> (.min x) (.min y))
-                                (.min y))
-                new-max (either (< (.max x) (.max y))
-                                (.max y))
-                new-static (or (= (.static-value x) (.static-value y))
-                               (flat-map (or (= (.static-value x) (.static-value y))
-                                             (and (= (.static-value x) no-int)
-                                                  (maybe (.static-value y)))
-                                             (and (= (.static-value y) no-int)
-                                                  (maybe (.static-value x))))
-                                         (fn [new-static]
-                                           (and (<= new-min new-static new-max)
-                                                (maybe new-static)))))]
-            (either (map new-static (fn [new-static]
-                                      ;; TODO: use the path from the most restrictive constraint
-                                      ;; determined by satisfied-by
-                                      (-> x
-                                          (.static-value new-static)
-                                          (.min new-min)
-                                          (.max new-max))))
-                    (NoValues [x y])))
-
-          (NoValues [x y]))))
-
 (extend-type SymbolConstraint
   Constraint
   (type-num [c] SymbolType)
@@ -1818,8 +1738,9 @@
               fld-c
 
               (either (for [idx (first fld-path)
-                            _ (instance? IntegerConstraint idx)
-                            :let [idx (.static-value idx)]
+                            :when (and (instance? ReifiedConstraint idx)
+                                       (= IntegerType (.type-number idx)))
+                            idx (get-in idx [.fields 'static-value])
                             :when-not (= idx no-int)
                             :let [items-count (inc idx)
                                   old-items (cond (<= items-count (count (.items x)))
@@ -1834,8 +1755,9 @@
         find-bottom))
 
   (get-from [x idx]
-    (either (for [_ (instance? IntegerConstraint idx)
-                  :let [idx (.static-value idx)]
+    (either (for [_ (and (instance? ReifiedConstraint idx)
+                         (= IntegerType (.type-number idx)))
+                  idx (get-in idx [.fields 'static-value])
                   :when-not (= idx no-int)
                   item (nth (get-items x (inc idx)) idx)]
               item)
@@ -1939,8 +1861,9 @@
               fld-c
 
               (either (for [idx (first fld-path)
-                            _ (instance? IntegerConstraint idx)
-                            :let [idx (.static-value idx)]
+                            :when (and (instance? ReifiedConstraint idx)
+                                       (= IntegerType (.type-number idx)))
+                            idx (get-in idx [.fields 'static-value])
                             :when-not (= idx no-int)
                             :let [items-count (inc idx)
                                   old-items (cond (<= items-count (count (.items x)))
@@ -1955,8 +1878,9 @@
         find-bottom))
 
   (get-from [x idx]
-    (either (for [_ (instance? IntegerConstraint idx)
-                  :let [idx (.static-value idx)]
+    (either (for [_ (and (instance? ReifiedConstraint idx)
+                         (= IntegerType (.type-number idx)))
+                  idx (get-in idx [.fields 'static-value])
                   :when-not (= idx no-int)
                   item (nth (get-items x (inc idx)) idx)]
               item)
@@ -2557,6 +2481,40 @@
 
           (NoValues [x y]))))
 
+(defn intersect-int [x y]
+  (either (for [min-x (get-in x [.fields 'min])
+                max-x (get-in x [.fields 'max])
+                static-x (get-in x [.fields 'static-value])
+                min-y (get-in y [.fields 'min])
+                max-y (get-in y [.fields 'max])
+                static-y (get-in y [.fields 'static-value])
+                :let [new-min (either (> min-x min-y)
+                                      min-y)
+                      new-max (either (< max-x max-y)
+                                      max-y)]
+                new-static (or (= static-x static-y)
+                               (flat-map (or (= static-x static-y)
+                                             (and (= static-x no-int)
+                                                  (maybe static-y))
+                                             (and (= static-y no-int)
+                                                  (maybe static-x)))
+                                         (fn [new-static]
+                                           (and (<= new-min new-static new-max)
+                                                (maybe new-static)))))]
+            ;; TODO: use the path from the most restrictive constraint
+            ;; determined by satisfied-by
+            (.fields x {'min new-min 'max new-max 'static-value new-static}))
+          (NoValues [x y])))
+
+(def intersectors {IntegerType intersect-int})
+
+(defn intersect-reified [x y]
+  (either (map (get intersectors (type-num x))
+               (fn [f]
+                 (f x y)))
+
+          (cata find-bottom (.fields x (merge-with intersect (.fields y) (.fields x))))))
+
 (extend-type ReifiedConstraint
   Constraint
   (type-sym [c]
@@ -2632,7 +2590,7 @@
 
           (and (instance? ReifiedConstraint y)
                (= (type-num x) (type-num y)))
-          (cata find-bottom (.fields x (merge-with intersect (.fields y) (.fields x))))
+          (intersect-reified x y)
 
           (NoValues [x y]))))
 

@@ -38,7 +38,7 @@
 (def int-or-str (c/SumConstraint [c/int-constraint c/string-constraint] empty-list c/no-symbol ""))
 
 (def maybe-str  (c/MaybeConstraint str-c empty-list c/no-symbol ""))
-(def maybe-int  (c/MaybeConstraint pos-10 empty-list c/no-symbol ""))
+(def maybe-int  (c/MaybeConstraint c/int-constraint empty-list c/no-symbol ""))
 (def maybe-sym  (c/MaybeConstraint sym-c empty-list c/no-symbol ""))
 
 (def call-value (c/CallValue [str-c c/int-constraint] empty-list c/no-symbol ""))
