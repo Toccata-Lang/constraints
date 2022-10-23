@@ -1139,8 +1139,7 @@
                                VectorConstraint
                                ListConstraint
                                StrConstraint
-                               ;; TODO: make sure this gets included eventually
-                               ;; HashMapConstraint
+                               HashMapConstraint
                                MaybeConstraint
                                AgentConstraint
                                FutureConstraint
@@ -1362,7 +1361,7 @@
   (derive-const [op]
     (constantly op))
 
-  ;; produces the the type required by the type operation
+  ;; produces the type required by the type operation
   ;; (required [c op]
   ;;   (intersect c op))
 
