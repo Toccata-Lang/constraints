@@ -329,11 +329,18 @@
 
 (def _ (test (c/intersect (c/PromiseConstraint c/sym-constraint empty-list c/no-symbol "")
                           (c/PromiseConstraint c/int-constraint empty-list c/no-symbol ""))
-             (c/NoValues [(c/PromiseConstraint (c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
-                                               empty-list c/no-symbol "")
-                          (c/PromiseConstraint
-                           c/int-constraint
-                           empty-list c/no-symbol "")])
+             (c/NoValues [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
+                          c/int-constraint])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect coll-of-int
+                          (c/PromiseConstraint pos-int empty-list c/no-symbol ""))
+             (c/PromiseConstraint pos-int empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (c/PromiseConstraint param empty-list c/no-symbol "")
+                          (c/PromiseConstraint c/top-type empty-list c/no-symbol ""))
+             (c/PromiseConstraint param empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
 (def computed-bottom (c/ComputedConstraint [param c/int-constraint c/string-constraint]
@@ -606,7 +613,7 @@
                                           {1 (c/fn-arity 'arity-1
                                                          (c/ListConstraint [str-c]
                                                                            c/no-tail empty-list c/no-symbol "")
-                                                         (c/ParamConstraint 'arity-1 0 empty-list c/no-symbol ""))}
+                                                         param)}
                                           empty-list c/no-symbol ""))
              str-c
              _FILE_ _LINE_))
@@ -618,7 +625,7 @@
                                        {2 (c/fn-arity 'arity-1
                                                       (c/ListConstraint [c/top-type pos-int]
                                                                         c/no-tail empty-list c/no-symbol "")
-                                                      (c/ParamConstraint 'arity-1 1 empty-list c/no-symbol ""))}
+                                                      (.param-index param 1))}
                                        empty-list c/no-symbol "")))
              (c/NoValues [(c/IntegerConstraint c/no-int 2147483647 1 empty-list c/no-symbol "")
                           (c/StrBuffConstraint "buffr" empty-list c/no-symbol "")])

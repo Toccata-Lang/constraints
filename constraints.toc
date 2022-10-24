@@ -100,6 +100,9 @@
   (<* [x y]
     (and (instance? Integer y)
          (maybe x))))
+
+(def OptionalInt (any-of NoInt
+                         Integer))
 (def no-int (NoInt))
 
 (deftype NoString []
@@ -645,7 +648,9 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ReifiedConstraint " (str type-number) " " (str " (symbol \"" type-symbol "\")")
+    (list "(c/ReifiedConstraint " (str type-number) " " (cond (= no-symbol type-symbol)
+                                                              (str no-symbol)
+                                                              (str " (symbol \"" type-symbol "\")"))
           "\n" (str field-consts)
           "\n" (str fields)
           "\n" (str invoke-fn)
@@ -675,7 +680,7 @@
                      (map (fn [[fld fld-c]]
                             [(either (instance? Symbol fld)
                                      (f fld))
-                             (either (instance? Integer fld-c)
+                             (either (instance? OptionalInt fld-c)
                                      (f fld-c))]))
                      (reduce {} (fn [m [k v]]
                                   (assoc m k v)))))
@@ -697,7 +702,7 @@
                          (map (fn [[fld fld-c]]
                                 (for [new-fld (either (map (instance? Symbol fld) embed)
                                                       (f fld))
-                                      new-c (either (map (instance? Integer fld-c) embed)
+                                      new-c (either (map (instance? OptionalInt fld-c) embed)
                                                       (f fld-c))]
                                   [new-fld new-c]))
                               embed)
@@ -2334,7 +2339,8 @@
               (instance? SumConstraint y))
           (intersect y x)
 
-          (instance? Promise y)
+          (or (instance? CollectionOf y)
+              (instance? PromiseConstraint y))
           (let [contents (intersect (.contents x) (.contents y))]
             (either (= bottom-type contents)
                     (.contents x contents)))
@@ -3090,10 +3096,6 @@
 
 ;; combine two constraints to produce a new constraint
 ;; that is the same or more restrictive than either constraint
-
-(defn extract-items [c n]
-  (let [[items] (get-items c n)]
-    items))
 
 (defn is-bottom [c]
   (cata find-bottom c))
