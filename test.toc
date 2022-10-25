@@ -7,7 +7,6 @@
 (def int-list (c/ListConstraint [] coll-of-int empty-list c/no-symbol ""))
 (def int-list-1 (c/ListConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol ""))
 (def int-list-2 (c/ListConstraint [c/int-constraint c/int-constraint] c/no-tail empty-list c/no-symbol ""))
-(def coll-of-int (c/CollectionOf c/int-constraint empty-list c/no-symbol ""))
 
 (def int-vect (c/VectorConstraint [] coll-of-int empty-list c/no-symbol ""))
 (def int-vect-1 (c/VectorConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol ""))
@@ -811,6 +810,20 @@
                           (c/SetTo [pos-1 (c/Field 'field) pos-1 (c/Field 'other)]
                                    substr-c))
              (c/NoValues [reified-vect c/empty-reified])
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/coll-of-any
+                          (c/FnConstraint [1]
+                                          {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}
+                                          empty-list c/no-symbol ""))
+             pos-1
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect coll-of-sym
+                          (c/FnConstraint [1]
+                                          {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}
+                                          empty-list c/no-symbol ""))
+             (c/NoValues [c/sym-constraint pos-1])
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints

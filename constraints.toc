@@ -2495,6 +2495,14 @@
               (instance? CallValue y))
           (intersect y x)
 
+          (instance? CollectionOf y)
+          (-> (.arities x)
+              vals
+              vec
+              (map .result-const)
+              sum-type
+              (intersect (.contents y)))
+
           (instance? FnConstraint y)
           (intersect-fns x y)
 
