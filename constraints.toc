@@ -1192,8 +1192,6 @@
                      empty-fn-constraint
                      path sym var))
 
-(def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
-(def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
@@ -1364,6 +1362,7 @@
 
   ;; derive a new type by applying a type operation
   (derive-const [op]
+    ;; TODO: Make sure (fn [_] op) works as well
     (constantly op))
 
   ;; produces the type required by the type operation
@@ -1673,7 +1672,8 @@
                  c)))
 
   (find-bottom [c]
-    (.contents c))
+    (either (= bottom-type (.contents c))
+            c))
 
   (intersect [x y]
     (cond (or (instance? ParamConstraint y)
@@ -2134,6 +2134,13 @@
   (get-items [c items-count]
     (get-items (derive c top-type) items-count))
 
+  (trim-const [c]
+    (.mods c (reduce (.mods c) []
+                     (fn [new-mods mod]
+                       (cond (instance? ComputedConstraint mod)
+                             (comp new-mods (.mods mod))
+                             (conj new-mods mod))))))
+
   (intersect [x y]
     (cond (or (instance? SumConstraint y)
               (instance? AllValues y)
@@ -2175,10 +2182,13 @@
       c))
 
   (intersect [x y]
-    (cond (or (instance? SumConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y))
+    (cond (=* x y)
+          x
+
+          (or (instance? SumConstraint y)
+                 (instance? AllValues y)
+                 (instance? NoValues y)
+                 (instance? ComputedConstraint y))
           (intersect y x)
 
           (or (instance? FirstOf y)
@@ -2367,9 +2377,8 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
-                 c)))
+      (map op (fn [contents]
+                (contents top-type)))))
 
   (find-bottom [c]
     (either (or (-> (.param-consts c)
@@ -2496,12 +2505,10 @@
           (intersect y x)
 
           (instance? CollectionOf y)
-          (-> (.arities x)
-              vals
-              vec
-              (map .result-const)
-              sum-type
-              (intersect (.contents y)))
+          (let [new-result (.contents y)]
+            (cata find-bottom
+                  (map x (fn [arity]
+                         (.result-const arity (intersect new-result (.result-const arity)))))))
 
           (instance? FnConstraint y)
           (intersect-fns x y)
@@ -3143,7 +3150,9 @@
     ;;       (print-err 'reified loc arity "\n"
     ;;                  r)
     ;;       nothing))
-    (update-path r loc)))
+    (-> r
+        trim
+        (update-path loc))))
 
 (def TypeOps (any-of FirstOf
                      RestOf

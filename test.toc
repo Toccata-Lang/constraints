@@ -52,6 +52,7 @@
 (def vect-from (c/VectFrom 'val-sym empty-list c/no-symbol ""))
 (def get-first (c/GetFrom [int-0]))
 (def set-second (c/SetTo [pos-1] non-0))
+(def maybe-param  (c/MaybeConstraint param empty-list c/no-symbol ""))
 
 (def reified-val (c/ReifiedConstraint
                   10 c/no-symbol {} {}
@@ -816,7 +817,18 @@
                           (c/FnConstraint [1]
                                           {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}
                                           empty-list c/no-symbol ""))
-             pos-1
+             (c/FnConstraint [1]
+                             {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}
+                             empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect coll-of-int
+                          (c/FnConstraint [1]
+                                          {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
+                                          empty-list c/no-symbol ""))
+             (c/FnConstraint [1]
+                             {1 (c/fn-arity c/no-symbol int-list-1 c/int-constraint)}
+                             empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect coll-of-sym
@@ -824,6 +836,29 @@
                                           {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}
                                           empty-list c/no-symbol ""))
              (c/NoValues [c/sym-constraint pos-1])
+             _FILE_ _LINE_))
+
+(def _ (test (c/reify-type-constraint maybe-param 'arity-1 [pos-int] (c/Location _FILE_ _LINE_))
+             (c/MaybeConstraint pos-int empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/derive
+              (c/ComputedConstraint 
+               [(c/FnConstraint
+                 []
+                 {1 (c/fn-arity 'fn-arity75
+                                (c/ListConstraint
+                                 [(c/ComputedConstraint 
+                                   [(c/ParamConstraint 'fn-arity75 0 empty-list 'x "")
+                                    c/int-constraint]
+                                   empty-list 'x "")]
+                                 c/no-tail empty-list c/no-symbol "")
+                                c/int-constraint)}
+                 empty-list c/no-symbol "")
+                (c/ArgOf 'f 0 empty-list c/no-symbol "")]
+               empty-list 'f "")
+              c/top-type)
+             c/int-constraint
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
