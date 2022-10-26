@@ -2033,6 +2033,10 @@
           (= bottom-type y)
           y
 
+          (or (instance? ComputedConstraint y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
           (instance? SumConstraint y)
           (let [new-alts (for [a1 (.alts x)
                                a2 (.alts y)
@@ -2142,8 +2146,7 @@
                              (conj new-mods mod))))))
 
   (intersect [x y]
-    (cond (or (instance? SumConstraint y)
-              (instance? AllValues y)
+    (cond (or (instance? AllValues y)
               (instance? NoValues y))
           (intersect y x)
 
@@ -2185,10 +2188,9 @@
     (cond (=* x y)
           x
 
-          (or (instance? SumConstraint y)
-                 (instance? AllValues y)
-                 (instance? NoValues y)
-                 (instance? ComputedConstraint y))
+          (or (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? ComputedConstraint y))
           (intersect y x)
 
           (or (instance? FirstOf y)
