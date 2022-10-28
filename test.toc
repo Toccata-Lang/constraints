@@ -917,6 +917,33 @@
                           empty-list 'f ""))
              _FILE_ _LINE_))
 
+(def _ (test (c/reify-type-constraint
+              (c/ComputedConstraint
+               [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
+                (c/CallValue [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")]
+                             empty-list c/no-symbol "")
+                (c/InnerTypeOfConstraint empty-list  c/no-symbol "")]
+               empty-list 'f "")
+              'fn-arity78
+              [(c/FnConstraint
+                []
+                {1 (c/fn-arity 'fn-arity3
+                               (c/ListConstraint [(c/ParamConstraint 'fn-arity3 0 empty-list 'v "")]
+                                                 c/no-tail empty-list c/no-symbol "")
+                               (c/MaybeConstraint (c/ParamConstraint 'fn-arity3 0 empty-list 'v "")
+                                                  empty-list c/no-symbol ""))}
+                empty-list 'maybe "")
+
+               (c/ReifiedConstraint 1 'Integer
+                                    {}
+                                    {'min -2147483648, 'max 2147483647, 'static-value 8}
+                                    (c/FnConstraint [] {} empty-list c/no-symbol "")
+                                    empty-list  c/no-symbol "")]
+              (c/Location _FILE_ _LINE_))
+
+             c/top-type
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]

@@ -2986,7 +2986,12 @@
                                      reified (cond (= bottom-type new-args)
                                                    new-args
 
-                                                   (let [new-args (get-items new-args (count args))]
+                                                   (let [new-args (get-items new-args (count args))
+                                                         new-args (cata (fn [c]
+                                                                          (reify-const c (.arity-id arity)
+                                                                                       (repeat (count new-args)
+                                                                                               top-type)))
+                                                                        new-args)]
                                                      (cata (fn [c]
                                                              (reify-const c (.arity-id arity)
                                                                           new-args))
