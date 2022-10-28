@@ -894,12 +894,10 @@
 (def inner-type-of-constraint (InnerTypeOfConstraint empty-list no-symbol ""))
 
 ;; TODO: make this be NthOf
-(deftype FirstOf [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype FirstOf [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/FirstOf " (str "'" base-sym) " "
+    (list "(c/FirstOf "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -916,12 +914,10 @@
   (map [x f embed]
     (embed x)))
 
-(deftype LastOf [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype LastOf [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/LastOf " (str "'" base-sym) " "
+    (list "(c/LastOf "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -938,12 +934,10 @@
   (map [x f embed]
     (embed x)))
 
-(deftype RestOf [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype RestOf [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/RestOf " (str "'" base-sym) " "
+    (list "(c/RestOf "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -960,12 +954,10 @@
   (map [x f embed]
     (embed x)))
 
-(deftype ButLastOf [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype ButLastOf [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/ButLastOf " (str "'" base-sym) " "
+    (list "(c/ButLastOf "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -982,12 +974,10 @@
   (map [x f embed]
     (embed x)))
 
-(deftype ListFrom [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype ListFrom [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/ListFrom " (str "'" base-sym) " "
+    (list "(c/ListFrom "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -1004,12 +994,10 @@
   (map [x f embed]
     (embed x)))
 
-(deftype VectFrom [base-sym path sym var]
-  (assert (instance? Symbol base-sym))
-
+(deftype VectFrom [path sym var]
   Stringable
   (string-list [_]
-    (list "(c/VectFrom " (str "'" base-sym) " "
+    (list "(c/VectFrom "
           "empty-list "
           ;; (str (cons 'list path))
           (sym-str sym) " \"" (str var) "\")" ))
@@ -1026,8 +1014,7 @@
   (map [x f embed]
     (embed x)))
 
-(deftype ArgOf [fn-sym arg-position path sym var]
-  (assert (instance? Symbol fn-sym))
+(deftype ArgOf [arg-position path sym var]
   (assert (instance? Integer arg-position))
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -1035,7 +1022,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ArgOf " (sym-str fn-sym) " " (str arg-position)
+    (list "(c/ArgOf " (str arg-position)
           " empty-list"
           ;; (str " " (cons 'list path))
           " " (sym-str sym)

@@ -42,14 +42,14 @@
 
 (def call-value (c/CallValue [str-c c/int-constraint] empty-list c/no-symbol ""))
 (def param (c/ParamConstraint 'arity-1 0 empty-list c/no-symbol ""))
-(def arg-of (c/ArgOf 'fn-sym 1 empty-list c/no-symbol ""))
+(def arg-of (c/ArgOf 1 empty-list c/no-symbol ""))
 (def result-of (c/CallValue c/no-args empty-list c/no-symbol ""))
-(def first-of (c/FirstOf 'val-sym empty-list c/no-symbol ""))
-(def last-of (c/LastOf 'val-sym empty-list c/no-symbol ""))
-(def rest-of (c/RestOf 'val-sym empty-list c/no-symbol ""))
-(def butlast-of (c/ButLastOf 'val-sym empty-list c/no-symbol ""))
-(def list-from (c/ListFrom 'val-sym empty-list c/no-symbol ""))
-(def vect-from (c/VectFrom 'val-sym empty-list c/no-symbol ""))
+(def first-of (c/FirstOf empty-list c/no-symbol ""))
+(def last-of (c/LastOf empty-list c/no-symbol ""))
+(def rest-of (c/RestOf empty-list c/no-symbol ""))
+(def butlast-of (c/ButLastOf empty-list c/no-symbol ""))
+(def list-from (c/ListFrom empty-list c/no-symbol ""))
+(def vect-from (c/VectFrom empty-list c/no-symbol ""))
 (def get-first (c/GetFrom [int-0]))
 (def set-second (c/SetTo [pos-1] non-0))
 (def maybe-param  (c/MaybeConstraint param empty-list c/no-symbol ""))
@@ -855,7 +855,7 @@
                                  c/no-tail empty-list c/no-symbol "")
                                 c/int-constraint)}
                  empty-list c/no-symbol "")
-                (c/ArgOf 'f 0 empty-list c/no-symbol "")]
+                (c/ArgOf 0 empty-list c/no-symbol "")]
                empty-list 'f "")
               c/top-type)
              c/int-constraint
@@ -941,7 +941,11 @@
                                     empty-list  c/no-symbol "")]
               (c/Location _FILE_ _LINE_))
 
-             c/top-type
+             (c/ReifiedConstraint 1 'Integer
+                                  {}
+                                  {'min -2147483648, 'max 2147483647, 'static-value 8}
+                                  (c/FnConstraint [] {} empty-list c/no-symbol "")
+                                  empty-list  c/no-symbol "")
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
