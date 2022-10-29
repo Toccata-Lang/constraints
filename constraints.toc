@@ -871,49 +871,49 @@
   Stringable
   (string-list [_]
     (list "c/inner-type-of")))
-(def inner-type-of (InnerTypeOf))
+(def inner-type-of-op (InnerTypeOf))
 
 (deftype FirstOf []
   Stringable
   (string-list [_]
-    (list "c/first-of")))
-(def first-of (FirstOf))
+    (list "c/first-of-op")))
+(def first-of-op (FirstOf))
 
 (deftype LastOf []
   Stringable
   (string-list [_]
     (list "c/first-of")))
-(def last-of (LastOf))
+(def last-of-op (LastOf))
 
 (deftype RestOf []
   Stringable
   (string-list [_]
     (list "c/rest-of")))
-(def rest-of (RestOf))
+(def rest-of-op (RestOf))
 
 (deftype ButLastOf []
   Stringable
   (string-list [_]
     (list "c/butlast-of")))
-(def butlast-of (ButLastOf))
+(def butlast-of-op (ButLastOf))
 
 (deftype ListFrom []
   Stringable
   (string-list [_]
     (list "c/list-from")))
-(def list-from (ListFrom))
+(def list-from-op (ListFrom))
 
 (deftype VectFrom []
   Stringable
   (string-list [_]
     (list "c/vect-from")))
-(def vect-from (VectFrom))
+(def vect-from-op (VectFrom))
 
 (deftype ArgOf []
   Stringable
   (string-list [_]
     (list "c/arg-of")))
-(def arg-of (ArgOf))
+(def arg-of-op (ArgOf))
 
 (deftype GetFrom []
   Stringable
@@ -930,8 +930,8 @@
 (deftype CallValue []
   Stringable
   (string-list [_]
-    (list "c/call-value")))
-(def call-value (CallValue))
+    (list "c/call-value-op")))
+(def call-value-op (CallValue))
 
 ;; TODO: should be an enum
 (def TypeOpCodes (any-of InnerTypeOf
@@ -947,11 +947,9 @@
                          CallValue))
 
 ;; type operations
-(deftype TypeOp [op-code params path sym var]
+(deftype TypeOp [op-code params path]
   (assert (instance? TypeOpCodes op-code))
   (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -959,7 +957,7 @@
           (str params) " "
           "empty-list "
           ;; (str (cons 'list path))
-          " " (sym-str sym) " \"" (str var) "\")" ))
+          ")" ))
 
   Eq
   (=* [x y]
@@ -990,7 +988,14 @@
 
           (embed tc))))
 
-(def inner-type-of-constraint (TypeOp inner-type-of {}  empty-list no-symbol ""))
+(def inner-type-of (TypeOp inner-type-of-op '_ empty-list))
+(def first-of (TypeOp first-of-op '_ empty-list))
+(def last-of (TypeOp last-of-op '_ empty-list))
+(def rest-of (TypeOp rest-of-op '_ empty-list))
+(def butlast-of (TypeOp butlast-of-op '_ empty-list))
+(def list-from (TypeOp list-from-op '_ empty-list))
+(def vect-from (TypeOp vect-from-op '_ empty-list))
+(def result-of (TypeOp call-value-op no-args empty-list))
 
 (def StrConstraint (any-of StrBuffConstraint
                            SubStrConstraint))
@@ -1009,7 +1014,6 @@
                                CollectionOf
                                SumConstraint
                                ReifiedConstraint
-                               TypeOp
                                TypeOfConstraint
                                ParamConstraint
                                ComputedConstraint))
@@ -1954,7 +1958,7 @@
                           (map mod-strs (partial str "  ")))))))
 
   (contents-constraint [c]
-    (intersect c inner-type-of-constraint))
+    (intersect c inner-type-of))
 
   (reify-const [c arity args]
     (let [[mod & mods] (.mods c)]
@@ -2008,8 +2012,8 @@
 
           
           (and (instance? TypeOp y)
-               (or (= (.op-code y) first-of)
-                   (= (.op-code y) last-of)))
+               (or (= (.op-code y) first-of-op)
+                   (= (.op-code y) last-of-op)))
           (.mods x (comp (.mods x) [y (MaybeConstraint top-type empty-list no-symbol "")]))
 
           (.mods x (conj (.mods x) y)))))
@@ -2026,7 +2030,7 @@
     (format-path c 0))
 
   (contents-constraint [c]
-    (intersect c inner-type-of-constraint))
+    (intersect c inner-type-of))
 
   (reify-const [c arity args]
     (cond (= (.arity c) arity)
@@ -2049,8 +2053,8 @@
           (intersect y x)
 
           (and (instance? TypeOp y)
-               (or (= (.op-code y) first-of)
-                   (= (.op-code y) last-of)))
+               (or (= (.op-code y) first-of-op)
+                   (= (.op-code y) last-of-op)))
           (ComputedConstraint [x y (MaybeConstraint top-type empty-list no-symbol "")]
                               (.path x) (.sym x) (.var x))
 
@@ -2481,210 +2485,218 @@
 
           (NoValues [x y]))))
 
-(def type-op-msg {inner-type-of (constantly ["Inner type of value from" ""])
-                  first-of (constantly ["First value of seq" ""])
-                  last-of (constantly ["Last value of seq" ""])
-                  rest-of (constantly ["Rest of seq" ""])
-                  butlast-of (constantly ["All but the last value of seq" ""])
-                  list-from (constantly ["List from value" ""])
-                  vect-from (constantly ["Vector from value" ""])
+(def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
+                  first-of-op (constantly ["First value of seq" ""])
+                  last-of-op (constantly ["Last value of seq" ""])
+                  rest-of-op (constantly ["Rest of seq" ""])
+                  butlast-of-op (constantly ["All but the last value of seq" ""])
+                  list-from-op (constantly ["List from value" ""])
+                  vect-from-op (constantly ["Vector from value" ""])
                   ;; TODO: make these fns that take a parameter
-                  arg-of (constantly [(str "Argument ?? of") ""])
-                  call-value (fn [c] ["Called at " ""])})
+                  arg-of-op (constantly [(str "Argument ?? of") ""])
+                  call-value-op (fn [c] ["Called at " ""])})
 
-(def type-op-fn {inner-type-of (fn [x y]
-                                 (contents-constraint y))
-                 first-of (fn [x y]
-                            (cond (instance? SeqConstraint y)
-                                  (MaybeConstraint (either (first (get-items y 1))
-                                                           top-type)
-                                                   empty-list no-symbol "")
+(defn do-call-value [x y]
+  (cond (=* x y)
+        x
 
-                                  (NoValues [x y])))
-                 last-of (fn [x y]
-                           (cond (instance? SeqConstraint y)
-                                 (let [y (trim y)]
-                                   (MaybeConstraint (either (and (= no-tail (.tail-c y))
-                                                                 (last (.items y)))
+        (or (instance? ParamConstraint y)
+            (instance? ComputedConstraint y)
+            (instance? AllValues y)
+            (instance? NoValues y)
+            (instance? SumConstraint y))
+        (intersect y x)
 
-                                                            (either (first (get-items (.tail-c y) 1))
-                                                                    top-type))
-                                                    empty-list no-symbol ""))
+        (instance? TypeOp y)
+        (ComputedConstraint [x y] empty-list no-symbol "")
 
-                                 (NoValues [x y])))
-                 rest-of (fn [x y]
-                           (cond (instance? SeqConstraint y)
-                                 (let [y (trim y)]
-                                   (.items y (rest (.items y))))
+        (instance? FnConstraint y)
+        (let [args (.params x)]
+          (either (or (map (instance? NoArgs args)
+                           (fn [_]
+                             (-> (.arities y)
+                                 vals
+                                 (reduce [] (fn [arities arity]
+                                              (assert (instance? fn-arity arity))
+                                              (conj arities (.result-const arity))))
+                                 sum-type)))
+                      (map (or (get-in y [.arities (count args)])
+                               (get-in y [.arities variadic]))
+                           (fn [arity]
+                             ;; TODO: make sure all param constraints are satisfied by the arg constraints
+                             (let [new-args (intersect (.items empty-list-constraint args)
+                                                       (.param-consts arity))
+                                   reified (cond (= bottom-type new-args)
+                                                 new-args
 
-                                 (NoValues [x y])))
-                 butlast-of (fn [x y]
+                                                 (let [new-args (get-items new-args (count args))
+                                                       new-args (cata (fn [c]
+                                                                        (reify-const c (.arity-id arity)
+                                                                                     (repeat (count new-args)
+                                                                                             top-type)))
+                                                                      new-args)]
+                                                   (cata (fn [c]
+                                                           (reify-const c (.arity-id arity)
+                                                                        new-args))
+                                                         arity)))
+                                   reified (cata find-bottom reified)]
+                               (either (= bottom-type reified)
+                                       (.result-const reified))))))
+
+                  (NoValues [x y])))
+
+        (instance? ReifiedConstraint y)
+        (cond (instance? NoArgs (.params x))
+              (intersect x (.invoke-fn y)) 
+
+              (intersect (.params x (comp [y] (.params x)))
+                         (.invoke-fn y)))
+
+        (NoValues [x y])))
+
+(defn do-set-to [x y]
+  ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
+  (let [[path v] (.params x)]
+    (cond (empty? path)
+          y
+
+          (cond (=* x y)
+                x
+
+                (empty? path)
+                y
+
+                (or (instance? ParamConstraint y)
+                    (instance? ComputedConstraint y)
+                    (instance? AllValues y)
+                    (instance? NoValues y)
+                    (instance? SumConstraint y))
+                (intersect y x)
+
+                (or (instance? ListConstraint y)
+                    (instance? VectorConstraint y)
+                    (instance? ReifiedConstraint y))
+                (set-to y path v)
+
+                (NoValues [x y])))))
+
+(defn do-get-from [x y]
+  ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
+  (cond (empty? (.params x))
+        y
+
+        (cond (=* x y)
+              x
+
+              (empty? (.params x))
+              y
+
+              (or (instance? ParamConstraint y)
+                  (instance? ComputedConstraint y)
+                  (instance? AllValues y)
+                  (instance? NoValues y)
+                  (instance? SumConstraint y))
+              (intersect y x)
+
+              (or (instance? ListConstraint y)
+                  (instance? VectorConstraint y)
+                  (instance? ReifiedConstraint y))
+              (either (map (first (.params x))
+                           (fn [fld]
+                             (intersect (.params x (rest (.params x)))
+                                        (get-from y fld))))
+
+                      y)
+
+              (NoValues [x y]))))
+
+(defn do-arg-of [x y]
+  (let [arg-pos (.params x)]
+    (cond (instance? FnConstraint y)
+          (let [num-args (inc arg-pos)
+                arity-args (-> (.arities y)
+                               vals
+                               (reduce [] (fn [arities arity]
+                                            (assert (instance? fn-arity arity))
+                                            (either (map (-> (.param-consts arity)
+                                                             (get-items num-args)
+                                                             (nth arg-pos))
+                                                         (partial conj arities))
+                                                    arities))))]
+            (cond (empty? arity-args)
+                  (NoValues [x y])
+
+                  (sum-type arity-args)))
+
+          (instance? ReifiedConstraint y)
+          (intersect (.params x (inc arg-pos))
+                     (.invoke-fn y))
+
+          (NoValues [x y]))))
+
+(def type-op-fn {inner-type-of-op (fn [x y]
+                                    (contents-constraint y))
+                 first-of-op (fn [x y]
+                               (cond (instance? SeqConstraint y)
+                                     (MaybeConstraint (either (first (get-items y 1))
+                                                              top-type)
+                                                      empty-list no-symbol "")
+
+                                     (NoValues [x y])))
+                 last-of-op (fn [x y]
                               (cond (instance? SeqConstraint y)
                                     (let [y (trim y)]
-                                      (cond (= (.tail-c y) no-tail)
-                                            (.items y (butlast (.items y)))
+                                      (MaybeConstraint (either (and (= no-tail (.tail-c y))
+                                                                    (last (.items y)))
 
-                                            y))
+                                                               (either (first (get-items (.tail-c y) 1))
+                                                                       top-type))
+                                                       empty-list no-symbol ""))
 
                                     (NoValues [x y])))
-                 list-from (fn [x y]
-                             (cond (instance? ListConstraint y)
-                                   y
+                 rest-of-op (fn [x y]
+                              (cond (instance? SeqConstraint y)
+                                    (let [y (trim y)]
+                                      (.items y (rest (.items y))))
 
-                                   (instance? VectorConstraint y)
-                                   (let [y (trim y)]
-                                     (-> empty-list-constraint
-                                         (.items (.items y))
-                                         (.tail-c (.tail-c y))
-                                         (.path (comp (.path y) (.path x)))))
+                                    (NoValues [x y])))
+                 butlast-of-op (fn [x y]
+                                 (cond (instance? SeqConstraint y)
+                                       (let [y (trim y)]
+                                         (cond (= (.tail-c y) no-tail)
+                                               (.items y (butlast (.items y)))
 
-                                   (NoValues [x y]))) 
-                 vect-from (fn [x y]
-                             (cond (instance? VectorConstraint y)
-                                   y
+                                               y))
 
-                                   (instance? ListConstraint y)
-                                   (let [y (trim y)]
-                                     (-> empty-vect-constraint
-                                         (.items (.items y))
-                                         (.tail-c (.tail-c y))
-                                         (.path (comp (.path y) (.path x)))))
+                                       (NoValues [x y])))
+                 list-from-op (fn [x y]
+                                (cond (instance? ListConstraint y)
+                                      y
 
-                                   (NoValues [x y])))
-                 arg-of (fn [x y]
-                          (let [arg-pos (.params x)]
-                            (cond (instance? FnConstraint y)
-                                  (let [num-args (inc arg-pos)
-                                        arity-args (-> (.arities y)
-                                                       vals
-                                                       (reduce [] (fn [arities arity]
-                                                                    (assert (instance? fn-arity arity))
-                                                                    (either (map (-> (.param-consts arity)
-                                                                                     (get-items num-args)
-                                                                                     (nth arg-pos))
-                                                                                 (partial conj arities))
-                                                                            arities))))]
-                                    (cond (empty? arity-args)
-                                          (NoValues [x y])
+                                      (instance? VectorConstraint y)
+                                      (let [y (trim y)]
+                                        (-> empty-list-constraint
+                                            (.items (.items y))
+                                            (.tail-c (.tail-c y))
+                                            (.path (comp (.path y) (.path x)))))
 
-                                          (sum-type arity-args)))
+                                      (NoValues [x y]))) 
+                 vect-from-op (fn [x y]
+                                (cond (instance? VectorConstraint y)
+                                      y
 
-                                  (instance? ReifiedConstraint y)
-                                  (intersect (.params x (inc arg-pos))
-                                             (.invoke-fn y))
+                                      (instance? ListConstraint y)
+                                      (let [y (trim y)]
+                                        (-> empty-vect-constraint
+                                            (.items (.items y))
+                                            (.tail-c (.tail-c y))
+                                            (.path (comp (.path y) (.path x)))))
 
-                                  (NoValues [x y]))))
-                 get-from-op (fn [x y]
-                               ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
-                               (cond (empty? (.params x))
-                                     y
-
-                                     (cond (=* x y)
-                                           x
-
-                                           (empty? (.params x))
-                                           y
-
-                                           (or (instance? ParamConstraint y)
-                                               (instance? ComputedConstraint y)
-                                               (instance? AllValues y)
-                                               (instance? NoValues y)
-                                               (instance? SumConstraint y))
-                                           (intersect y x)
-
-                                           (or (instance? ListConstraint y)
-                                               (instance? VectorConstraint y)
-                                               (instance? ReifiedConstraint y))
-                                           (either (map (first (.params x))
-                                                        (fn [fld]
-                                                          (intersect (.params x (rest (.params x)))
-                                                                     (get-from y fld))))
-
-                                                   y)
-
-                                           (NoValues [x y]))))
-                 set-to-op (fn [x y]
-                             ;; TODO: for some reason, the empty? check in the inner 'cond' doesn't work
-                             (let [[path v] (.params x)]
-                               (cond (empty? path)
-                                     y
-
-                                     (cond (=* x y)
-                                           x
-
-                                           (empty? path)
-                                           y
-
-                                           (or (instance? ParamConstraint y)
-                                               (instance? ComputedConstraint y)
-                                               (instance? AllValues y)
-                                               (instance? NoValues y)
-                                               (instance? SumConstraint y))
-                                           (intersect y x)
-
-                                           (or (instance? ListConstraint y)
-                                               (instance? VectorConstraint y)
-                                               (instance? ReifiedConstraint y))
-                                           (set-to y path v)
-
-                                           (NoValues [x y])))))
-                 call-value (fn [x y]
-                              (cond (=* x y)
-                                    x
-
-                                    (or (instance? ParamConstraint y)
-                                        (instance? ComputedConstraint y)
-                                        (instance? AllValues y)
-                                        (instance? NoValues y)
-                                        (instance? SumConstraint y))
-                                    (intersect y x)
-
-                                    (instance? TypeOp y)
-                                    (ComputedConstraint [x y] empty-list no-symbol "")
-
-                                    (instance? FnConstraint y)
-                                    (let [args (.params x)]
-                                      (either (or (map (instance? NoArgs args)
-                                                       (fn [_]
-                                                         (-> (.arities y)
-                                                             vals
-                                                             (reduce [] (fn [arities arity]
-                                                                          (assert (instance? fn-arity arity))
-                                                                          (conj arities (.result-const arity))))
-                                                             sum-type)))
-                                                  (map (or (get-in y [.arities (count args)])
-                                                           (get-in y [.arities variadic]))
-                                                       (fn [arity]
-                                                         ;; TODO: make sure all param constraints are satisfied by the arg constraints
-                                                         (let [new-args (intersect (.items empty-list-constraint args)
-                                                                                   (.param-consts arity))
-                                                               reified (cond (= bottom-type new-args)
-                                                                             new-args
-
-                                                                             (let [new-args (get-items new-args (count args))
-                                                                                   new-args (cata (fn [c]
-                                                                                                    (reify-const c (.arity-id arity)
-                                                                                                                 (repeat (count new-args)
-                                                                                                                         top-type)))
-                                                                                                  new-args)]
-                                                                               (cata (fn [c]
-                                                                                       (reify-const c (.arity-id arity)
-                                                                                                    new-args))
-                                                                                     arity)))
-                                                               reified (cata find-bottom reified)]
-                                                           (either (= bottom-type reified)
-                                                                   (.result-const reified))))))
-
-                                              (NoValues [x y])))
-
-                                    (instance? ReifiedConstraint y)
-                                    (cond (instance? NoArgs (.params x))
-                                          (intersect x (.invoke-fn y)) 
-
-                                          (intersect (.params x (comp [y] (.params x)))
-                                                     (.invoke-fn y)))
-
-                                    (NoValues [x y])))})
+                                      (NoValues [x y])))
+                 arg-of-op do-arg-of
+                 get-from-op do-get-from
+                 set-to-op do-set-to
+                 call-value-op do-call-value})
 
 (extend-type TypeOp
   Constraint
