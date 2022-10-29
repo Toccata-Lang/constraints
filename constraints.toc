@@ -232,30 +232,6 @@
                   (maybe y))
              (maybe x)))))
 
-;; atomic types
-(deftype OpaqueConstraint [path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/OpaqueConstraint " "empty-list "
-          ;; (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? OpaqueConstraint y)
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
-
 ;; atomic and container types
 (deftype StrBuffConstraint [static-value path sym var]
   (assert (instance? (any-of String
@@ -983,7 +959,6 @@
                                MaybeConstraint
                                AgentConstraint
                                FutureConstraint
-                               OpaqueConstraint
                                PromiseConstraint
                                FnConstraint
                                CollectionOf
@@ -1024,6 +999,9 @@
   (ReifiedConstraint SymbolType 'Symbol {}
                      {'static-value static-value}
                      empty-fn-constraint path sym var))
+
+(defn OpaqueConstraint [path sym var]
+  (ReifiedConstraint OpaqueType 'Opaque {} {} empty-fn-constraint path sym var))
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
@@ -1996,38 +1974,6 @@
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
 
-(extend-type OpaqueConstraint
-  Constraint
-  (type-num [c] OpaqueType)
-
-  (type-sym [_] 'Opaque)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Opaque pointer from:" ""] (.path x))
-                  desired-len))
-
-  (show-full [c]
-    (format-path c 0))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ComputedConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? TypeOp y)
-              (instance? ParamConstraint y))
-          (intersect y x)
-
-          (NoValues [x y]))))
-
 (extend-type AgentConstraint
   Constraint
   (type-num [c] AgentType)
@@ -2312,6 +2258,19 @@
 
           (NoValues [x y]))))
 
+(defn intersect-opaque [x y]
+    (cond (=* x y)
+          x
+
+          (or (instance? ComputedConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? TypeOp y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
+          (NoValues [x y])))
+
 (defn intersect-int [x y]
   (either (for [min-x (get-in x [.fields 'min])
                 max-x (get-in x [.fields 'max])
@@ -2349,7 +2308,8 @@
           (NoValues [x y])))
 
 (def intersectors {IntegerType intersect-int
-                   SymbolType intersect-sym})
+                   SymbolType intersect-sym
+                   OpaqueType intersect-opaque})
 
 (defn intersect-reified [x y]
   (either (map (get intersectors (type-num x))
