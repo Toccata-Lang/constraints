@@ -1,4 +1,4 @@
-
+;; 
 (def SymbolOrString (any-of Symbol
                             String))
 
@@ -233,34 +233,6 @@
              (maybe x)))))
 
 ;; atomic types
-(deftype SymbolConstraint [static-value path sym var]
-  (assert (instance? OptionalSym static-value))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/SymbolConstraint " (sym-str static-value) " "
-          "empty-list "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? SymbolConstraint y)
-         (or (= static-value (.static-value y))
-             (= no-symbol static-value)
-             (= no-symbol (.static-value y)))
-         (maybe x)))
-
-  Container
-  (map [x _]
-    x)
-
-  (map [x _ embed]
-    (embed x)))
-
 (deftype OpaqueConstraint [path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -681,7 +653,8 @@
                      (map (fn [[fld fld-c]]
                             [(either (instance? Symbol fld)
                                      (f fld))
-                             (either (instance? OptionalInt fld-c)
+                             (either (or (instance? OptionalSym fld-c)
+                                         (instance? OptionalInt fld-c))
                                      (f fld-c))]))
                      (reduce {} (fn [m [k v]]
                                   (assoc m k v)))))
@@ -704,7 +677,9 @@
                          (map (fn [[fld fld-c]]
                                 (for [new-fld (either (map (instance? Symbol fld) embed)
                                                       (f fld))
-                                      new-c (either (map (instance? OptionalInt fld-c) embed)
+                                      new-c (either (map (or (instance? OptionalInt fld-c)
+                                                             (instance? OptionalSym fld-c))
+                                                         embed)
                                                       (f fld-c))]
                                   [new-fld new-c]))
                               embed)
@@ -1000,7 +975,7 @@
 (def StrConstraint (any-of StrBuffConstraint
                            SubStrConstraint))
 
-(def SymbolConstraints (any-of SymbolConstraint
+(def SymbolConstraints (any-of ReifiedConstraint
                                VectorConstraint
                                ListConstraint
                                StrConstraint
@@ -1013,7 +988,6 @@
                                FnConstraint
                                CollectionOf
                                SumConstraint
-                               ReifiedConstraint
                                TypeOfConstraint
                                ParamConstraint
                                ComputedConstraint))
@@ -1044,8 +1018,12 @@
 (defn IntegerConstraint [static-value max min path sym var]
   (ReifiedConstraint IntegerType 'Integer {}
                      {'static-value static-value 'max max 'min min}
-                     empty-fn-constraint
-                     path sym var))
+                     empty-fn-constraint path sym var))
+
+(defn SymbolConstraint [static-value path sym var]
+  (ReifiedConstraint SymbolType 'Symbol {}
+                     {'static-value static-value}
+                     empty-fn-constraint path sym var))
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
@@ -1376,48 +1354,6 @@
                               (flat-map .constraints)))))
 
   (intersect [x _] x))
-
-(extend-type SymbolConstraint
-  Constraint
-  (type-num [c] SymbolType)
-
-  (type-sym [_] 'Symbol)
-
-  (assertion-path [c] (.path c))
-
-  (show-full [c]
-    (format-path c 0))
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "Symbol " (either (= no-symbol (.static-value x))
-                                                (str "'" (.static-value x)))
-                              " from:") ""]
-                        (.path x))
-                  desired-len))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (instance? SymbolConstraint y)
-          (either (map (or (= (.static-value x) (.static-value y))
-                           (and (= (.static-value x) no-symbol)
-                                (maybe (.static-value y)))
-                           (and (= (.static-value y) no-symbol)
-                                (maybe (.static-value x))))
-                       (partial .static-value x))
-                  (NoValues [x y]))
-
-          (NoValues [x y]))))
 
 (defn str-inner [sc]
   (assert (instance? StrConstraint sc))
@@ -2401,7 +2337,19 @@
             (.fields x {'min new-min 'max new-max 'static-value new-static}))
           (NoValues [x y])))
 
-(def intersectors {IntegerType intersect-int})
+(defn intersect-sym [x y]
+  (either (for [sv-x (get-in x [.fields 'static-value])
+                sv-y (get-in y [.fields 'static-value])
+                new-sv (or (= sv-x sv-y)
+                           (and (= sv-x no-symbol)
+                                (maybe sv-y))
+                           (and (= sv-y no-symbol)
+                                (maybe sv-x)))]
+            (assoc-in x [.fields 'static-value] new-sv))
+          (NoValues [x y])))
+
+(def intersectors {IntegerType intersect-int
+                   SymbolType intersect-sym})
 
 (defn intersect-reified [x y]
   (either (map (get intersectors (type-num x))
@@ -2409,6 +2357,22 @@
                  (f x y)))
 
           (cata find-bottom (.fields x (merge-with intersect (.fields y) (.fields x))))))
+
+(defn format-static-value [c]
+  (assert (instance? ReifiedConstraint c))
+
+  (either (map (get (.fields c) 'static-value)
+               (fn [sv]
+                 (cond (or (= no-symbol sv)
+                           (= no-int sv)
+                           (= IntegerType (type-num c)))
+                       (str sv " ")
+
+                       (= SymbolType (type-num c))
+                       (str "'" sv " ")
+
+                       "")))
+          ""))
 
 (extend-type ReifiedConstraint
   Constraint
@@ -2421,7 +2385,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons [(str "'" (type-sym c) "' from") ""]
+    (format-path* (cons [(str (type-sym c) " " (format-static-value c) "from:") ""]
                         (.path c))
                   desired-len))
 
