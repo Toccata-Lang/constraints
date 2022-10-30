@@ -122,7 +122,13 @@
   (=* [x y]
     (instance? NoString y)))
 
+(def OptionalStr (any-of NoString
+                         String))
 (def no-string (NoString))
+
+(def NoStatic (any-of NoString
+                      NoInt
+                      NoSymbol))
 
 (deftype NoTail []
   Stringable
@@ -231,67 +237,6 @@
          (or (and (empty? constraints)
                   (maybe y))
              (maybe x)))))
-
-;; atomic and container types
-(deftype StrBuffConstraint [static-value path sym var]
-  (assert (instance? (any-of String
-                             NoString) static-value))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/StrBuffConstraint " (either (map (= static-value no-string) str)
-                                          (str "\"" static-value "\"")) " "
-          "empty-list "
-          ;; (str (cons 'list path)) " "
-          (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? StrBuffConstraint y)
-         (or (= static-value (.static-value y))
-             (= no-string static-value)
-             (= no-string (.static-value y)))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
-
-(deftype SubStrConstraint [static-value path sym var]
-  (assert (instance? (any-of String
-                             NoString) static-value))
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/SubStrConstraint " (either (map (= static-value no-string) str)
-                                         (str "\"" static-value "\"")) " "
-          "empty-list "
-          ;; (str (cons 'list path)) " "
-          (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? SubStrConstraint y)
-         (or (= static-value (.static-value y))
-             (= no-string static-value)
-             (= no-string (.static-value y)))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
 
 ;; container types
 (deftype ListConstraint [items tail-c path sym var]
@@ -498,9 +443,13 @@
   (string-list [_]
     (list "(c/ReifiedConstraint " (str type-number) " " (cond (= no-symbol type-symbol)
                                                               (str no-symbol)
-                                                              (str " (symbol \"" type-symbol "\")"))
+                                                              (str "(symbol \"" type-symbol "\")"))
           "\n" (str field-consts)
-          "\n" (str fields)
+          "\n{" (to-str (map (vec fields) (fn [[k v]]
+                                            (cond (instance? Symbol k)
+                                                  (str "'" k " " v "\n")
+                                                  (str k " " v "\n")))))
+          "}"
           "\n" (str invoke-fn)
           ;; (str (interpose (cons 'list path) " "))
           " empty-list "
@@ -510,9 +459,10 @@
   ;; TODO: equality must check the field maps as well
   ;; verify this
   (=* [x y]
-    (for [_ (instance? ReifiedConstraint y)
-          _ (= fields (.fields y))]
-      x))
+    (and (instance? ReifiedConstraint y)
+         (= type-number (.type-number y))
+         (= fields (.fields y))
+         (maybe x)))
 
   Container
   (map [tc f]
@@ -529,6 +479,7 @@
                             [(either (instance? Symbol fld)
                                      (f fld))
                              (either (or (instance? OptionalSym fld-c)
+                                         (instance? OptionalStr fld-c)
                                          (instance? OptionalInt fld-c))
                                      (f fld-c))]))
                      (reduce {} (fn [m [k v]]
@@ -553,6 +504,7 @@
                                 (for [new-fld (either (map (instance? Symbol fld) embed)
                                                       (f fld))
                                       new-c (either (map (or (instance? OptionalInt fld-c)
+                                                             (instance? OptionalStr fld-c)
                                                              (instance? OptionalSym fld-c))
                                                          embed)
                                                       (f fld-c))]
@@ -847,13 +799,9 @@
 (def vect-from (TypeOp vect-from-op '_ empty-list))
 (def result-of (TypeOp call-value-op no-args empty-list))
 
-(def StrConstraint (any-of StrBuffConstraint
-                           SubStrConstraint))
-
 (def SymbolConstraints (any-of ReifiedConstraint
                                VectorConstraint
                                ListConstraint
-                               StrConstraint
                                HashMapConstraint
                                FnConstraint
                                CollectionOf
@@ -874,10 +822,6 @@
 (def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
 (def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol ""))
-(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
-(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
-(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
-                                      empty-list no-symbol ""))
 (def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
                                       {} {} empty-fn-constraint
                                       empty-list no-symbol ""))
@@ -910,11 +854,22 @@
 (defn AgentConstraint [contents path sym var]
   (ReifiedConstraint AgentType 'Agent {} {'contents contents} empty-fn-constraint path sym var))
 
+(defn StrBuffConstraint [static-value path sym var]
+  (ReifiedConstraint StringBufferType 'String {} {'static-value static-value} empty-fn-constraint path sym var))
+
+(defn SubStrConstraint [static-value path sym var]
+  (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var))
+
+
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
 (def seq-constraint (SumConstraint [vect-constraint list-constraint]
                                      empty-list no-symbol ""))
+(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
+(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
+(def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
+                                      empty-list no-symbol ""))
 (def fn-constraint (FnConstraint []
                                    {variadic (fn-arity no-symbol list-constraint top-type)
                                     0 (fn-arity no-symbol empty-list-constraint
@@ -1241,78 +1196,17 @@
   (intersect [x _] x))
 
 (defn str-inner [sc]
-  (assert (instance? StrConstraint sc))
+  (either (map (get-in sc [.fields 'static-value])
+               (fn [sv]
+                 (cond (= sv no-string)
+                       string-constraint
 
-  (cond (= (.static-value sc) no-string)
-        string-constraint
-
-        (-> (.static-value sc)
-            vec
-            (map (fn [c]
-                   (StrBuffConstraint c empty-list no-symbol "")))
-            sum-type)))
-
-(extend-type StrConstraint
-  Constraint
-  (type-sym [_] 'String)
-
-  (assertion-path [c] (.path c))
-
-  (show-full [c]
-    (format-path c 0))
-
-  (format-path [x desired-len]
-    (format-path* (cons [(str "String " (either (= no-string (.static-value x))
-                                                (str "'" (.static-value x) "'"))
-                              " from:") ""]
-                        (.path x))
-                  desired-len))
-
-  (contents-constraint [c]
-    (.static-value c no-string))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (and (instance? StrConstraint y)
-               (= (get-type x) (get-type y)))
-          (either (map (or (= (.static-value x) (.static-value y))
-                           (and (= (.static-value x) no-string)
-                                (maybe (.static-value y)))
-                           (and (= (.static-value y) no-string)
-                                (maybe (.static-value x))))
-                       (fn [stat-val]
-                         (cond (instance? StrBuffConstraint y)
-                               (.static-value y stat-val)
-
-                               (.static-value x stat-val))))
-            (NoValues [x y]))
-
-          (instance? CollectionOf y)
-          (cond (= (intersect (str-inner x) (.contents y)) bottom-type)
-                (NoValues [x y])
-
-                x)
-
-          (NoValues [x y]))))
-
-(extend-type StrBuffConstraint
-  Constraint
-   (type-num [c] StringBufferType))
-
-(extend-type SubStrConstraint
-  Constraint
-   (type-num [c] SubStringType))
+                       (-> sv
+                           vec
+                           (map (fn [c]
+                                  (StrBuffConstraint c empty-list no-symbol "")))
+                           sum-type))))
+          string-constraint))
 
 (defn intersect-seqs [l1 l2]
   (assert (instance? SeqConstraint l1))
@@ -2023,19 +1917,21 @@
             (.fields x {'min new-min 'max new-max 'static-value new-static}))
           (NoValues [x y])))
 
-(defn intersect-sym [x y]
+(defn intersect-static [x y]
   (either (for [sv-x (get-in x [.fields 'static-value])
                 sv-y (get-in y [.fields 'static-value])
                 new-sv (or (= sv-x sv-y)
-                           (and (= sv-x no-symbol)
+                           (and (instance? NoStatic sv-x)
                                 (maybe sv-y))
-                           (and (= sv-y no-symbol)
+                           (and (instance? NoStatic sv-y)
                                 (maybe sv-x)))]
             (assoc-in x [.fields 'static-value] new-sv))
           (NoValues [x y])))
 
 (def intersectors {IntegerType intersect-int
-                   SymbolType intersect-sym
+                   SymbolType intersect-static
+                   SubStringType intersect-static
+                   StringBufferType intersect-static
                    OpaqueType (fn [x y] (NoValues [x y]))
                    FutureType (fn [x y] (NoValues [x y]))
                    MaybeType intersect-simple-container
@@ -2068,7 +1964,12 @@
 (extend-type ReifiedConstraint
   Constraint
   (contents-constraint [c]
-    (either (get-in c [.fields 'contents])
+    (either (or (map (or (= StringBufferType (type-num c))
+                         (= SubStringType (type-num c)))
+                     (fn [_]
+                       ;; TODO: make this call str-inner
+                       (assoc-in c [.fields 'static-value] no-string)))
+                (get-in c [.fields 'contents]))
             (NoValues [c not-container])))
 
   (type-sym [c]
@@ -2134,14 +2035,21 @@
           (intersect y x)
 
           (instance? CollectionOf y)
-          (either (for [cnts-x (or (get-in x [.fields 'contents])
-                                   (maybe (NoValues [x not-container])))
-                        cnts-y (get y .contents)]
-                    (let [new-cnts (intersect cnts-x cnts-y)]
-                      (either (= bottom-type new-cnts)
-                              (assoc-in x [.fields 'contents] new-cnts))))
+          (either (or (map (or (= StringBufferType (type-num x))
+                               (= SubStringType (type-num x)))
+                           (fn [_]
+                             (cond (= (intersect (str-inner x) (.contents y)) bottom-type)
+                                   (NoValues [x y])
 
-          (NoValues [x y]))
+                                   x)))
+                      (for [cnts-x (or (get-in x [.fields 'contents])
+                                       (maybe (NoValues [x not-container])))
+                            cnts-y (get y .contents)]
+                        (let [new-cnts (intersect cnts-x cnts-y)]
+                          (either (= bottom-type new-cnts)
+                                  (assoc-in x [.fields 'contents] new-cnts)))))
+
+                  (NoValues [x y]))
 
           (instance? FnConstraint y)
           (let [new-invoke (intersect-fns (.invoke-fn x) y)]
