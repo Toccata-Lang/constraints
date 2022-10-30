@@ -466,29 +466,6 @@
     (map (f (.contents x))
          (partial .contents x))))
 
-(deftype FutureConstraint [path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/FutureConstraint " "empty-list "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? FutureConstraint y)
-         (maybe x)))
-
-  Container
-  (map [x f]
-    x)
-
-  (map [x f embed]
-    (embed x)))
-
 (deftype PromiseConstraint [contents path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -958,7 +935,6 @@
                                HashMapConstraint
                                MaybeConstraint
                                AgentConstraint
-                               FutureConstraint
                                PromiseConstraint
                                FnConstraint
                                CollectionOf
@@ -1002,6 +978,9 @@
 
 (defn OpaqueConstraint [path sym var]
   (ReifiedConstraint OpaqueType 'Opaque {} {} empty-fn-constraint path sym var))
+
+(defn FutureConstraint [path sym var]
+  (ReifiedConstraint FutureType 'Future {} {} empty-fn-constraint path sym var))
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
@@ -2019,39 +1998,6 @@
 
           (NoValues [x y]))))
 
-(extend-type FutureConstraint
-  Constraint
-  (type-num [c] FutureType)
-
-  (type-sym [_] 'Future)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Future from:" ""] (.path x))
-                  desired-len))
-
-  (show-full [c]
-    (format-path c 0))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect op c)))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (NoValues [x y]))))
-
 (extend-type PromiseConstraint
   Constraint
   (type-num [c] PromiseType)
@@ -2258,15 +2204,16 @@
 
           (NoValues [x y]))))
 
-(defn intersect-opaque [x y]
+(defn intersect-fut-and-opaque [x y]
     (cond (=* x y)
           x
 
-          (or (instance? ComputedConstraint y)
+          (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
+              (instance? ComputedConstraint y)
               (instance? TypeOp y)
-              (instance? ParamConstraint y))
+              (instance? SumConstraint y))
           (intersect y x)
 
           (NoValues [x y])))
@@ -2309,7 +2256,8 @@
 
 (def intersectors {IntegerType intersect-int
                    SymbolType intersect-sym
-                   OpaqueType intersect-opaque})
+                   OpaqueType intersect-fut-and-opaque
+                   FutureType intersect-fut-and-opaque})
 
 (defn intersect-reified [x y]
   (either (map (get intersectors (type-num x))
