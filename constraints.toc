@@ -366,32 +366,6 @@
           (.items new-items)))))
 (def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
 
-(deftype MaybeConstraint [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/MaybeConstraint " (str contents) "\n"
-          "empty-list "
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? MaybeConstraint y)
-         (= contents (.contents y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (map (f (.contents x))
-         (partial .contents x))))
-
 (deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
@@ -439,58 +413,6 @@
           (.vals-c new-vals)
           (.kv-pairs (reduce new-kv {} (fn [m [k v]]
                                          (assoc m k v))))))))
-
-(deftype AgentConstraint [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/AgentConstraint " (str contents) " "
-          "empty-list "
-          ;; (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? AgentConstraint y)
-         (= contents (.contents y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (map (f (.contents x))
-         (partial .contents x))))
-
-(deftype PromiseConstraint [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/PromiseConstraint " (str contents) " "
-          "empty-list "
-          ;; (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
-
-  Eq
-  (=* [x y]
-    (and (instance? PromiseConstraint y)
-         (= contents (.contents y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (map (f (.contents x))
-         (partial .contents x))))
 
 
 (deftype fn-arity [arity-id param-consts result-const]
@@ -933,9 +855,6 @@
                                ListConstraint
                                StrConstraint
                                HashMapConstraint
-                               MaybeConstraint
-                               AgentConstraint
-                               PromiseConstraint
                                FnConstraint
                                CollectionOf
                                SumConstraint
@@ -981,6 +900,15 @@
 
 (defn FutureConstraint [path sym var]
   (ReifiedConstraint FutureType 'Future {} {} empty-fn-constraint path sym var))
+
+(defn MaybeConstraint [contents path sym var]
+  (ReifiedConstraint MaybeType 'Maybe {} {'contents contents} empty-fn-constraint path sym var))
+
+(defn PromiseConstraint [contents path sym var]
+  (ReifiedConstraint PromiseType 'Promise {} {'contents contents} empty-fn-constraint path sym var))
+
+(defn AgentConstraint [contents path sym var]
+  (ReifiedConstraint AgentType 'Agent {} {'contents contents} empty-fn-constraint path sym var))
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
@@ -1385,55 +1313,6 @@
 (extend-type SubStrConstraint
   Constraint
    (type-num [c] SubStringType))
-
-(extend-type MaybeConstraint
-  Constraint
-  (type-num [c] MaybeType)
-
-  (type-sym [_] 'Maybe)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Maybe from:" ""] (.path x))
-                  desired-len))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          (cond (= (show-full bottom-type) (.contents c))
-                ""
-                (comp ["--contains--"]
-                      (map (.contents c) (partial str "  "))))))
-
-  (contents-constraint [c]
-    (.contents c))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect (map op (fn [f]
-                           (f top-type)))
-                 c)))
-
-  (find-bottom [c]
-    (either (= bottom-type (.contents c))
-            c))
-
-  (intersect [x y]
-    (cond (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (or (instance? MaybeConstraint y)
-              (instance? CollectionOf y))
-          (let [contents (intersect (.contents x) (.contents y))]
-            (either (= bottom-type contents)
-                    (.contents x contents)))
-
-          (NoValues [x y]))))
 
 (defn intersect-seqs [l1 l2]
   (assert (instance? SeqConstraint l1))
@@ -1953,100 +1832,6 @@
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
 
-(extend-type AgentConstraint
-  Constraint
-  (type-num [c] AgentType)
-
-  (type-sym [_] 'Agent)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Agent from:" ""] (.path x))
-                  desired-len))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          (map (.contents c) (partial str "  "))))
-
-  (contents-constraint [c]
-    (.contents c))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
-                 c)))
-
-  (find-bottom [c]
-    (either (= bottom-type (.contents c))
-            c))
-
-  (intersect [x y]
-    (cond (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (instance? AgentConstraint y)
-          (let [contents (intersect (.contents x) (.contents y))]
-            (either (= bottom-type contents)
-                    (.contents x contents)))
-
-          (NoValues [x y]))))
-
-(extend-type PromiseConstraint
-  Constraint
-  (type-num [c] PromiseType)
-
-  (type-sym [_] 'Promise)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* (cons ["Promise from:" ""] (.path x))
-                  desired-len))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          (map (.contents c) (partial str "  "))))
-
-  (contents-constraint [c]
-    (.contents c))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
-                 c)))
-
-  (find-bottom [c]
-    (either (= bottom-type (.contents c))
-            c))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
-
-          (or (instance? CollectionOf y)
-              (instance? PromiseConstraint y))
-          (let [contents (intersect (.contents x) (.contents y))]
-            (either (= bottom-type contents)
-                    (.contents x contents)))
-
-          (NoValues [x y]))))
-
 (extend-type fn-arity
   Constraint
   (show-full [c]
@@ -2189,8 +1974,7 @@
               (instance? ComputedConstraint y)
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
-              (instance? TypeOp y)
-              )
+              (instance? TypeOp y))
           (intersect y x)
 
           (instance? CollectionOf y)
@@ -2204,17 +1988,13 @@
 
           (NoValues [x y]))))
 
-(defn intersect-fut-and-opaque [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? ComputedConstraint y)
-              (instance? TypeOp y)
-              (instance? SumConstraint y))
-          (intersect y x)
+(defn intersect-simple-container [x y]
+  (either (for [_ (= (type-num x) (type-num y))
+                cnts-x (get-in x [.fields 'contents])
+                cnts-y (get-in y [.fields 'contents])]
+            (let [new-cnts (intersect cnts-x cnts-y)]
+              (either (= bottom-type new-cnts)
+                      (assoc-in x [.fields 'contents] new-cnts))))
 
           (NoValues [x y])))
 
@@ -2256,8 +2036,11 @@
 
 (def intersectors {IntegerType intersect-int
                    SymbolType intersect-sym
-                   OpaqueType intersect-fut-and-opaque
-                   FutureType intersect-fut-and-opaque})
+                   OpaqueType (fn [x y] (NoValues [x y]))
+                   FutureType (fn [x y] (NoValues [x y]))
+                   MaybeType intersect-simple-container
+                   PromiseType intersect-simple-container
+                   AgentType intersect-simple-container})
 
 (defn intersect-reified [x y]
   (either (map (get intersectors (type-num x))
@@ -2284,6 +2067,10 @@
 
 (extend-type ReifiedConstraint
   Constraint
+  (contents-constraint [c]
+    (either (get-in c [.fields 'contents])
+            (NoValues [c not-container])))
+
   (type-sym [c]
     (.type-symbol c))
 
@@ -2345,6 +2132,16 @@
               (instance? SumConstraint y)
               (instance? TypeOp y))
           (intersect y x)
+
+          (instance? CollectionOf y)
+          (either (for [cnts-x (or (get-in x [.fields 'contents])
+                                   (maybe (NoValues [x not-container])))
+                        cnts-y (get y .contents)]
+                    (let [new-cnts (intersect cnts-x cnts-y)]
+                      (either (= bottom-type new-cnts)
+                              (assoc-in x [.fields 'contents] new-cnts))))
+
+          (NoValues [x y]))
 
           (instance? FnConstraint y)
           (let [new-invoke (intersect-fns (.invoke-fn x) y)]

@@ -221,6 +221,14 @@
                                c/no-tail empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
+(def _ (test (c/intersect c/maybe-constraint maybe-int)
+             maybe-int
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/maybe-constraint coll-of-int)
+             maybe-int
+             _FILE_ _LINE_))
+
 (def _ (test (c/derive (c/MaybeConstraint (c/intersect param c/int-constraint)
                                           empty-list c/no-symbol "")
                        maybe-str)
