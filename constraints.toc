@@ -2369,6 +2369,8 @@
   (cata find-bottom c))
 
 (defn set-items [c items]
+  (assert (instance? Vector items))
+
   (apo (fn [c]
          (cond (instance? SeqConstraint c)
                (RecurseFinal (.items c items))
