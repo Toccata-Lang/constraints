@@ -975,7 +975,7 @@
     nothing)
 
   (update-sym [c new-sym]
-    (assert (instance? Symbol new-sym))
+    (assert (instance? OptionalSym new-sym))
 
     c)
 
