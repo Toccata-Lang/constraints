@@ -684,37 +684,37 @@
 (deftype LastOf []
   Stringable
   (string-list [_]
-    (list "c/first-of")))
+    (list "c/last-of-op")))
 (def last-of-op (LastOf))
 
 (deftype RestOf []
   Stringable
   (string-list [_]
-    (list "c/rest-of")))
+    (list "c/rest-of-op")))
 (def rest-of-op (RestOf))
 
 (deftype ButLastOf []
   Stringable
   (string-list [_]
-    (list "c/butlast-of")))
+    (list "c/butlast-of-op")))
 (def butlast-of-op (ButLastOf))
 
 (deftype ListFrom []
   Stringable
   (string-list [_]
-    (list "c/list-from")))
+    (list "c/list-from-op")))
 (def list-from-op (ListFrom))
 
 (deftype VectFrom []
   Stringable
   (string-list [_]
-    (list "c/vect-from")))
+    (list "c/vect-from-op")))
 (def vect-from-op (VectFrom))
 
 (deftype ArgOf []
   Stringable
   (string-list [_]
-    (list "c/arg-of")))
+    (list "c/arg-of-op")))
 (def arg-of-op (ArgOf))
 
 (deftype GetFrom []
@@ -757,7 +757,7 @@
   (string-list [_]
     (list "(c/TypeOp " (str op-code) " "
           (str params) " "
-          "empty-list "
+          "empty-list"
           ;; (str (cons 'list path))
           ")" ))
 
@@ -790,13 +790,13 @@
 
           (embed tc))))
 
-(def inner-type-of (TypeOp inner-type-of-op '_ empty-list))
-(def first-of (TypeOp first-of-op '_ empty-list))
-(def last-of (TypeOp last-of-op '_ empty-list))
-(def rest-of (TypeOp rest-of-op '_ empty-list))
-(def butlast-of (TypeOp butlast-of-op '_ empty-list))
-(def list-from (TypeOp list-from-op '_ empty-list))
-(def vect-from (TypeOp vect-from-op '_ empty-list))
+(def inner-type-of (TypeOp inner-type-of-op [] empty-list))
+(def first-of (TypeOp first-of-op [] empty-list))
+(def last-of (TypeOp last-of-op [] empty-list))
+(def rest-of (TypeOp rest-of-op [] empty-list))
+(def butlast-of (TypeOp butlast-of-op [] empty-list))
+(def list-from (TypeOp list-from-op [] empty-list))
+(def vect-from (TypeOp vect-from-op [] empty-list))
 (def result-of (TypeOp call-value-op no-args empty-list))
 
 (def SymbolConstraints (any-of ReifiedConstraint
@@ -970,9 +970,9 @@
     (RecurseWith c))
 
   (extract-sym [tc]
-    (assert-result r (instance? (maybe-of Symbol) r))
+    (assert-result r (instance? OptionalSym r))
 
-    nothing)
+    no-symbol)
 
   (update-sym [c new-sym]
     (assert (instance? OptionalSym new-sym))
@@ -1128,7 +1128,7 @@
     (RecurseFinal (.path c new-path)))
 
   (extract-sym [c]
-    (instance? Symbol (.sym c)))
+    (.sym c))
 
   (update-sym [c new-sym]
     (.sym c new-sym)))
