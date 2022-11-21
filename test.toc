@@ -754,18 +754,18 @@
 
 (def _ (test (c/intersect reified-11
                           (c/TypeOp c/set-to-op [[(c/Field 'field)] pos-int] empty-list))
-             (assoc-in reified-11 [.fields (c/Field 'field)] pos-int) 
+             (assoc-in reified-11 [.fields (c/Field 'field)] pos-int)
              _FILE_ _LINE_))
 
 (def nested-reified (c/intersect reified-11 (c/TypeOp c/set-to-op [[(c/Field 'field)] reified-12] empty-list)))
 
 (def _ (test nested-reified
-             (assoc-in reified-11 [.fields (c/Field 'field)] reified-12) 
+             (assoc-in reified-11 [.fields (c/Field 'field)] reified-12)
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect nested-reified
                           (c/TypeOp c/set-to-op [[(c/Field 'field) (c/Field 'other)] substr-c] empty-list))
-             (assoc-in nested-reified [.fields (c/Field 'field) .fields (c/Field 'other)] substr-c) 
+             (assoc-in nested-reified [.fields (c/Field 'field) .fields (c/Field 'other)] substr-c)
              _FILE_ _LINE_))
 
 (def reified-vect (c/VectorConstraint [reified-12] c/no-tail empty-list c/no-symbol ""))
@@ -847,7 +847,7 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/derive
-              (c/ComputedConstraint 
+              (c/ComputedConstraint
                [int-list-1
                 c/first-of]
                empty-list 'f "")
@@ -856,12 +856,12 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/derive
-              (c/ComputedConstraint 
+              (c/ComputedConstraint
                [(c/FnConstraint
                  []
                  {1 (c/fn-arity 'fn-arity75
                                 (c/ListConstraint
-                                 [(c/ComputedConstraint 
+                                 [(c/ComputedConstraint
                                    [(c/ParamConstraint 'fn-arity75 0 empty-list 'x "")
                                     c/int-constraint]
                                    empty-list 'x "")]
@@ -886,12 +886,12 @@
               (c/fn-arity 'extract
                           (c/ListConstraint [(c/ParamConstraint 'extract 0 empty-list 'x "")]
                                             c/no-tail empty-list c/no-symbol "")
-                          (c/ComputedConstraint 
+                          (c/ComputedConstraint
                            [(c/ParamConstraint 'extract 0 empty-list 'x "")
                             c/inner-type-of]
                            empty-list 'result ""))
               'extract
-              [(c/ComputedConstraint 
+              [(c/ComputedConstraint
                 [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
                  (c/TypeOp c/call-value-op [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")]
                                      empty-list)]
@@ -900,14 +900,14 @@
               (c/Location _FILE_ _LINE_))
 
              (c/fn-arity 'extract
-                         (c/ListConstraint [(c/ComputedConstraint 
+                         (c/ListConstraint [(c/ComputedConstraint
                                              [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
                                               (c/TypeOp c/call-value-op
                                                         [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")]
                                                         empty-list)]
                                              empty-list 'f "")]
                                            c/no-tail empty-list c/no-symbol "")
-                         (c/ComputedConstraint 
+                         (c/ComputedConstraint
                           [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
                            (c/TypeOp c/call-value-op [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")]
                                         empty-list)
@@ -946,6 +946,35 @@
                                   empty-list  c/no-symbol "")
              _FILE_ _LINE_))
 
+(def _ (test (c/reify-type-constraint
+              (c/fn-arity 'first
+                          (c/ListConstraint [(c/ParamConstraint 'first 0 empty-list 'coll "")]
+                                            c/no-tail empty-list c/no-symbol "")
+                          (c/ComputedConstraint
+                           [(c/ParamConstraint 'first 0 empty-list 'coll "")
+                            (c/TypeOp c/first-of-op [] empty-list)]
+                           empty-list 'result ""))
+              'first
+              [(c/ComputedConstraint
+                [(c/ParamConstraint 'fn-arity75 0 empty-list 'coll "")
+                 (c/TypeOp c/rest-of-op [] empty-list)]
+                empty-list 'coll "")
+               (c/ListConstraint [] c/no-tail empty-list c/no-symbol "")]
+              (c/Location _FILE_ _LINE_))
+
+             (c/fn-arity 'first
+                         (c/ListConstraint [(c/ComputedConstraint
+                                             [(c/ParamConstraint 'fn-arity75 0 empty-list 'coll "")
+                                              (c/TypeOp c/rest-of-op [] empty-list)]
+                                             empty-list 'coll "")]
+                                           c/no-tail empty-list c/no-symbol "")
+                         (c/ComputedConstraint
+                          [(c/ParamConstraint 'fn-arity75 0 empty-list 'coll "")
+                           (c/TypeOp c/rest-of-op [] empty-list)
+                           (c/TypeOp c/first-of-op [] empty-list)]
+                          empty-list 'coll ""))
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]
@@ -957,17 +986,17 @@
   (print-err 'testing-constraints))
 
 ;; TODO: come back to this later
-;; (def _ (test (c/derive (c/ComputedConstraint 
-;;                         [(c/ComputedConstraint 
+;; (def _ (test (c/derive (c/ComputedConstraint
+;;                         [(c/ComputedConstraint
 ;;                           [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
-;;                            (c/TypeOp c/call-value 
+;;                            (c/TypeOp c/call-value
 ;;                             [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")] empty-list c/no-symbol "")]
 ;;                           empty-list 'f "")
 ;;                          c/inner-type-of]
 ;;                         empty-list 'result "")
 
 ;;                        c/top-type)
-;;              (c/ComputedConstraint 
+;;              (c/ComputedConstraint
 ;;               [(c/TypeOp c/call-value [c/top-type] empty-list c/no-symbol "")
 ;;                c/inner-type-of]
 ;;               empty-list c/no-symbol "")

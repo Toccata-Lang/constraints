@@ -21,9 +21,16 @@
     (embed x)))
 
 (defn sym-str [s]
-  (either (or (and (instance? Symbol s)
-                   (maybe (str "'" s))))
-          (str s)))
+  (assert-result r (instance? String r))
+
+  (let [st (str s)]
+    (cond (= "#result" st)
+          (str "(symbol \"#result\")")
+
+          (instance? Symbol s)
+          (str "'" s)
+
+          st)))
 
 ;; TODO: remove unused types
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
@@ -672,7 +679,7 @@
 (deftype InnerTypeOf []
   Stringable
   (string-list [_]
-    (list "c/inner-type-of")))
+    (list "c/inner-type-of-op")))
 (def inner-type-of-op (InnerTypeOf))
 
 (deftype FirstOf []
@@ -1676,12 +1683,6 @@
 
                 (.mods x (comp (.mods x) (.mods y))))
 
-          
-          (and (instance? TypeOp y)
-               (or (= (.op-code y) first-of-op)
-                   (= (.op-code y) last-of-op)))
-          (.mods x (comp (.mods x) [y (MaybeConstraint top-type empty-list no-symbol "")]))
-
           (.mods x (conj (.mods x) y)))))
 
 (extend-type ParamConstraint
@@ -1717,12 +1718,6 @@
               (instance? NoValues y)
               (instance? ComputedConstraint y))
           (intersect y x)
-
-          (and (instance? TypeOp y)
-               (or (= (.op-code y) first-of-op)
-                   (= (.op-code y) last-of-op)))
-          (ComputedConstraint [x y (MaybeConstraint top-type empty-list no-symbol "")]
-                              (.path x) (.sym x) (.var x))
 
           (ComputedConstraint [x y] (.path x) (.sym x) (.var x)))))
 
