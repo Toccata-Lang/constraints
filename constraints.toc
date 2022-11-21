@@ -1475,7 +1475,7 @@
           (intersect-seqs x y)
 
           (instance? CollectionOf y)
-          (intersect-seqs x (.tail-c empty-list-constraint y))
+          (intersect-seqs x (.tail-c empty-vect-constraint y))
 
           (NoValues [x y]))))
 

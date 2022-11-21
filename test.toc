@@ -199,6 +199,22 @@
 
         (drop-until (rest coll) pred)))
 
+(def _ (test (c/intersect (c/VectorConstraint [] c/top-type empty-list c/no-symbol "")
+                          (c/CollectionOf
+                           (c/ComputedConstraint 
+                            [(c/ParamConstraint 'fn-arity84 0 empty-list c/no-symbol "")
+                             (c/TypeOp c/inner-type-of-op [] empty-list)]
+                            empty-list c/no-symbol "")
+                           empty-list (symbol "#result") ""))
+             (c/VectorConstraint []
+                                 (c/CollectionOf
+                                  (c/ComputedConstraint 
+                                   [(c/ParamConstraint 'fn-arity84 0 empty-list c/no-symbol "")
+                                    (c/TypeOp c/inner-type-of-op [] empty-list)]
+                                   empty-list c/no-symbol "")
+                                  empty-list (symbol "#result") "") empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
 (def _ (test (c/trim (c/ListConstraint
                         [c/sym-constraint]
                         (c/ListConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol "")
