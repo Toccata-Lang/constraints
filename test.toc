@@ -69,6 +69,19 @@
                  (c/FnConstraint [] {} empty-list c/no-symbol "")
                  empty-list c/no-symbol ""))
 
+(def op-constraints [call-value
+                     get-first
+                     set-second
+                     arg-of
+                     c/inner-type-of
+                     c/first-of
+                     c/last-of
+                     c/rest-of
+                     c/butlast-of
+                     c/list-from
+                     c/vect-from
+                     c/result-of])
+
 (def test-constraints [c/top-type
                        c/bottom-type
                        c/empty-list-constraint
@@ -79,7 +92,6 @@
                        c/seq-constraint
                        c/fn-constraint
                        c/not-container
-                       c/inner-type-of
                        c/substr-constraint
                        c/strbuff-constraint
                        c/string-constraint
@@ -134,18 +146,6 @@
                        reified-12
                        c/empty-reified
 
-                       c/first-of
-                       c/last-of
-                       c/rest-of
-                       c/butlast-of
-                       c/list-from
-                       c/vect-from
-                       get-first
-                       set-second
-
-                       arg-of
-                       c/result-of
-                       call-value
                        param])
 
 (defprotocol MatchConstraint
@@ -176,16 +176,14 @@
         ;; _ (print-err "------")
         final-2 (c/intersect c2 c1)]
     ;; (print-err 'final-2 final-2)
-    (either (or (instance? c/TypeOp c1)
-                (instance? c/TypeOp c2)
-                (map (= final-2 final-1)
-                     (fn [c]
-                       ;; (either (map (instance? c/NoValues c)
-                       ;;              (fn [_]
-                       ;;                (c/conflicting-assertions c _FILE_ _LINE_)
-                       ;;                (print-err 'c c)))
-                       ;;         (print-err 'final-c c))
-                       final-1)))
+    (either (map (= final-2 final-1)
+                 (fn [c]
+                   ;; (either (map (instance? c/NoValues c)
+                   ;;              (fn [_]
+                   ;;                (c/conflicting-assertions c _FILE_ _LINE_)
+                   ;;                (print-err 'c c)))
+                   ;;         (print-err 'final-c c))
+                   final-1))
             (do
               (print-err "FAIL!! 'c/intersect not commutative")
               (print-err 'c1 c1)
@@ -198,6 +196,104 @@
         coll
 
         (drop-until (rest coll) pred)))
+
+(def _ (test (c/intersect
+              (c/VectorConstraint [(c/CollectionOf
+                                    (c/ComputedConstraint 
+                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                                      (c/TypeOp c/inner-type-of-op [] empty-list)]
+                                     empty-list c/no-symbol "")
+                                    empty-list c/no-symbol "")
+                                   (c/CollectionOf
+                                    (c/ComputedConstraint 
+                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                                      (c/TypeOp c/inner-type-of-op [] empty-list)]
+                                     empty-list c/no-symbol "")
+                                    empty-list c/no-symbol "")]
+                                  c/no-tail
+                                  empty-list (symbol "#result") "")
+              (c/VectorConstraint []
+                                  (c/CollectionOf
+                                   c/string-constraint
+                                   empty-list c/no-symbol "") empty-list (symbol "#result") ""))
+        
+        (c/VectorConstraint [(c/ComputedConstraint 
+                              [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                               (c/TypeOp c/inner-type-of-op [] empty-list)
+                               c/string-constraint]
+                              empty-list c/no-symbol "")
+                             (c/ComputedConstraint 
+                              [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                               (c/TypeOp c/inner-type-of-op [] empty-list)
+                               c/string-constraint]
+                              empty-list c/no-symbol "")]
+                            c/no-tail
+                            empty-list (symbol "#result") "")
+        _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/top-type
+                          (c/TypeOp c/arg-of-op 0 empty-list))
+             (c/intersect (c/TypeOp c/arg-of-op 0 empty-list)
+                          c/top-type)
+             _FILE_ _LINE_))
+
+(def _ (test (reduce [(c/StrBuffConstraint "123" empty-list c/no-symbol "")
+                      (c/TypeOp c/inner-type-of-op [] empty-list)
+                      c/string-constraint]
+                     c/top-type
+                     c/intersect)
+             (c/SumConstraint
+              [(c/StrBuffConstraint "1" empty-list c/no-symbol "")
+               (c/StrBuffConstraint "2" empty-list c/no-symbol "")
+               (c/StrBuffConstraint "3" empty-list c/no-symbol "")]
+              empty-list c/no-symbol "")
+        _FILE_ _LINE_))
+
+(def _ (test (c/intersect (c/ComputedConstraint 
+                           [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+                            (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+                            (c/TypeOp c/list-from-op [] empty-list)]
+                           empty-list 's "")
+                          (c/ComputedConstraint 
+                           [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+                            (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+                            (c/TypeOp c/list-from-op [] empty-list)
+                            (c/ListConstraint [] c/top-type empty-list 'l "")]
+                           empty-list 's ""))
+             (c/ComputedConstraint 
+              [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+               (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+               (c/TypeOp c/list-from-op [] empty-list)
+               (c/ListConstraint [] c/top-type empty-list 'l "")]
+              empty-list 's "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (c/ComputedConstraint 
+                           [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+                            (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+                            (c/TypeOp c/list-from-op [] empty-list)
+                            (c/ListConstraint [] c/top-type empty-list 'l "")]
+                           empty-list 's "")
+                          (c/ComputedConstraint 
+                           [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+                            (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+                            (c/TypeOp c/list-from-op [] empty-list)]
+                           empty-list 's ""))
+             (c/ComputedConstraint 
+              [(c/ParamConstraint 'fn-arity111 0 empty-list 's "")
+               (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
+               (c/TypeOp c/list-from-op [] empty-list)
+               (c/ListConstraint [] c/top-type empty-list 'l "")]
+              empty-list 's "")
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect (c/StrBuffConstraint "ab" empty-list c/no-symbol "")
+                          (c/TypeOp c/vect-from-op [] empty-list))
+
+             (c/VectorConstraint [(c/SubStrConstraint "a" empty-list c/no-symbol "")
+                                  (c/SubStrConstraint "b" empty-list c/no-symbol "")]
+                                 c/no-tail empty-list c/no-symbol "")
+             _FILE_ _LINE_))
 
 (def _ (test (c/intersect (c/VectorConstraint [] c/top-type empty-list c/no-symbol "")
                           (c/CollectionOf
@@ -519,8 +615,7 @@
              pos-int
         _FILE_ _LINE_))
 
-(def _ (test (c/intersect arg-of
-                          (c/SumConstraint
+(def _ (test (c/intersect (c/SumConstraint
                            [reified-val
                             (c/FnConstraint []
                                             {2 (c/fn-arity c/no-symbol
@@ -528,12 +623,12 @@
                                                                              c/no-tail empty-list c/no-symbol "")
                                                            c/top-type)}
                                             empty-list c/no-symbol "")]
-                           empty-list c/no-symbol ""))
+                           empty-list c/no-symbol "")
+                          arg-of)
              (c/SumConstraint [pos-int coll-of-sym] empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/result-of
-                          (c/SumConstraint
+(def _ (test (c/intersect (c/SumConstraint
                            [(.invoke-fn reified-val
                                         (c/FnConstraint [1]
                                                         {1 (c/fn-arity c/no-symbol
@@ -547,7 +642,8 @@
                                                                              c/no-tail empty-list c/no-symbol "")
                                                            c/sym-constraint)}
                                             empty-list c/no-symbol "")]
-                           empty-list c/no-symbol ""))
+                           empty-list c/no-symbol "")
+                          c/result-of)
              (c/SumConstraint [pos-int c/sym-constraint] empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
@@ -997,6 +1093,15 @@
          (let [c12 (test-intersect c1 c2)
                c23 (test-intersect c2 c3)]
            (test-intersect c12 c23))))
+
+;; (def NoTest (any-of c/ParamConstraint))
+
+;; (def _ (for [op op-constraints
+;;              c test-constraints
+;;              :when (instance? NoTest c)]
+;;          (print-err 'op op
+;;                     "\n\n" 'c c
+;;                     "\n\n" 'int (c/intersect op c))))
 
 (main [_]
   (print-err 'testing-constraints))
