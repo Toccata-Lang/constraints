@@ -1118,7 +1118,7 @@
                                  vals
                                  (reduce [] (fn [arities arity]
                                               (assert (instance? fn-arity arity))
-                                              (conj arities (.result-const arity))))
+                                              (conj arities (derive (.result-const arity) top-type))))
                                  sum-type)))
                       (map (or (get-in y [.arities (count args)])
                                (get-in y [.arities variadic]))
@@ -1129,7 +1129,10 @@
                                    reified (cond (= bottom-type new-args)
                                                  new-args
 
-                                                 (let [new-args (get-items new-args (count args))
+                                                 (let [fixed-count (-> arity .param-consts .items count)
+                                                       [reqd var] (split (get-items new-args (count args))
+                                                                          fixed-count)
+                                                       new-args (conj reqd (.items empty-list-constraint var))
                                                        new-args (cata (fn [c]
                                                                         (reify-const c (.arity-id arity)
                                                                                      (repeat (count new-args)

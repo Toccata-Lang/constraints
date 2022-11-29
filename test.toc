@@ -219,28 +219,16 @@
                                    c/string-constraint
                                    empty-list c/no-symbol "") empty-list (symbol "#result") ""))
 
-             (c/VectorConstraint [(c/SumConstraint
-                                   [(c/ComputedConstraint 
-                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
-                                      (c/TypeOp c/inner-type-of-op [] empty-list)
-                                      c/strbuff-constraint]
-                                     empty-list c/no-symbol "")
-                                    (c/ComputedConstraint 
-                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
-                                      (c/TypeOp c/inner-type-of-op [] empty-list)
-                                      c/substr-constraint]
-                                     empty-list c/no-symbol "")] empty-list c/no-symbol "")
-                                  (c/SumConstraint
-                                   [(c/ComputedConstraint 
-                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
-                                      (c/TypeOp c/inner-type-of-op [] empty-list)
-                                      c/strbuff-constraint]
-                                     empty-list c/no-symbol "")
-                                    (c/ComputedConstraint 
-                                     [(c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
-                                      (c/TypeOp c/inner-type-of-op [] empty-list)
-                                      c/substr-constraint]
-                                     empty-list c/no-symbol "")] empty-list c/no-symbol "")]
+             (c/VectorConstraint [(c/ComputedConstraint 
+                                   [c/string-constraint
+                                    (c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                                    (c/TypeOp c/inner-type-of-op [] empty-list)]
+                                   empty-list c/no-symbol "")
+                                  (c/ComputedConstraint 
+                                   [c/string-constraint
+                                    (c/ParamConstraint 'fn-arity129 0 empty-list c/no-symbol "")
+                                    (c/TypeOp c/inner-type-of-op [] empty-list)]
+                                   empty-list c/no-symbol "")]
                                  c/no-tail empty-list (symbol "#result") "")
         _FILE_ _LINE_))
 
