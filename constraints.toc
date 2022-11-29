@@ -764,6 +764,8 @@
   Eq
   (=* [x y]
     (and (instance? TypeOp y)
+         (= op-code (.op-code y))
+         (= params (.params y))
          (maybe x)))
 
   Container
@@ -1777,8 +1779,10 @@
     (let [all-alts (flat-map (.alts c) (fn [c]
                                          (either (map (instance? SumConstraint c) .alts)
                                                  [c])))
-          trimmed (-> (sum-type all-alts)
-                      (.sym (.sym c)))]
+          new-c (sum-type all-alts)
+          trimmed (cond (instance? SymbolConstraints new-c)
+                        (.sym new-c (.sym c))
+                        new-c)]
       (either (map (instance? SumConstraint trimmed)
                    (fn [_]
                      (.path trimmed (.path c))))
