@@ -2374,7 +2374,7 @@
       (let [op (map op (fn [f]
                          (f top-type)))]
         (cond (= c top-type)
-              op
+              c
 
               (instance? TypeOp op)
               (intersect c op)
