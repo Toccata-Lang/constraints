@@ -253,13 +253,21 @@
   (assert (instance? String var))
 
   Stringable
-  (string-list [_]
-    (list "(c/ListConstraint [" (to-str (interpose items "\n")) "]\n"
-          (str tail-c)
-          " "
-          "empty-list "
-          ;; (str (cons 'list path)) " "
-          (sym-str sym) " \"" (str var) "\")" ))
+  (string-list [l]
+    (cond (and (empty? items)
+               (= no-tail tail-c))
+          (list "c/empty-list-constraint")
+
+          (and (empty? items)
+               (instance? AllValues tail-c))
+          (list "c/list-constraint")
+
+          (list "(c/ListConstraint [" (to-str (interpose items "\n")) "]\n"
+                (str tail-c)
+                " "
+                "empty-list "
+                ;; (str (cons 'list path)) " "
+                (sym-str sym) " \"" (str var) "\")" )))
 
   Eq
   (=* [x y]
@@ -282,6 +290,20 @@
           (.items new-items)))))
 (def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
 
+(defn params-list
+  ([items]
+   (ListConstraint items no-tail empty-list no-symbol ""))
+  ([items tail]
+   (ListConstraint items tail empty-list no-symbol "")))
+
+(defn list-c
+  ([items]
+   (ListConstraint items no-tail empty-list no-symbol ""))
+  ([items tail]
+   (ListConstraint items tail empty-list no-symbol ""))
+  ([items tail path sym var]
+   (ListConstraint items tail path sym var)))
+
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
@@ -290,12 +312,20 @@
 
   Stringable
   (string-list [_]
-    (list "(c/VectorConstraint [" (to-str (interpose items "\n")) "]\n"
-          (str tail-c)
-          " "
-          "empty-list "
-          ;; (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
+    (cond (and (empty? items)
+               (= no-tail tail-c))
+          (list "c/empty-vect-constraint")
+
+          (and (empty? items)
+               (instance? AllValues tail-c))
+          (list "c/vect-constraint")
+
+          (list "(c/VectorConstraint [" (to-str (interpose items "\n")) "]\n"
+                (str tail-c)
+                " "
+                "empty-list "
+                ;; (str (cons 'list path))
+                (sym-str sym) " \"" (str var) "\")" )))
 
   Eq
   (=* [x y]
@@ -317,6 +347,14 @@
           (.tail-c new-tail-c)
           (.items new-items)))))
 (def empty-vect-constraint (VectorConstraint [] no-tail empty-list no-symbol ""))
+
+(defn vect-c
+  ([items]
+   (VectorConstraint items no-tail empty-list no-symbol ""))
+  ([items tail]
+   (VectorConstraint items tail empty-list no-symbol ""))
+  ([items tail path sym var]
+   (VectorConstraint items tail path sym var)))
 
 (deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
   (assert (instance? (list-of Vector) path))
@@ -373,7 +411,10 @@
 
   Stringable
   (string-list [_]
-    (list "(c/fn-arity " (str "'" arity-id) "\n" (str param-consts) "\n" (str result-const) ")"))
+    (list "(c/fn-arity " (str "'" arity-id) "\n"
+          "(c/parms-list " (to-str (interpose (.items param-consts) "\n")) " "
+          (str (.tail-c param-consts)) ")"
+          "\n" (str result-const) ")"))
 
   Container
   (map [x f]
@@ -427,6 +468,12 @@
     (map (contextual-map-vals arities f embed)
          (fn [a]
            (.arities x a)))))
+
+(defn fn-c
+  ([required arities]
+   (FnConstraint required arities empty-list no-symbol ""))
+  ([required arities path sym var]
+   (FnConstraint required arities path sym var)))
 
 ;; product type
 (deftype ReifiedConstraint [type-number type-symbol field-consts fields invoke-fn path sym var]
@@ -551,6 +598,12 @@
         f
         (map (partial .contents x)))))
 
+(defn coll-of-c
+  ([contents]
+   (CollectionOf contents empty-list no-symbol ""))
+  ([contents path sym var]
+   (CollectionOf contents path sym var)))
+
 ;; sum type
 (deftype SumConstraint [alts path sym var]
   (assert (instance? Vector alts))
@@ -586,6 +639,12 @@
         (map f embed)
         (map (partial .alts x)))))
 
+(defn sum-c
+  ([alts]
+   (SumConstraint alts empty-list no-symbol ""))
+  ([alts path sym var]
+   (SumConstraint alts path sym var)))
+
 ;; computed types
 (deftype ComputedConstraint [mods path sym var]
   (assert (instance? OptionalSym sym))
@@ -616,17 +675,18 @@
          (fn [new-mods]
            (.mods x new-mods)))))
 
+(defn compute-c
+  ([mods]
+   (ComputedConstraint mods empty-list no-symbol ""))
+  ([mods path sym var]
+   (ComputedConstraint mods path sym var)))
+
 (deftype ParamConstraint [arity param-index path sym var]
   (assert (instance? OptionalSym sym))
 
   Stringable
   (string-list [_]
-    (list "(c/ParamConstraint " (str "'" arity) " " (str param-index)
-          " empty-list"
-          ;; (str " " (cons 'list path))
-          " " (sym-str sym)
-          " " (str "\"" var "\"")
-          ")"))
+    (list "(c/param " (str "'" arity) " " (str param-index) ")"))
 
   Eq
   (=* [x y]
@@ -642,6 +702,9 @@
 
   (map [x f embed]
     (embed x)))
+
+(defn param [arity param-index]
+  (ParamConstraint arity param-index empty-list no-symbol ""))
 
 ;; Get's replaced with the constraint of the param-sym, so not many implementations for it
 (deftype TypeOfConstraint [param-sym path sym var]
@@ -792,6 +855,12 @@
 
           (embed tc))))
 
+(defn type-op
+  ([op-code params]
+   (TypeOp op-code params empty-list))
+  ([op-code params path]
+   (TypeOp op-code params path)))
+
 (def inner-type-of (TypeOp inner-type-of-op [] empty-list))
 (def first-of (TypeOp first-of-op [] empty-list))
 (def last-of (TypeOp last-of-op [] empty-list))
@@ -831,36 +900,65 @@
                                       empty-fn-constraint
                                       empty-list  no-symbol ""))
 
-(defn IntegerConstraint [static-value max min path sym var]
-  (ReifiedConstraint IntegerType 'Integer {}
-                     {'static-value static-value 'max max 'min min}
-                     empty-fn-constraint path sym var))
+(defn IntegerConstraint
+  ([static-value]
+   (IntegerConstraint static-value 2147483647 -2147483648 empty-list no-symbol ""))
+  ([static-value max min]
+   (IntegerConstraint static-value max min empty-list no-symbol ""))
+  ([static-value max min path sym var]
+   (ReifiedConstraint IntegerType 'Integer {}
+                      {'static-value static-value 'max max 'min min}
+                      empty-fn-constraint path sym var)))
 
-(defn SymbolConstraint [static-value path sym var]
-  (ReifiedConstraint SymbolType 'Symbol {}
-                     {'static-value static-value}
-                     empty-fn-constraint path sym var))
+(defn SymbolConstraint
+  ([static-value]
+   (SymbolConstraint static-value empty-list no-symbol ""))
+  ([static-value path sym var]
+   (ReifiedConstraint SymbolType 'Symbol {}
+                      {'static-value static-value}
+                      empty-fn-constraint path sym var)))
 
-(defn OpaqueConstraint [path sym var]
-  (ReifiedConstraint OpaqueType 'Opaque {} {} empty-fn-constraint path sym var))
+(defn OpaqueConstraint
+  ([]
+   (OpaqueConstraint empty-list no-symbol ""))
+  ([path sym var]
+   (ReifiedConstraint OpaqueType 'Opaque {} {} empty-fn-constraint path sym var)))
 
-(defn FutureConstraint [path sym var]
-  (ReifiedConstraint FutureType 'Future {} {} empty-fn-constraint path sym var))
+(defn FutureConstraint
+  ([]
+   (FutureConstraint empty-list no-symbol ""))
+  ([path sym var]
+   (ReifiedConstraint FutureType 'Future {} {} empty-fn-constraint path sym var)))
 
-(defn MaybeConstraint [contents path sym var]
-  (ReifiedConstraint MaybeType 'Maybe {} {'contents contents} empty-fn-constraint path sym var))
+(defn MaybeConstraint
+  ([contents]
+   (MaybeConstraint contents empty-list no-symbol ""))
+  ([contents path sym var]
+   (ReifiedConstraint MaybeType 'Maybe {} {'contents contents} empty-fn-constraint path sym var)))
 
-(defn PromiseConstraint [contents path sym var]
-  (ReifiedConstraint PromiseType 'Promise {} {'contents contents} empty-fn-constraint path sym var))
+(defn PromiseConstraint
+  ([contents]
+   (PromiseConstraint contents empty-list no-symbol ""))
+  ([contents path sym var]
+   (ReifiedConstraint PromiseType 'Promise {} {'contents contents} empty-fn-constraint path sym var)))
 
-(defn AgentConstraint [contents path sym var]
-  (ReifiedConstraint AgentType 'Agent {} {'contents contents} empty-fn-constraint path sym var))
+(defn AgentConstraint
+  ([contents]
+   (AgentConstraint contents empty-list no-symbol ""))
+  ([contents path sym var]
+   (ReifiedConstraint AgentType 'Agent {} {'contents contents} empty-fn-constraint path sym var)))
 
-(defn StrBuffConstraint [static-value path sym var]
-  (ReifiedConstraint StringBufferType 'String {} {'static-value static-value} empty-fn-constraint path sym var))
+(defn StrBuffConstraint
+  ([static-value]
+   (StrBuffConstraint static-value empty-list no-symbol ""))
+  ([static-value path sym var]
+   (ReifiedConstraint StringBufferType 'String {} {'static-value static-value} empty-fn-constraint path sym var)))
 
-(defn SubStrConstraint [static-value path sym var]
-  (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var))
+(defn SubStrConstraint
+  ([static-value]
+   (SubStrConstraint static-value empty-list no-symbol ""))
+  ([static-value path sym var]
+   (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var)))
 
 
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
@@ -1871,6 +1969,48 @@
 
           (intersect y x))))
 
+(defn merge-mods [mods1 mods2 new-c]
+  (assert (instance? Sequence mods1))
+  (assert (instance? Sequence mods2))
+  (assert (instance? ComputedConstraint new-c))
+
+  (cond (empty? mods1)
+        (.mods new-c (comp (.mods new-c) mods2))
+
+        (empty? mods2)
+        (.mods new-c (comp (.mods new-c) mods1))
+
+        (let [[mod1 & rest-mods1] mods1
+              [mod2 & rest-mods2] mods2]
+          (cond (and (instance? TypeOp mod1)
+                     (instance? TypeOp mod2))
+                (either (map (= mod1 mod2)
+                             (fn [_]
+                               (merge-mods rest-mods1 rest-mods2
+                                           (.mods new-c (conj (.mods new-c) mod1)))))
+                        (intersect mod1 mod2))
+
+                (instance? ComputedConstraint mod1)
+                (merge-mods (comp (.mods mod1) rest-mods1) mods2
+                            new-c)
+
+                (instance? ComputedConstraint mod2)
+                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
+                            new-c)
+
+                (instance? TypeOp mod1)
+                (merge-mods mods1 rest-mods2
+                            (.mods new-c (conj (.mods new-c) mod2)))
+
+                (instance? TypeOp mod2)
+                (merge-mods rest-mods1 mods2
+                            (.mods new-c (conj (.mods new-c) mod1)))
+
+                (let [new-mod (intersect mod1 mod2)]
+                  (either (= bottom-type new-mod)
+                          (merge-mods rest-mods1 rest-mods2
+                                      (.mods new-c (conj (.mods new-c) new-mod)))))))))
+
 (extend-type ComputedConstraint
   Constraint
   (assertion-path [c] (.path c))
@@ -1932,17 +2072,18 @@
           ;; TODO: this logic seems complex. Try to simplify
           (cond (or (some (.mods x) (partial instance? TypeOp))
                     (some (.mods y) (partial instance? TypeOp)))
-                (either (or (and (= (subvec (.mods y) 0 (count (.mods x)))
-                                    (.mods x))
-                                 (maybe y))
-                            (and (= (subvec (.mods x) 0 (count (.mods y)))
-                                    (.mods y))
-                                 (maybe x)))
-                        (do
-                          (print-err "Dropping ComputedConstraint" _FILE_ _LINE_
-                                     "\n\n" 'x x
-                                     "\n\n" 'y y)
-                          top-type))
+                (merge-mods (.mods x) (.mods y) (.mods x []))
+                ;; (either (or (and (= (subvec (.mods y) 0 (count (.mods x)))
+                ;;                     (.mods x))
+                ;;                  (maybe y))
+                ;;             (and (= (subvec (.mods x) 0 (count (.mods y)))
+                ;;                     (.mods y))
+                ;;                  (maybe x)))
+                ;;         (do
+                ;;           (print-err "Dropping ComputedConstraint" _FILE_ _LINE_
+                ;;                      "\n\n" 'x x
+                ;;                      "\n\n" 'y y)
+                ;;           top-type))
 
 
                 (.mods x (reduce (.mods y) (.mods x)
@@ -2492,45 +2633,3 @@
     (-> r
         trim
         (update-path loc))))
-
-(defn merge-mods [mods1 mods2 new-c]
-  (assert (instance? Sequence mods1))
-  (assert (instance? Sequence mods2))
-  (assert (instance? ComputedConstraint new-c))
-
-  (cond (empty? mods1)
-        (.mods new-c (comp (.mods new-c) mods2))
-
-        (empty? mods2)
-        (.mods new-c (comp (.mods new-c) mods1))
-
-        (let [[mod1 & rest-mods1] mods1
-              [mod2 & rest-mods2] mods2]
-          (cond (and (instance? TypeOp mod1)
-                     (instance? TypeOp mod2))
-                (either (map (= mod1 mod2)
-                             (fn [_]
-                               (merge-mods rest-mods1 rest-mods2
-                                           (.mods new-c (conj (.mods new-c) mod1)))))
-                        (intersect mod1 mod2))
-
-                (instance? ComputedConstraint mod1)
-                (merge-mods (comp (.mods mod1) rest-mods1) mods2
-                            new-c)
-
-                (instance? ComputedConstraint mod2)
-                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
-                            new-c)
-
-                (instance? TypeOp mod1)
-                (merge-mods mods1 rest-mods2
-                            (.mods new-c (conj (.mods new-c) mod2)))
-
-                (instance? TypeOp mod2)
-                (merge-mods rest-mods1 mods2
-                            (.mods new-c (conj (.mods new-c) mod1)))
-
-                (let [new-mod (intersect mod1 mod2)]
-                  (either (= bottom-type new-mod)
-                          (merge-mods rest-mods1 rest-mods2
-                                      (.mods new-c (conj (.mods new-c) new-mod)))))))))
