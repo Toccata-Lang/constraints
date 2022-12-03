@@ -1,4 +1,4 @@
-;;
+
 (def SymbolOrString (any-of Symbol
                             String))
 
@@ -631,14 +631,41 @@
   ([alts path sym var]
    (SumConstraint alts path sym var)))
 
+;; multiple constraint
+(deftype MultiConstraint [constraints]
+  Stringable
+  (string-list [_]
+    (list "(c/multi\n[" (to-str (interpose constraints "\n")) "])"))
+
+  Eq
+  (=* [x y]
+    (and (instance? MultiConstraint y)
+         (= (count constraints) (count (.constraints y)))
+         (every constraints (fn [inner]
+                              (some (.constraints y) (partial = inner))))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    (.constraints x (map (.constraints x) f)))
+
+  (map [x f embed]
+    (map (map (.constraints x) f embed)
+         (fn [new-cs]
+           (.constraints x new-cs)))))
+
+(defn multi [cs]
+  (assert (instance? Vector cs))
+
+  (MultiConstraint cs))
+
 ;; computed types
 (deftype ComputedConstraint [mods path sym var]
   (assert (instance? OptionalSym sym))
 
   Stringable
   (string-list [_]
-    (list "(c/compute-c "
-          "\n[" (to-str (interpose mods "\n")) "])"))
+    (list "(c/compute-c\n[" (to-str (interpose mods "\n")) "])"))
 
   Eq
   (=* [x y]
@@ -1987,6 +2014,68 @@
                   (either (= bottom-type new-mod)
                           (merge-mods rest-mods1 rest-mods2
                                       (.mods new-c (conj (.mods new-c) new-mod)))))))))
+
+(extend-type MultiConstraint
+  Constraint
+  (assertion-path [c] empty-list)
+
+  (format-path [c desired-len]
+    (format-path* (list ["Multip Constraints" ""])
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (-> (.constraints c)
+              (interpose (list "---"))
+              (flat-map (fn [c-strs]
+                          (map c-strs (partial str "  ")))))))
+
+  (contents-constraint [c]
+    (intersect c inner-type-of))
+
+  (reify-const [c arity args]
+    (reduce (.constraints c) top-type intersect))
+
+  (type-num [c]
+    (let [new-c (derive c top-type)]
+      (cond (instance? ComputedConstraint new-c)
+            UnknownType
+
+            (type-num new-c))))
+
+  (derive-const [op]
+    (fn [c]
+      (-> (.constraints c)
+          (map (fn [op-fn]
+                 (op-fn c)))
+          (reduce top-type intersect))))
+
+  (find-bottom [c]
+    (either (= bottom-type (derive c top-type))
+            c))
+
+  (get-items [c items-count]
+    (get-items (derive c top-type) items-count))
+
+  (trim-const [c]
+    (reduce (.constraints c) (MultiConstraint []) intersect))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (some (.constraints x) (partial = y)))
+          x
+
+          (or (instance? AllValues y)
+              (instance? NoValues y))
+          (intersect y x)
+
+          (instance? MultiConstraint y)
+          (reduce (.constraints y) x intersect)
+
+          (either (-> (.constraints x)
+                      (map (partial intersect y))
+                      (some (partial = bottom-type)))
+                  (.constraints x (conj (.constraints x) y))))))
 
 (extend-type ComputedConstraint
   Constraint
