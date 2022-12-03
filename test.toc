@@ -199,6 +199,31 @@
 
         (drop-until (rest coll) pred)))
 
+(def _
+  (test (c/intersect (c/compute-c 
+                      [(c/param 'fn-arity243 1)
+                       (c/type-op c/call-value-op [c/top-type])
+                       c/list-constraint])
+                     c/list-constraint)
+        (c/compute-c 
+         [(c/param 'fn-arity243 1)
+          (c/type-op c/call-value-op [c/top-type])
+          c/list-constraint])
+        _FILE_ _LINE_))
+
+(def _
+  (test (c/intersect c/list-constraint
+                     (c/compute-c 
+                      [(c/param 'fn-arity243 1)
+                       (c/type-op c/call-value-op [c/top-type])
+                       c/list-constraint]))
+        (c/compute-c 
+         [c/list-constraint
+          (c/param 'fn-arity243 1)
+          (c/type-op c/call-value-op [c/top-type])
+          c/list-constraint])
+        _FILE_ _LINE_))
+
 (def _ (test (c/intersect
               (c/VectorConstraint [(c/CollectionOf
                                     (c/ComputedConstraint 

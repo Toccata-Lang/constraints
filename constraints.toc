@@ -262,12 +262,11 @@
                (instance? AllValues tail-c))
           (list "c/list-constraint")
 
-          (list "(c/ListConstraint [" (to-str (interpose items "\n")) "]\n"
-                (str tail-c)
-                " "
-                "empty-list "
-                ;; (str (cons 'list path)) " "
-                (sym-str sym) " \"" (str var) "\")" )))
+          (list "(c/list-c [" (to-str (interpose items "\n")) "]\n"
+                (cond (= tail-c no-tail)
+                      ""
+                      (str tail-c))
+                ")")))
 
   Eq
   (=* [x y]
@@ -289,12 +288,6 @@
           (.tail-c new-tail-c)
           (.items new-items)))))
 (def empty-list-constraint (ListConstraint [] no-tail empty-list no-symbol ""))
-
-(defn params-list
-  ([items]
-   (ListConstraint items no-tail empty-list no-symbol ""))
-  ([items tail]
-   (ListConstraint items tail empty-list no-symbol "")))
 
 (defn list-c
   ([items]
@@ -412,9 +405,7 @@
   Stringable
   (string-list [_]
     (list "(c/fn-arity " (str "'" arity-id) "\n"
-          "(c/parms-list " (to-str (interpose (.items param-consts) "\n")) " "
-          (str (.tail-c param-consts)) ")"
-          "\n" (str result-const) ")"))
+          (str param-consts) "\n" (str result-const) ")"))
 
   Container
   (map [x f]
@@ -442,14 +433,6 @@
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/FnConstraint\n[" (to-str (interpose required-arities " ")) "]"
-          "\n" (str arities)
-          "\n empty-list "
-          ;; "\n" (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
 
   Eq
   (=* [x y]
@@ -488,19 +471,29 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ReifiedConstraint " (str type-number) " " (cond (= no-symbol type-symbol)
-                                                              (str no-symbol)
-                                                              (str "(symbol \"" type-symbol "\")"))
-          "\n" (str field-consts)
-          "\n{" (to-str (map (vec fields) (fn [[k v]]
-                                            (cond (instance? Symbol k)
-                                                  (str "'" k " " v "\n")
-                                                  (str k " " v "\n")))))
-          "}"
-          "\n" (str invoke-fn)
-          ;; (str (interpose (cons 'list path) " "))
-          " empty-list "
-          " " (sym-str sym) " \"" (str var) "\")" ))
+    (let [long-form (list "(c/ReifiedConstraint " (str type-number) " " (cond (= no-symbol type-symbol)
+                                                                              (str no-symbol)
+                                                                              (str "(symbol \"" type-symbol "\")"))
+                          "\n" (str field-consts)
+                          "\n{" (to-str (map (vec fields) (fn [[k v]]
+                                                            (cond (instance? Symbol k)
+                                                                  (str "'" k " " v "\n")
+                                                                  (str k " " v "\n")))))
+                          "}"
+                          "\n" (str invoke-fn)
+                          ;; (str (interpose (cons 'list path) " "))
+                          " empty-list "
+                          " " (sym-str sym) " \"" (str var) "\")" )]
+      (cond (= type-number MaybeType)
+            (either (map (get fields 'contents)
+                         (fn [contents]
+                           (cond (= instance? contents AllValues)
+                                 (list "c/maybe-constraint")
+
+                                 (list "(c/MaybeConstraint " (str contents) ")"))))
+                    long-form)
+
+            long-form)))
 
   Eq
   ;; TODO: equality must check the field maps as well
@@ -574,14 +567,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/CollectionOf\n" (str contents)
-          "\nempty-list "
-          ;; " (list "
-          ;; (either (map (first path) (fn [[f l]]
-          ;;                             (str "[\"" f "\" " l "]")))
-          ;;         "")
-          ;; ") "
-          (sym-str sym) " \"" (str var) "\")"))
+    (list "(c/coll-of-c " (str contents) ")"))
 
   Eq
   (=* [x y]
@@ -651,14 +637,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ComputedConstraint "
-          "\n[" (to-str (interpose mods "\n"))
-          "]\n"
-           "empty-list"
-          ;; (str " " (cons 'list path))
-          " " (sym-str sym)
-          " " (str "\"" var "\"")
-          ")"))
+    (list "(c/compute-c "
+          "\n[" (to-str (interpose mods "\n")) "])"))
 
   Eq
   (=* [x y]
@@ -818,11 +798,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/TypeOp " (str op-code) " "
-          (str params) " "
-          "empty-list"
-          ;; (str (cons 'list path))
-          ")" ))
+    (list "(c/type-op " (str op-code) " "
+          (str params) ")" ))
 
   Eq
   (=* [x y]
@@ -971,37 +948,37 @@
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
 (def fn-constraint (FnConstraint []
-                                   {variadic (fn-arity no-symbol list-constraint top-type)
-                                    0 (fn-arity no-symbol empty-list-constraint
-                                                  top-type)
-                                    1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)
-                                    9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
-                                                                                no-tail empty-list no-symbol "")
-                                                  top-type)}
-                                   empty-list no-symbol ""))
+                                 {variadic (fn-arity no-symbol list-constraint top-type)
+                                  0 (fn-arity no-symbol empty-list-constraint
+                                              top-type)
+                                  1 (fn-arity no-symbol (ListConstraint (repeat 1 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  2 (fn-arity no-symbol (ListConstraint (repeat 2 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  3 (fn-arity no-symbol (ListConstraint (repeat 3 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  4 (fn-arity no-symbol (ListConstraint (repeat 4 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  5 (fn-arity no-symbol (ListConstraint (repeat 5 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  6 (fn-arity no-symbol (ListConstraint (repeat 6 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  7 (fn-arity no-symbol (ListConstraint (repeat 7 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  8 (fn-arity no-symbol (ListConstraint (repeat 8 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)
+                                  9 (fn-arity no-symbol (ListConstraint (repeat 9 top-type)
+                                                                        no-tail empty-list no-symbol "")
+                                              top-type)}
+                                 empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
@@ -1959,7 +1936,7 @@
 
   (intersect [x y]
     (cond (instance? CollectionOf y)
-          (let [new-cs (intersect (.contents y) (.contents x))]
+          (let [new-cs (intersect (.contents x) (.contents y))]
             (either (or (= new-cs bottom-type)
                         (= x y))
                     (.contents x new-cs)))
@@ -2072,6 +2049,7 @@
           ;; TODO: this logic seems complex. Try to simplify
           (cond (or (some (.mods x) (partial instance? TypeOp))
                     (some (.mods y) (partial instance? TypeOp)))
+                ;; TODO: not sure this is totally correct.
                 (merge-mods (.mods x) (.mods y) (.mods x []))
                 ;; (either (or (and (= (subvec (.mods y) 0 (count (.mods x)))
                 ;;                     (.mods x))
@@ -2097,6 +2075,10 @@
                   (.mods x (conj x-mods y))
 
                   (some x-mods (partial = y))
+                  ;; (-> (reverse x-mods)
+                  ;;     (split-with (partial instance? TypeOp))
+                  ;;     ((fn [[mods]]
+                  ;;         (some mods (partial = y)))))
                   x
 
                   (.mods x (conj x-mods y)))))))
@@ -2259,6 +2241,31 @@
                   (NoValues [x y])))))
 
 (extend-type FnConstraint
+  Stringable
+  (string-list [c]
+    (let [results (-> (.arities c)
+                      vals
+                      (map .result-const))
+          result (either (first results)
+                         bottom-type)]
+      (cond (= c fn-constraint)
+            (list "c/fn-constraint")
+
+            (= (.arities c) (.arities fn-constraint))
+            (list "(.required-arities c/fn-constraint " (str (.required-arities c) ")"))
+
+            (and (= (count (.arities c)) (count (.arities fn-constraint)))
+                 (empty? (.required-arities c))
+                 (flat-map (first results)
+                           (fn [result]
+                             (every results (partial = result)))))
+            (cond (= result top-type)
+                  (list "c/fn-constraint")
+                  (list "(c/intersect c/fn-constraint (c/coll-of-c " (str result) "))"))
+
+            (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
+                  "\n" (str (.arities c)) ")"))))
+
   Constraint
   (type-num [c] FunctionType)
 
