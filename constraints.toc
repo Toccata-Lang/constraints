@@ -691,35 +691,6 @@
 
   (MultiConstraint cs empty-list no-symbol))
 
-;; computed types
-(deftype ComputedConstraint [mods path sym var]
-  (assert (instance? OptionalSym sym))
-
-  Stringable
-  (string-list [_]
-    (list "(c/compute-c\n[" (to-str (interpose mods "\n")) "])"))
-
-  Eq
-  (=* [x y]
-    (and (instance? ComputedConstraint y)
-         (= mods (.mods y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.mods x (map (.mods x) f)))
-
-  (map [x f embed]
-    (map (map (.mods x) f embed)
-         (fn [new-mods]
-           (.mods x new-mods)))))
-
-(defn compute-c
-  ([mods]
-   (ComputedConstraint mods empty-list no-symbol ""))
-  ([mods path sym var]
-   (ComputedConstraint mods path sym var)))
-
 (deftype ParamConstraint [arity param-index path sym var]
   (assert (instance? OptionalSym sym))
 
@@ -928,8 +899,7 @@
                                TypeOfConstraint
                                ParamConstraint
                                MultiConstraint
-                               TypeOp
-                               ComputedConstraint))
+                               TypeOp))
 
 (def ValueConstraint (any-of SymbolConstraints
                              AllValues))
@@ -1520,7 +1490,6 @@
     (cond (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
-              (instance? ComputedConstraint y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? TypeOp y))
@@ -1642,7 +1611,6 @@
     (cond (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
-              (instance? ComputedConstraint y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? TypeOp y))
@@ -1757,11 +1725,6 @@
           (instance? MultiConstraint y)
           (intersect y x)
 
-          (instance? ComputedConstraint y)
-          (cond (some (.mods y) (partial = x))
-                y
-                (.mods y (comp [x] (.mods y))))
-
           (let [inters (map (.alts x) (fn [alt]
                                         (intersect alt y)))
                 goods (-> inters
@@ -1814,48 +1777,6 @@
 
           (intersect y x))))
 
-(defn merge-mods [mods1 mods2 new-c]
-  (assert (instance? Sequence mods1))
-  (assert (instance? Sequence mods2))
-  (assert (instance? ComputedConstraint new-c))
-
-  (cond (empty? mods1)
-        (.mods new-c (comp (.mods new-c) mods2))
-
-        (empty? mods2)
-        (.mods new-c (comp (.mods new-c) mods1))
-
-        (let [[mod1 & rest-mods1] mods1
-              [mod2 & rest-mods2] mods2]
-          (cond (and (instance? TypeOp mod1)
-                     (instance? TypeOp mod2))
-                (either (map (= mod1 mod2)
-                             (fn [_]
-                               (merge-mods rest-mods1 rest-mods2
-                                           (.mods new-c (conj (.mods new-c) mod1)))))
-                        (intersect mod1 mod2))
-
-                (instance? ComputedConstraint mod1)
-                (merge-mods (comp (.mods mod1) rest-mods1) mods2
-                            new-c)
-
-                (instance? ComputedConstraint mod2)
-                (merge-mods mods1 (comp (.mods mod2) rest-mods2)
-                            new-c)
-
-                (instance? TypeOp mod1)
-                (merge-mods mods1 rest-mods2
-                            (.mods new-c (conj (.mods new-c) mod2)))
-
-                (instance? TypeOp mod2)
-                (merge-mods rest-mods1 mods2
-                            (.mods new-c (conj (.mods new-c) mod1)))
-
-                (let [new-mod (intersect mod1 mod2)]
-                  (either (= bottom-type new-mod)
-                          (merge-mods rest-mods1 rest-mods2
-                                      (.mods new-c (conj (.mods new-c) new-mod)))))))))
-
 (extend-type MultiConstraint
   Constraint
   (assertion-path [c] empty-list)
@@ -1879,10 +1800,7 @@
 
   (type-num [c]
     (let [new-c (derive c top-type)]
-      (cond (instance? ComputedConstraint new-c)
-            UnknownType
-
-            (type-num new-c))))
+      (type-num new-c)))
 
   (derive-const [op]
     (fn [c]
@@ -1927,101 +1845,6 @@
             (either (= bottom-type final-y)
                     (.constraints x (conj new-cs final-y)))))))
 
-(extend-type ComputedConstraint
-  Constraint
-  (assertion-path [c] (.path c))
-
-  (format-path [c desired-len]
-    (format-path* (cons ["Type computed by" ""] (.path c))
-                  desired-len))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          (-> (.mods c)
-              (interpose (list "---"))
-              (flat-map (fn [mod-strs]
-                          (map mod-strs (partial str "  ")))))))
-
-  (contents-constraint [c]
-    (intersect c inner-type-of))
-
-  (reify-const [c arity args]
-    (let [[mod & mods] (.mods c)]
-      (reduce mods mod intersect)))
-
-  (type-num [c]
-    (let [new-c (derive c top-type)]
-      (cond (instance? ComputedConstraint new-c)
-            UnknownType
-
-            (type-num new-c))))
-
-  (derive-const [op]
-    (fn [c]
-      (reduce (.mods op) c
-              (fn [c op-fn]
-                (op-fn c)))))
-
-  (find-bottom [c]
-    (either (= bottom-type (derive c top-type))
-            c))
-
-  (get-items [c items-count]
-    (get-items (derive c top-type) items-count))
-
-  (trim-const [c]
-    (.mods c (reduce (.mods c) []
-                     (fn [new-mods mod]
-                       (cond (instance? ComputedConstraint mod)
-                             (comp new-mods (.mods mod))
-                             (conj new-mods mod))))))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? AllValues y)
-              (instance? NoValues y))
-          (intersect y x)
-
-          (instance? ComputedConstraint y)
-          ;; TODO: this logic seems complex. Try to simplify
-          (cond (or (some (.mods x) (partial instance? TypeOp))
-                    (some (.mods y) (partial instance? TypeOp)))
-                ;; TODO: not sure this is totally correct.
-                (merge-mods (.mods x) (.mods y) (.mods x []))
-                ;; (either (or (and (= (subvec (.mods y) 0 (count (.mods x)))
-                ;;                     (.mods x))
-                ;;                  (maybe y))
-                ;;             (and (= (subvec (.mods x) 0 (count (.mods y)))
-                ;;                     (.mods y))
-                ;;                  (maybe x)))
-                ;;         (do
-                ;;           (print-err "Dropping ComputedConstraint" _FILE_ _LINE_
-                ;;                      "\n\n" 'x x
-                ;;                      "\n\n" 'y y)
-                ;;           top-type))
-
-
-                (.mods x (reduce (.mods y) (.mods x)
-                                 (fn [mods mod]
-                                   (cond (some mods (partial = mod))
-                                         mods
-                                         (conj mods mod))))))
-
-          (let [x-mods (.mods x)]
-            (cond (some x-mods (partial instance? TypeOp))
-                  (.mods x (conj x-mods y))
-
-                  (some x-mods (partial = y))
-                  ;; (-> (reverse x-mods)
-                  ;;     (split-with (partial instance? TypeOp))
-                  ;;     ((fn [[mods]]
-                  ;;         (some mods (partial = y)))))
-                  x
-
-                  (.mods x (conj x-mods y)))))))
-
 (extend-type ParamConstraint
   Constraint
   (assertion-path [c] (.path c))
@@ -2057,11 +1880,6 @@
               (instance? NoValues y)
               (instance? MultiConstraint y))
           (intersect y x)
-
-          (instance? ComputedConstraint y)
-          (cond (some (.mods y) (partial = x))
-                y
-                (.mods y (comp [x] (.mods y))))
 
           (MultiConstraint [x y] empty-list (.sym x)))))
 
@@ -2245,7 +2063,6 @@
           (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
-              (instance? ComputedConstraint y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
@@ -2412,7 +2229,6 @@
           (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
-              (instance? ComputedConstraint y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? TypeOp y))

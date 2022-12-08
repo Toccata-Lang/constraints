@@ -205,85 +205,14 @@
   ([c arity-id args]
    (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_))))
 
-(def _ (test (c/trim (c/sum-c [(c/param 'fn-arity246 1)
-                               (c/multi [(c/param 'fn-arity246 1)
-                                         (c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/type-op c/arg-of-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          1)])])])
-                               (c/multi [(c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/coll-of-c
-                                                                (c/type-op c/arg-of-op
-                                                                           (c/param 'fn-arity246 2)
-                                                                           1))])])
-                                         (c/param 'fn-arity246 1)])
-                               (c/multi [(c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/coll-of-c
-                                                                (c/type-op c/arg-of-op
-                                                                           (c/param 'fn-arity246 2)
-                                                                           1))])])
-                                         (c/param 'fn-arity246 1)
-                                         (c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/type-op c/arg-of-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          1)])])])
-                               (c/multi [(c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/coll-of-c
-                                                                (c/type-op c/arg-of-op
-                                                                           (c/param 'fn-arity246 2)
-                                                                           1))])])
-                                         (c/type-op c/call-value-op
-                                                    (c/param 'fn-arity246 2)
-                                                    [(c/sum-c [(c/param 'fn-arity246 1)
-                                                               (c/type-op c/call-value-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          c/no-args)])
-                                                     (c/multi [(c/type-op c/inner-type-of-op
-                                                                          (c/param 'fn-arity246 0)
-                                                                          [])
-                                                               (c/type-op c/arg-of-op
-                                                                          (c/param 'fn-arity246 2)
-                                                                          1)])])])]))
+(def _ (test (reify-c (c/fn-arity 'first
+                                  (c/list-c [(c/param 'first 0)])
+                                  (c/type-op c/first-of-op
+                                             (c/param 'first 0)
+                                             [] (symbol "#result")))
+                      [(c/type-op c/rest-of-op
+                                  (c/param 'fn-arity77 0)
+                                  [] (symbol "#result"))])
              '_
              _FILE_ _LINE_))
 
@@ -482,60 +411,60 @@
              (c/PromiseConstraint param empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
-(def computed-bottom (c/ComputedConstraint [param c/int-constraint c/string-constraint]
-                                           empty-list c/no-symbol ""))
+;; (def computed-bottom (c/ComputedConstraint [param c/int-constraint c/string-constraint]
+;;                                            empty-list c/no-symbol ""))
 
-(def _ (test (cata c/find-bottom computed-bottom)
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom computed-bottom)
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (.items c/list-constraint [computed-bottom]))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (.items c/list-constraint [computed-bottom]))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (.tail-c c/vect-constraint computed-bottom))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (.tail-c c/vect-constraint computed-bottom))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (.contents c/coll-of-any computed-bottom))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (.contents c/coll-of-any computed-bottom))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (c/SumConstraint [computed-bottom]
-                                                  empty-list c/no-symbol ""))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (c/SumConstraint [computed-bottom]
+;;                                                   empty-list c/no-symbol ""))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (.arities c/fn-constraint
-                                           {1 (c/fn-arity c/no-symbol
-                                                          (.items c/list-constraint [computed-bottom])
-                                                          c/int-constraint)}))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (.arities c/fn-constraint
+;;                                            {1 (c/fn-arity c/no-symbol
+;;                                                           (.items c/list-constraint [computed-bottom])
+;;                                                           c/int-constraint)}))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom (.arities c/fn-constraint
-                                           {1 (c/fn-arity c/no-symbol
-                                                          (.items c/list-constraint [c/int-constraint])
-                                                          computed-bottom)}))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom (.arities c/fn-constraint
+;;                                            {1 (c/fn-arity c/no-symbol
+;;                                                           (.items c/list-constraint [c/int-constraint])
+;;                                                           computed-bottom)}))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (cata c/find-bottom
-                   (.invoke-fn c/arity-constraint
-                               (.arities c/fn-constraint
-                                         {1 (c/fn-arity c/no-symbol
-                                                        (.items c/list-constraint [computed-bottom])
-                                                        c/int-constraint)})))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (cata c/find-bottom
+;;                    (.invoke-fn c/arity-constraint
+;;                                (.arities c/fn-constraint
+;;                                          {1 (c/fn-arity c/no-symbol
+;;                                                         (.items c/list-constraint [computed-bottom])
+;;                                                         c/int-constraint)})))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/fn-constraint
                           (c/FnConstraint [1]
@@ -671,10 +600,10 @@
              (c/SumConstraint [pos-int c/sym-constraint] empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/first-of c/empty-list-constraint)
-             (c/ComputedConstraint [c/first-of c/empty-list-constraint]
-                                   empty-list c/no-symbol "")
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/first-of c/empty-list-constraint)
+;;              (c/ComputedConstraint [c/first-of c/empty-list-constraint]
+;;                                    empty-list c/no-symbol "")
+;;              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/empty-list-constraint c/first-of)
              c/maybe-constraint
