@@ -205,14 +205,23 @@
   ([c arity-id args]
    (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_))))
 
-(def _ (test (reify-c (c/fn-arity 'first
-                                  (c/list-c [(c/param 'first 0)])
-                                  (c/type-op c/first-of-op
-                                             (c/param 'first 0)
-                                             [] (symbol "#result")))
-                      [(c/type-op c/rest-of-op
-                                  (c/param 'fn-arity77 0)
-                                  [] (symbol "#result"))])
+(def _ (test (reify-c
+              (c/multi [(c/type-op c/inner-type-of-op
+                                   (c/param 'fn-arity238 0))
+                        (c/coll-of-c
+                         (c/type-op c/arg-of-op
+                                    (c/param 'fn-arity238 1)
+                                    0))])
+              'fn-arity238
+              [(c/list-c [(c/IntegerConstraint 1 2147483647 -2147483648)
+                          (c/IntegerConstraint 2 2147483647 -2147483648)
+                          (c/IntegerConstraint 3 2147483647 -2147483648)])
+               (c/fn-c []
+                       {1 (c/fn-arity 'fn-arity103
+                                      (c/list-c [(c/multi [(c/param 'fn-arity103 0)
+                                                           c/int-constraint])])
+                                      c/int-constraint)})
+               c/empty-list-constraint])
              '_
              _FILE_ _LINE_))
 

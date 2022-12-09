@@ -829,11 +829,11 @@
   Stringable
   (string-list [_]
     (list "(c/type-op " (str op-code) "\n"
-          (str base) "\n"
+          (str base)
           (either (map (instance? Vector params)
                        (fn [_]
-                         (str "[" (to-str (interpose params "\n")) "]")))
-                  (cond (= no-args params) "" (str params)))
+                         (str "\n[" (to-str (interpose params "\n")) "]")))
+                  (cond (= no-args params) "" (str "\n" params)))
            (sym-str sym) ")" ))
 
   Eq
@@ -1152,6 +1152,10 @@
   ;; is the constraint a NoValues type, or contains one
   (find-bottom [c]
     c)
+
+  (find-constraint [c pred]
+    (assert-result x (instance? (maybe-of Constraints) x))
+    nothing)
 
   ;; get only the fixeditems from a list or vector
   (get-items [c]
@@ -1896,7 +1900,7 @@
     (format-path c 0))
 
   (contents-constraint [c]
-    (intersect c inner-type-of))
+    (.base inner-type-of c))
 
   (reify-const [c arity args]
     (cond (= (.arity c) arity)
@@ -1999,10 +2003,9 @@
 
 (defn intersect-fns [y x]
   (either (or (=* x y)
-              (and (empty? (.arities x))
-                   (maybe y))
-              (and (empty? (.arities y))
-                   (maybe x)))
+              (and (or (empty? (.arities x))
+                       (empty? (.arities y)))
+                   (maybe (NoValues [x y]))))
           (let [new-required (reduce (.required-arities x) (.required-arities y)
                                      (fn [new-reqd arity-rank]
                                        (cond (some new-reqd (partial = arity-rank))
@@ -2331,7 +2334,7 @@
                                          y))))
                   (NoValues [x y])))))
 
-(defn do-call-value [base args]
+(defn do-call-value [base args loc-path]
   (cond (instance? FnConstraint base)
         (either (or (map (instance? NoArgs args)
                          (fn [_]
@@ -2344,7 +2347,7 @@
                     (map (or (get-in base [.arities (count args)])
                              (get-in base [.arities variadic]))
                          (fn [arity]
-                           ;; TODO: make sure all param constraints are satisfied bbase the arg constraints
+                           ;; TODO: make sure all param constraints are satisfied by the arg constraints
                            (let [new-args (intersect (.items empty-list-constraint args)
                                                      (.param-consts arity))
                                  reified (cond (= bottom-type new-args)
@@ -2365,7 +2368,11 @@
                                                        arity)))
                                  reified (cata find-bottom reified)]
                              (either (= bottom-type reified)
-                                     (.result-const reified))))))
+                                     (.result-const reified)))))
+                    (and (or (some-constraint (partial instance? ParamConstraint) base)
+                             (some args (partial some-constraint
+                                                 (partial instance? ParamConstraint))))
+                         (maybe (TypeOp call-value-op base args no-symbol loc-path))))
 
                 (NoValues [(type-op call-value-op top-type args)
                            base]))
@@ -2375,13 +2382,22 @@
                                                [base]
                                                (comp [base] args)))
 
-        (let [as-fn (intersect base fn-constraint)]
-          (cond (instance? FnConstraint as-fn)
-                (do-call-value as-fn args)
+        (cond (some-constraint (partial instance? ParamConstraint) base)
+              (TypeOp call-value-op base args no-symbol loc-path)
 
-                (NoValues [(type-op call-value-op top-type args) base])))))
+              (let [as-fn (intersect base fn-constraint)]
+                (cond (instance? FnConstraint as-fn)
+                      (do-call-value as-fn args loc-path)
 
-(defn do-set-to [base [path v]]
+                      (or (some-constraint (partial instance? ParamConstraint) base)
+                          (some args (partial some-constraint
+                                              (partial instance? ParamConstraint))))
+                      (maybe (TypeOp call-value-op base args no-symbol loc-path))
+
+                      (NoValues [(type-op call-value-op top-type args) base]))))))
+
+(defn do-set-to [base [path v] loc-path]
+  ;; TODO: check for ParamConstraints
   (cond (empty? path)
         base
 
@@ -2401,7 +2417,8 @@
 
         (NoValues [(type-op set-to-op top-type [path v]) base])))
 
-(defn do-get-from [base path]
+(defn do-get-from [base path loc-path]
+  ;; TODO: check for ParamConstraints
   (cond (empty? path)
         base
 
@@ -2425,18 +2442,22 @@
 
         (NoValues [(type-op get-from-op top-type path) base])))
 
-(defn do-arg-of [base arg-pos]
+(defn do-arg-of [base arg-pos loc-path]
   (cond (instance? FnConstraint base)
         (let [num-args (inc arg-pos)
               arity-args (-> (.arities base)
                              vals
                              (reduce [] (fn [arities arity]
                                           (assert (instance? fn-arity arity))
-                                          (either (map (-> (.param-consts arity)
-                                                           (get-items num-args)
-                                                           (nth arg-pos))
-                                                       (partial conj arities))
-                                                  arities))))]
+
+                                          (let [arity (reify-type-constraint arity (.arity-id arity)
+                                                                             (repeat num-args top-type)
+                                                                             (Location _FILE_ _LINE_))]
+                                            (either (map (-> (.param-consts arity)
+                                                             (get-items num-args)
+                                                             (nth arg-pos))
+                                                         (partial conj arities))
+                                                    arities)))))]
           (cond (empty? arity-args)
                 (NoValues [(type-op arg-of-op top-type arg-pos) base])
 
@@ -2448,9 +2469,12 @@
 
         (let [as-fn (intersect base fn-constraint)]
           (cond (instance? FnConstraint as-fn)
-                (do-arg-of as-fn arg-pos)
+                (do-arg-of as-fn arg-pos loc-path)
 
-                (NoValues [(type-op arg-of-op top-type arg-pos) base])))))
+                (cond (some-constraint (partial instance? ParamConstraint) base)
+                      (TypeOp arg-of-op base arg-pos no-symbol loc-path)
+
+                      (NoValues [(type-op arg-of-op top-type arg-pos) base]))))))
 
 (defn seq-from-str [c seq-c]
   (either (map (get-in c [.fields 'static-value])
@@ -2464,9 +2488,9 @@
                                                 s)))))))
           (.tail-c seq-c string-constraint)))
 
-(def type-op-fn {inner-type-of-op (fn [base _]
+(def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
-                 first-of-op (fn [base params]
+                 first-of-op (fn [base params loc-path]
                                (cond (instance? SeqConstraint base)
                                      (either (first (get-items base 1))
                                              maybe-constraint)
@@ -2476,8 +2500,11 @@
                                               (= (.type-number base) SubStringType)))
                                      (MaybeConstraint substr-constraint empty-list no-symbol "")
 
-                                     (NoValues [(type-op first-of-op top-type params) base])))
-                 last-of-op (fn [base params]
+                                     (cond (some-constraint (partial instance? ParamConstraint) base)
+                                           (TypeOp first-of-op base params no-symbol loc-path)
+
+                                           (NoValues [(type-op first-of-op top-type params) base]))))
+                 last-of-op (fn [base params loc-path]
                               (cond (instance? SeqConstraint base)
                                     (let [base (trim base)]
                                       (either (and (= no-tail (.tail-c base))
@@ -2486,24 +2513,30 @@
                                               (either (first (get-items (.tail-c base) 1))
                                                       maybe-constraint)))
 
-                                      (and (instance? ReifiedConstraint base)
-                                           (or (= (.type-number base) StringBufferType)
-                                               (= (.type-number base) SubStringType)))
-                                      (MaybeConstraint substr-constraint empty-list no-symbol "")
+                                    (and (instance? ReifiedConstraint base)
+                                         (or (= (.type-number base) StringBufferType)
+                                             (= (.type-number base) SubStringType)))
+                                    (MaybeConstraint substr-constraint empty-list no-symbol "")
 
-                                    (NoValues [(type-op last-of-op top-type params) base])))
-                 rest-of-op (fn [base params]
+                                    (cond (some-constraint (partial instance? ParamConstraint) base)
+                                          (TypeOp last-of-op base params no-symbol loc-path)
+
+                                          (NoValues [(type-op last-of-op top-type params) base]))))
+                 rest-of-op (fn [base params loc-path]
                               (cond (instance? SeqConstraint base)
                                     (let [base (trim base)]
                                       (.items base (rest (.items base))))
 
-                                      (and (instance? ReifiedConstraint base)
-                                           (or (= (.type-number base) StringBufferType)
-                                               (= (.type-number base) SubStringType)))
-                                      substr-constraint
+                                    (and (instance? ReifiedConstraint base)
+                                         (or (= (.type-number base) StringBufferType)
+                                             (= (.type-number base) SubStringType)))
+                                    substr-constraint
 
-                                    (NoValues [(type-op rest-of-op top-type params) base])))
-                 butlast-of-op (fn [base params]
+                                    (cond (some-constraint (partial instance? ParamConstraint) base)
+                                          (TypeOp rest-of-op base params no-symbol loc-path)
+
+                                          (NoValues [(type-op rest-of-op top-type params) base]))))
+                 butlast-of-op (fn [base params loc-path]
                                  (cond (instance? SeqConstraint base)
                                        (let [base (trim base)]
                                          (cond (= (.tail-c base) no-tail)
@@ -2511,13 +2544,16 @@
 
                                                base))
 
-                                      (and (instance? ReifiedConstraint base)
-                                           (or (= (.type-number base) StringBufferType)
-                                               (= (.type-number base) SubStringType)))
-                                      substr-constraint
+                                       (and (instance? ReifiedConstraint base)
+                                            (or (= (.type-number base) StringBufferType)
+                                                (= (.type-number base) SubStringType)))
+                                       substr-constraint
 
-                                       (NoValues [(type-op butlast-of-op top-type params) base])))
-                 list-from-op (fn [base params]
+                                       (cond (some-constraint (partial instance? ParamConstraint) base)
+                                             (TypeOp butlast-of-op base params no-symbol loc-path)
+
+                                             (NoValues [(type-op butlast-of-op top-type params) base]))))
+                 list-from-op (fn [base params loc-path]
                                 (cond (instance? ListConstraint base)
                                       base
 
@@ -2529,13 +2565,17 @@
                                             (.path (.path base))))
 
                                       (and (instance? ReifiedConstraint base)
-                                           (or (= (.type-number base) StringBufferType)
-                                               (= (.type-number base) SubStringType)))
+                                                (or (= (.type-number base) StringBufferType)
+                                                    (= (.type-number base) SubStringType)))
                                       (-> (seq-from-str base empty-list-constraint)
                                           (.path (.path base)))
 
-                                      (NoValues [(type-op list-from-op top-type params) base])))
-                 vect-from-op (fn [base params]
+                                      (cond (some-constraint (partial instance? ParamConstraint)
+                                                             base)
+                                            (TypeOp list-from-op base params no-symbol loc-path)
+
+                                            (NoValues [(type-op list-from-op top-type params) base]))))
+                 vect-from-op (fn [base params loc-path]
                                 (cond (instance? VectorConstraint base)
                                       base
 
@@ -2552,10 +2592,12 @@
                                       (-> (seq-from-str base empty-vect-constraint)
                                           (.path (.path base)))
 
-                                      (some-constraint (partial instance? ParamConstraint) base)
-                                       (TypeOp vect-from-op base params no-symbol loc-path)
+                                      (cond (some-constraint (partial instance? ParamConstraint)
+                                                             base)
+                                            (TypeOp vect-from-op base params no-symbol loc-path)
 
-                                      (NoValues [(type-op vect-from-op top-type params) base])))
+                                            (NoValues [(type-op vect-from-op top-type params)
+                                                       base]))))
                  arg-of-op do-arg-of
                  get-from-op do-get-from
                  set-to-op do-set-to
@@ -2574,6 +2616,9 @@
 
 (extend-type TypeOp
   Constraint
+  (contents-constraint [c]
+    (.base inner-type-of c))
+
   (find-constraint [c pred]
     (pred (.base c)))
 
@@ -2587,22 +2632,19 @@
               (intersect c op)))))
 
   (reify-const [c arity-id arg-cs]
-    (let [base (.base c)]
+    (let [base (.base c)
+          op-code (.op-code c)]
       (cond (or (instance? AllValues base)
                 (instance? NoValues base))
             base
 
-            (or (instance? TypeOp base)
-                (instance? TypeOfConstraint base)
-                (instance? ParamConstraint base))
-            c
-
-            (either (map (get type-op-fn (.op-code c))
+            (either (map (get type-op-fn op-code)
                          (fn [f]
                            (cond (instance? MultiConstraint base)
                                  (reduce (.constraints base) top-type
                                          (fn [old-c inner]
-                                           (intersect old-c (reify-const (.base c inner) arity-id arg-cs))))
+                                           (intersect old-c (reify-const (.base c inner)
+                                                                         arity-id arg-cs))))
 
                                  (instance? SumConstraint base)
                                  (-> (.alts base)
@@ -2610,7 +2652,7 @@
                                             (reify-const (.base c alt) arity-id arg-cs)))
                                      sum-type)
 
-                                 (f base (.params c)))))
+                                 (f base (.params c) (.path c)))))
                     top-type))))
 
   (assertion-path [c] (.path c))
