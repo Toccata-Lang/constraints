@@ -638,7 +638,7 @@
 
   Stringable
   (string-list [_]
-    (list (str "(c/sum-c [" (to-str (interpose alts "\n\n")) "])")))
+    (list (str "(c/sum-c [" (to-str (interpose alts "\n")) "])")))
 
   Eq
   (=* [x y]
@@ -828,12 +828,12 @@
 
   Stringable
   (string-list [_]
-    (list "(c/type-op " (str op-code) (cond (instance? ParamConstraint base) "\n" " ")
+    (list "(c/type-op " (str op-code) "\n"
           (str base) "\n"
           (either (map (instance? Vector params)
                        (fn [_]
                          (str "[" (to-str (interpose params "\n")) "]")))
-                  (str params))
+                  (cond (= no-args params) "" (str params)))
            (sym-str sym) ")" ))
 
   Eq
@@ -919,14 +919,14 @@
 (def empty-reified (ReifiedConstraint 0 no-symbol {} {}
                                       empty-fn-constraint
                                       empty-list  no-symbol ""))
-(def inner-type-of (type-op inner-type-of-op top-type []))
-(def first-of (type-op first-of-op top-type []))
-(def last-of (type-op last-of-op top-type []))
-(def rest-of (type-op rest-of-op top-type []))
-(def butlast-of (type-op butlast-of-op top-type []))
-(def list-from (type-op list-from-op top-type []))
-(def vect-from (type-op vect-from-op top-type []))
-(def result-of (type-op call-value-op top-type no-args))
+(def inner-type-of (type-op inner-type-of-op top-type))
+(def first-of (type-op first-of-op top-type))
+(def last-of (type-op last-of-op top-type))
+(def rest-of (type-op rest-of-op top-type))
+(def butlast-of (type-op butlast-of-op top-type))
+(def list-from (type-op list-from-op top-type))
+(def vect-from (type-op vect-from-op top-type))
+(def result-of (type-op call-value-op top-type))
 
 
 (defn IntegerConstraint
@@ -1253,6 +1253,28 @@
 (defn derive [op c]
   ((cata derive-const op) c))
 
+(defn some-constraint [pred c]
+  (or (pred c)
+      (find-constraint c (partial some-constraint pred))))
+
+(defn reify-type-constraint [arity arity-id arg-cs loc]
+  (assert (instance? Vector arg-cs))
+
+  ;; (or ;; (= (.file loc) 'core)
+  ;;     ;; (= (.line loc) 0)
+  ;;     (and (= arity-id 'extract)
+  ;;          (do
+  ;;            (print-err 'reifying _LINE_ loc arity-id "\n"
+  ;;                       arity "\n\n"
+  ;;                       'args arg-cs)
+  ;;            nothing)))
+  (let [r (cata (fn [c]
+                  (reify-const c arity-id arg-cs))
+                arity)]
+    (-> r
+        trim
+        (update-path loc))))
+
 (extend-type ValueConstraint
   Constraint
   (add-to-path [c file line]
@@ -1455,6 +1477,10 @@
                            (contents top-type)))
                  c)))
 
+  (find-constraint [c pred]
+    (or (some (.items c) pred)
+        (pred (.tail-c c))))
+
   (find-bottom [c]
     (either (or (some (.items c) (partial = bottom-type))
                 (= bottom-type (.tail-c c)))
@@ -1576,6 +1602,10 @@
                            (contents top-type)))
                  c)))
 
+  (find-constraint [c pred]
+    (or (some (.items c) pred)
+        (pred (.tail-c c))))
+
   (find-bottom [c]
     (either (or (some (.items c) (partial = bottom-type))
                 (= bottom-type (.tail-c c)))
@@ -1653,6 +1683,9 @@
       (intersect (map op (fn [contents]
                            (contents top-type)))
                  c)))
+
+  (find-constraint [c pred]
+    (some (.alts c) pred))
 
   (find-bottom [c]
     (either (flat-map (every (.alts c) (partial = bottom-type))
@@ -1761,6 +1794,9 @@
                            (contents top-type)))
                  c)))
 
+  (find-constraint [c pred]
+    (pred (.contents c)))
+
   (find-bottom [c]
     (either (= bottom-type (.contents c))
             c))
@@ -1808,6 +1844,9 @@
           (map (fn [op-fn]
                  (op-fn c)))
           (reduce top-type intersect))))
+
+  (find-constraint [c pred]
+    (some (.constraints c) pred))
 
   (find-bottom [c]
     (either (some (.constraints c) (partial = bottom-type))
@@ -1921,6 +1960,15 @@
     (fn [c]
       (map op (fn [contents]
                 (contents top-type)))))
+
+  (find-constraint [c pred]
+    (or (-> (.param-consts c)
+            .items
+            (some pred))
+        (-> (.param-consts c)
+            .tail-c
+            pred)
+        (pred (.result-const c))))
 
   (find-bottom [c]
     (either (or (-> (.param-consts c)
@@ -2051,6 +2099,9 @@
       (intersect (map op (fn [contents]
                            (contents top-type)))
                  c)))
+
+  (find-constraint [c pred]
+    (some (vals (.arities c)) pred))
 
   (find-bottom [c]
     (either (some (vals (.arities c)) (partial = bottom-type))
@@ -2211,6 +2262,12 @@
       (intersect (map op (fn [contents]
                            (contents top-type)))
                  c)))
+
+  (find-constraint [c pred]
+    (or (some (seq (.fields c)) (fn [[fld-c val-c]]
+                                  (or (pred fld-c)
+                                      (pred val-c))))
+        (pred (.invoke-fn c))))
 
   (find-bottom [c]
     (either (or (some (seq (.fields c)) (fn [[fld-c val-c]]
@@ -2495,6 +2552,9 @@
                                       (-> (seq-from-str base empty-vect-constraint)
                                           (.path (.path base)))
 
+                                      (some-constraint (partial instance? ParamConstraint) base)
+                                       (TypeOp vect-from-op base params no-symbol loc-path)
+
                                       (NoValues [(type-op vect-from-op top-type params) base])))
                  arg-of-op do-arg-of
                  get-from-op do-get-from
@@ -2514,6 +2574,9 @@
 
 (extend-type TypeOp
   Constraint
+  (find-constraint [c pred]
+    (pred (.base c)))
+
   (derive-const [op]
     (fn [c]
       (let [op (map op (fn [f]
@@ -2640,21 +2703,3 @@
 
                (RecurseWith c)))
        c))
-
-(defn reify-type-constraint [arity arity-id arg-cs loc]
-  (assert (instance? Vector arg-cs))
-
-  ;; (or ;; (= (.file loc) 'core)
-  ;;     ;; (= (.line loc) 0)
-  ;;     (and (= arity-id 'extract)
-  ;;          (do
-  ;;            (print-err 'reifying _LINE_ loc arity-id "\n"
-  ;;                       arity "\n\n"
-  ;;                       'args arg-cs)
-  ;;            nothing)))
-  (let [r (cata (fn [c]
-                  (reify-const c arity-id arg-cs))
-                arity)]
-    (-> r
-        trim
-        (update-path loc))))
