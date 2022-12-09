@@ -1147,10 +1147,6 @@
 
   ;; replace any ParamConstraints for 'arity' with their corresponding values
   (reify-const [c arity args]
-    (cata find-bottom c))
-
-  ;; is the constraint a NoValues type, or contains one
-  (find-bottom [c]
     c)
 
   (find-constraint [c pred]
@@ -1260,6 +1256,10 @@
 (defn some-constraint [pred c]
   (or (pred c)
       (find-constraint c (partial some-constraint pred))))
+
+(defn is-bottom [c]
+  (either (some-constraint (partial = bottom-type) c)
+          c))
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
@@ -1434,25 +1434,25 @@
           ["===="]))
 
   (set-to [x fld-path fld-c]
-    (-> (cond (empty? fld-path)
-              fld-c
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
 
-              (either (for [idx (first fld-path)
-                            :when (and (instance? ReifiedConstraint idx)
-                                       (= IntegerType (.type-number idx)))
-                            idx (get-in idx [.fields 'static-value])
-                            :when-not (= idx no-int)
-                            :let [items-count (inc idx)
-                                  old-items (cond (<= items-count (count (.items x)))
-                                                  (.items x)
+                           (either (for [idx (first fld-path)
+                                         :when (and (instance? ReifiedConstraint idx)
+                                                    (= IntegerType (.type-number idx)))
+                                         idx (get-in idx [.fields 'static-value])
+                                         :when-not (= idx no-int)
+                                         :let [items-count (inc idx)
+                                               old-items (cond (<= items-count (count (.items x)))
+                                                               (.items x)
 
-                                                  (get-items x items-count))]
-                            old-item (nth old-items idx)
-                            new-items (store old-items idx
-                                             (set-to old-item (rest fld-path) fld-c))]
-                        (.items x new-items))
-                      (cant-set-contents x fld-path)))
-        find-bottom))
+                                                               (get-items x items-count))]
+                                         old-item (nth old-items idx)
+                                         new-items (store old-items idx
+                                                          (set-to old-item (rest fld-path) fld-c))]
+                                     (.items x new-items))
+                                   (cant-set-contents x fld-path)))))
 
   (get-from [x idx]
     (either (for [_ (and (instance? ReifiedConstraint idx)
@@ -1484,11 +1484,6 @@
   (find-constraint [c pred]
     (or (some (.items c) pred)
         (pred (.tail-c c))))
-
-  (find-bottom [c]
-    (either (or (some (.items c) (partial = bottom-type))
-                (= bottom-type (.tail-c c)))
-            c))
 
   (get-items [l]
     (.items l))
@@ -1559,25 +1554,25 @@
           ["===="]))
 
   (set-to [x fld-path fld-c]
-    (-> (cond (empty? fld-path)
-              fld-c
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
 
-              (either (for [idx (first fld-path)
-                            :when (and (instance? ReifiedConstraint idx)
-                                       (= IntegerType (.type-number idx)))
-                            idx (get-in idx [.fields 'static-value])
-                            :when-not (= idx no-int)
-                            :let [items-count (inc idx)
-                                  old-items (cond (<= items-count (count (.items x)))
-                                                  (.items x)
+                           (either (for [idx (first fld-path)
+                                         :when (and (instance? ReifiedConstraint idx)
+                                                    (= IntegerType (.type-number idx)))
+                                         idx (get-in idx [.fields 'static-value])
+                                         :when-not (= idx no-int)
+                                         :let [items-count (inc idx)
+                                               old-items (cond (<= items-count (count (.items x)))
+                                                               (.items x)
 
-                                                  (get-items x items-count))]
-                            old-item (nth old-items idx)
-                            new-items (store old-items idx
-                                             (set-to old-item (rest fld-path) fld-c))]
-                        (.items x new-items))
-                      (cant-set-contents x fld-path)))
-        find-bottom))
+                                                               (get-items x items-count))]
+                                         old-item (nth old-items idx)
+                                         new-items (store old-items idx
+                                                          (set-to old-item (rest fld-path) fld-c))]
+                                     (.items x new-items))
+                                   (cant-set-contents x fld-path)))))
 
   (get-from [x idx]
     (either (for [_ (and (instance? ReifiedConstraint idx)
@@ -1609,11 +1604,6 @@
   (find-constraint [c pred]
     (or (some (.items c) pred)
         (pred (.tail-c c))))
-
-  (find-bottom [c]
-    (either (or (some (.items c) (partial = bottom-type))
-                (= bottom-type (.tail-c c)))
-            c))
 
   (get-items [l]
     (.items l))
@@ -1690,11 +1680,6 @@
 
   (find-constraint [c pred]
     (some (.alts c) pred))
-
-  (find-bottom [c]
-    (either (flat-map (every (.alts c) (partial = bottom-type))
-                      first)
-            (.alts c (remove (.alts c) (partial = bottom-type)))))
 
   (get-items [c]
     (let [alts-items (-> (.alts c)
@@ -1801,10 +1786,6 @@
   (find-constraint [c pred]
     (pred (.contents c)))
 
-  (find-bottom [c]
-    (either (= bottom-type (.contents c))
-            c))
-
   (get-items [c items-count]
     (repeat items-count (.contents c)))
 
@@ -1851,10 +1832,6 @@
 
   (find-constraint [c pred]
     (some (.constraints c) pred))
-
-  (find-bottom [c]
-    (either (some (.constraints c) (partial = bottom-type))
-            c))
 
   (get-items [c items-count]
     (get-items (derive c top-type) items-count))
@@ -1974,16 +1951,6 @@
             pred)
         (pred (.result-const c))))
 
-  (find-bottom [c]
-    (either (or (-> (.param-consts c)
-                    .items
-                    (some (partial = bottom-type)))
-                (-> (.param-consts c)
-                    .tail-c
-                    (= bottom-type))
-                (= bottom-type (.result-const c)))
-            c))
-
   (intersect [ar1 ar2]
     (assert (instance? fn-arity ar2))
 
@@ -1993,8 +1960,8 @@
                          (.arity-id ar2)
 
                          (.arity-id ar1))]
-      (either (or (= bottom-type (cata find-bottom param-cs))
-                  (= bottom-type (cata find-bottom result-c)))
+      (either (or (some-constraint (partial = bottom-type) param-cs)
+                  (some-constraint (partial = bottom-type) result-c))
 
               (-> ar1
                   (.arity-id arity-id)
@@ -2106,10 +2073,6 @@
   (find-constraint [c pred]
     (some (vals (.arities c)) pred))
 
-  (find-bottom [c]
-    (either (some (vals (.arities c)) (partial = bottom-type))
-            c))
-
   (intersect [x y]
     (cond (=* x y)
           x
@@ -2125,9 +2088,10 @@
 
           (instance? CollectionOf y)
           (let [new-result (.contents y)]
-            (cata find-bottom
-                  (map x (fn [arity]
-                           (.result-const arity (intersect (.result-const arity) new-result))))))
+            (is-bottom (map x (fn [arity]
+                                (.result-const arity
+                                               (intersect (.result-const arity)
+                                                          new-result))))))
 
           (instance? FnConstraint y)
           (intersect-fns x y)
@@ -2195,7 +2159,7 @@
                (fn [f]
                  (f x y)))
 
-          (cata find-bottom (.fields x (merge-with intersect (.fields x) (.fields y))))))
+          (is-bottom (.fields x (merge-with intersect (.fields x) (.fields y))))))
 
 (defn format-static-value [c]
   (assert (instance? ReifiedConstraint c))
@@ -2241,19 +2205,19 @@
           (show-full (.invoke-fn c))))
 
   (set-to [x fld-path fld-c]
-    (-> (cond (empty? fld-path)
-              fld-c
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
 
-              (either (for [fld (first fld-path)
-                            field-check (get (.field-consts x) fld)
-                            curr-field (get (.fields x) fld)
-                            :let [new-field (set-to curr-field (rest fld-path) fld-c)
-                                  final-field (intersect field-check new-field)]
-                            final-field (or (= bottom-type final-field)
-                                            (= final-field new-field))]
-                        (.fields x (assoc (.fields x) fld final-field)))
-                      (cant-set-contents x fld-path)))
-        find-bottom))
+                           (either (for [fld (first fld-path)
+                                         field-check (get (.field-consts x) fld)
+                                         curr-field (get (.fields x) fld)
+                                         :let [new-field (set-to curr-field (rest fld-path) fld-c)
+                                               final-field (intersect field-check new-field)]
+                                         final-field (or (= bottom-type final-field)
+                                                         (= final-field new-field))]
+                                     (.fields x (assoc (.fields x) fld final-field)))
+                                   (cant-set-contents x fld-path)))))
 
   (get-from [c fld-c]
     (either (or (get (.fields c) fld-c)
@@ -2271,13 +2235,6 @@
                                   (or (pred fld-c)
                                       (pred val-c))))
         (pred (.invoke-fn c))))
-
-  (find-bottom [c]
-    (either (or (some (seq (.fields c)) (fn [[fld-c val-c]]
-                                          (or (= bottom-type fld-c)
-                                              (= bottom-type val-c))))
-                (= bottom-type (.invoke-fn c)))
-            c))
 
   (intersect [x y]
     (cond (=* x y)
@@ -2366,7 +2323,7 @@
                                                          (reify-const c (.arity-id arity)
                                                                       new-args))
                                                        arity)))
-                                 reified (cata find-bottom reified)]
+                                 reified (is-bottom reified)]
                              (either (= bottom-type reified)
                                      (.result-const reified)))))
                     (and (or (some-constraint (partial instance? ParamConstraint) base)
@@ -2724,9 +2681,6 @@
 
 ;; combine two constraints to produce a new constraint
 ;; that is the same or more restrictive than either constraint
-
-(defn is-bottom [c]
-  (cata find-bottom c))
 
 (defn set-items [c items]
   (assert (instance? Vector items))
