@@ -1471,7 +1471,7 @@
           (-> (.items c)
               (conj (either (map (= no-tail (.tail-c c)) (fn [_]
                                                            top-type))
-                            (.tail-c c)))
+                            (contents-constraint (.tail-c c))))
               (remove (partial = top-type))
               sum-type)))
 
@@ -1591,7 +1591,7 @@
           (-> (.items c)
               (conj (either (map (= no-tail (.tail-c c)) (fn [_]
                                                            top-type))
-                            (.tail-c c)))
+                            (contents-constraint (.tail-c c))))
               (remove (partial = top-type))
               sum-type)))
 
@@ -1814,7 +1814,9 @@
                           (map c-strs (partial str "  ")))))))
 
   (contents-constraint [c]
-    (intersect c inner-type-of))
+    (reduce (.constraints c) top-type
+            (fn [contents inner]
+              (intersect contents (contents-constraint inner)))))
 
   (reify-const [c arity args]
     (trim c))
