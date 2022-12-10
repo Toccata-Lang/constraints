@@ -1981,39 +1981,25 @@
                                              new-reqd
 
                                              (conj new-reqd arity-rank))))
-                maybe-variadic-x (get-in x [.arities variadic])
-                maybe-variadic-y (get-in y [.arities variadic])
-                new-arities (reduce (vec (.arities y)) {}
-                                    (fn [arities [idx y-arity]]
-                                      (either (for [_ (instance? Integer idx)
-                                                    x-arity (or (get-in x [.arities idx])
-                                                                maybe-variadic-x)]
-                                                (assoc arities idx (intersect x-arity y-arity)))
-                                              arities)))
-                new-arities (reduce (vec (.arities x)) new-arities
-                                    (fn [arities [idx x-arity]]
-                                      (cond (get arities idx)
-                                            arities
-
-                                            (either (for [_ (instance? Integer idx)
-                                                          y-arity (or (get-in y [.arities idx])
-                                                                      maybe-variadic-y)]
-                                                      (assoc arities idx (intersect x-arity y-arity)))
-                                                    arities))))
-                new-arities (either (for [variadic-x maybe-variadic-x
-                                          variadic-y maybe-variadic-y]
-                                      (assoc new-arities variadic (intersect variadic-x variadic-y)))
-                                    new-arities)
-                new-arities (reduce (vec new-arities) {}
-                                    (fn [new-arities [k v]]
-                                      (cond (= bottom-type v)
-                                            new-arities
-
-                                            (assoc new-arities k v))))]
+                new-arities (reduce (for [[x-idx x-arity] (vec (.arities x))
+                                          [y-idx y-arity] (vec (.arities y))
+                                          :when (= x-idx y-idx)
+                                          :let [new-arity (intersect x-arity y-arity)]
+                                          :when-not (some-constraint (partial = bottom-type)
+                                                                     new-arity)]
+                                      [x-idx new-arity])
+                                    {} (fn [arities [idx arity]]
+                                         (assoc arities idx arity)))
+                min-variadic-arity (map (get new-arities variadic)
+                                        (fn [var-arity]
+                                          (-> var-arity .param-consts .items count)))]
             (cond (empty? new-arities)
                   (NoValues [x y])
 
-                  (every new-required (partial get new-arities))
+                  (every new-required (fn [required]
+                                        (or (get new-arities required)
+                                            (flat-map min-variadic-arity (fn [min-var]
+                                                                           (<= min-var required))))))
                   (-> x
                       (.required-arities new-required)
                       (.arities new-arities))
