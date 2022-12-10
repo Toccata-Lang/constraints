@@ -407,7 +407,7 @@
   Stringable
   (string-list [_]
     (list "(c/fn-arity " (str "'" arity-id) "\n"
-          (str param-consts) "\n" (str result-const) ")"))
+          (str param-consts) "\n;; returns\n" (str result-const) ")"))
 
   Container
   (map [x f]
