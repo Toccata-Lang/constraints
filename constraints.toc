@@ -1750,9 +1750,7 @@
           (instance? ParamConstraint y)
           (MultiConstraint [x y] empty-list (.sym x))
 
-          (or (instance? MultiConstraint y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
+          (instance? MultiConstraint y)
           (intersect y x)
 
           (let [inters (map (.alts x) (fn [alt]
@@ -1855,9 +1853,7 @@
           x
 
           (or (instance? AllValues y)
-              (instance? NoValues y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
+              (instance? NoValues y))
           (intersect y x)
 
           (instance? MultiConstraint y)

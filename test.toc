@@ -205,15 +205,14 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-(def _ (test (reify-c (c/multi [(c/type-op c/list-from-op
-                                           (c/param 'fn-arity115 0))
-                                (c/list-c []
-                                          c/substr-constraint)])
-                      'fn-arity115
-                      [(c/StrBuffConstraint "abc")
-                       c/empty-list-constraint])
-             '_
-             _FILE_ _LINE_))
+;; (def _ (test (reify-c (c/type-op c/list-from-op
+;;                                  (c/param 'seq 0))
+;;                       'seq
+;;                       [(c/ReifiedConstraint 0 c/no-symbol {} {}
+;;                                             (c/fn-c [] {}) empty-list c/no-symbol "")
+;;                        c/empty-list-constraint])
+;;              '_
+;;              _FILE_ _LINE_))
 
 (def _
   (test (c/intersect (c/multi 
@@ -237,9 +236,9 @@
 (def _ (test (c/reify-const (c/type-op c/inner-type-of-op (c/StrBuffConstraint "123") [])
                      '_ [])
              (c/SumConstraint
-              [(c/StrBuffConstraint "1" empty-list c/no-symbol "")
-               (c/StrBuffConstraint "2" empty-list c/no-symbol "")
-               (c/StrBuffConstraint "3" empty-list c/no-symbol "")]
+              [(c/SubStrConstraint "1" empty-list c/no-symbol "")
+               (c/SubStrConstraint "2" empty-list c/no-symbol "")
+               (c/SubStrConstraint "3" empty-list c/no-symbol "")]
               empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
@@ -257,10 +256,9 @@
                            (c/type-op c/inner-type-of-op (c/ParamConstraint 'fn-arity84 0 empty-list c/no-symbol "")
                                      [])
                            empty-list (symbol "#result") ""))
-             (c/VectorConstraint []
-                                 (c/CollectionOf
-                                  (c/type-op c/inner-type-of-op (c/param 'fn-arity84 0) [])
-                                  empty-list (symbol "#result") "") empty-list c/no-symbol "")
+             (c/vect-c []
+                       (c/coll-of-c (c/type-op c/inner-type-of-op
+                                               (c/param 'fn-arity84 0))))
              _FILE_ _LINE_))
 
 (def _ (test (c/trim (c/ListConstraint
@@ -562,182 +560,184 @@
                           c/int-constraint])
         _FILE_ _LINE_))
 
-(def _ (test (c/intersect reified-val
-                          arg-of)
-             pos-int
-        _FILE_ _LINE_))
+;; TODO: check this
+;; (def _ (test (c/intersect reified-val
+;;                           arg-of)
+;;              pos-int
 
-(def _ (test (c/intersect (c/SumConstraint
-                           [reified-val
-                            (c/FnConstraint []
-                                            {2 (c/fn-arity c/no-symbol
-                                                           (c/ListConstraint [c/top-type coll-of-sym]
-                                                                             c/no-tail empty-list c/no-symbol "")
-                                                           c/top-type)}
-                                            empty-list c/no-symbol "")]
-                           empty-list c/no-symbol "")
-                          arg-of)
-             (c/SumConstraint [pos-int coll-of-sym] empty-list c/no-symbol "")
-        _FILE_ _LINE_))
+;;         _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/SumConstraint
-                           [(.invoke-fn reified-val
-                                        (c/FnConstraint [1]
-                                                        {1 (c/fn-arity c/no-symbol
-                                                                       (c/ListConstraint [c/top-type] c/no-tail
-                                                                                         empty-list c/no-symbol "")
-                                                                       pos-int)}
-                                                        empty-list c/no-symbol ""))
-                            (c/FnConstraint []
-                                            {2 (c/fn-arity c/no-symbol
-                                                           (c/ListConstraint [c/top-type coll-of-sym]
-                                                                             c/no-tail empty-list c/no-symbol "")
-                                                           c/sym-constraint)}
-                                            empty-list c/no-symbol "")]
-                           empty-list c/no-symbol "")
-                          c/result-of)
-             (c/SumConstraint [pos-int c/sym-constraint] empty-list c/no-symbol "")
-        _FILE_ _LINE_))
+;; (def _ (test (c/intersect (c/SumConstraint
+;;                            [reified-val
+;;                             (c/FnConstraint []
+;;                                             {2 (c/fn-arity c/no-symbol
+;;                                                            (c/ListConstraint [c/top-type coll-of-sym]
+;;                                                                              c/no-tail empty-list c/no-symbol "")
+;;                                                            c/top-type)}
+;;                                             empty-list c/no-symbol "")]
+;;                            empty-list c/no-symbol "")
+;;                           arg-of)
+;;              (c/SumConstraint [pos-int coll-of-sym] empty-list c/no-symbol "")
+;;         _FILE_ _LINE_))
 
-;; (def _ (test (c/intersect c/first-of c/empty-list-constraint)
-;;              (c/ComputedConstraint [c/first-of c/empty-list-constraint]
-;;                                    empty-list c/no-symbol "")
+;; (def _ (test (c/intersect (c/SumConstraint
+;;                            [(.invoke-fn reified-val
+;;                                         (c/FnConstraint [1]
+;;                                                         {1 (c/fn-arity c/no-symbol
+;;                                                                        (c/ListConstraint [c/top-type] c/no-tail
+;;                                                                                          empty-list c/no-symbol "")
+;;                                                                        pos-int)}
+;;                                                         empty-list c/no-symbol ""))
+;;                             (c/FnConstraint []
+;;                                             {2 (c/fn-arity c/no-symbol
+;;                                                            (c/ListConstraint [c/top-type coll-of-sym]
+;;                                                                              c/no-tail empty-list c/no-symbol "")
+;;                                                            c/sym-constraint)}
+;;                                             empty-list c/no-symbol "")]
+;;                            empty-list c/no-symbol "")
+;;                           c/result-of)
+;;              (c/SumConstraint [pos-int c/sym-constraint] empty-list c/no-symbol "")
+;;         _FILE_ _LINE_))
+
+;; ;; (def _ (test (c/intersect c/first-of c/empty-list-constraint)
+;; ;;              (c/ComputedConstraint [c/first-of c/empty-list-constraint]
+;; ;;                                    empty-list c/no-symbol "")
+;; ;;              _FILE_ _LINE_))
+
+;; (def _ (test (c/intersect c/empty-list-constraint c/first-of)
+;;              c/maybe-constraint
 ;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/empty-list-constraint c/first-of)
-             c/maybe-constraint
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-list-1 c/first-of)
+;;              maybe-int
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-list-1 c/first-of)
-             maybe-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-vect-1 c/first-of)
+;;              maybe-int
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-vect-1 c/first-of)
-             maybe-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/empty-vect-constraint c/last-of)
+;;              c/maybe-constraint
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/empty-vect-constraint c/last-of)
-             c/maybe-constraint
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-list-1 c/last-of)
+;;              maybe-int
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-list-1 c/last-of)
-             maybe-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-vect-1 c/last-of)
+;;              maybe-int
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-vect-1 c/last-of)
-             maybe-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/empty-vect-constraint c/rest-of)
+;;              c/empty-vect-constraint
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/empty-vect-constraint c/rest-of)
-             c/empty-vect-constraint
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-list-1 c/rest-of)
+;;              c/empty-list-constraint
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-list-1 c/rest-of)
-             c/empty-list-constraint
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-vect-2 c/rest-of)
+;;              int-vect-1
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-vect-2 c/rest-of)
-             int-vect-1
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect (c/ListConstraint [c/int-constraint c/sym-constraint]
+;;                                             c/no-tail empty-list c/no-symbol "")
+;;                           c/butlast-of)
+;;              int-list-1
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/ListConstraint [c/int-constraint c/sym-constraint]
-                                            c/no-tail empty-list c/no-symbol "")
-                          c/butlast-of)
-             int-list-1
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-vect-2 c/list-from)
+;;              int-list-2
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-vect-2 c/list-from)
-             int-list-2
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect int-list-2 c/vect-from)
+;;              int-vect-2
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect int-list-2 c/vect-from)
-             int-vect-2
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect (c/FnConstraint [2]
+;;                                           {2 (c/fn-arity 'arity-1 int-list-2
+;;                                                          (c/intersect param
+;;                                                                       c/int-constraint))}
+;;                                           empty-list c/no-symbol "")
+;;                           (c/type-op c/call-value-op (c/fn-c [2]
+;;                                                              {2 (c/fn-arity 'arity-1 int-list-2
+;;                                                                             (c/intersect param
+;;                                                                                          c/int-constraint))})
+;;                                      [pos-int str-c]))
+;;              (c/NoValues [c/int-constraint
+;;                           (c/StrBuffConstraint "buffr" empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/FnConstraint [2]
-                                          {2 (c/fn-arity 'arity-1 int-list-2
-                                                         (c/intersect param
-                                                                      c/int-constraint))}
-                                          empty-list c/no-symbol "")
-                          (c/type-op c/call-value-op (c/fn-c [2]
-                                                             {2 (c/fn-arity 'arity-1 int-list-2
-                                                                            (c/intersect param
-                                                                                         c/int-constraint))})
-                                     [pos-int str-c]))
-             (c/NoValues [c/int-constraint
-                          (c/StrBuffConstraint "buffr" empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect reified-val call-value)
+;;              reified-val
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect reified-val call-value)
-             reified-val
-             _FILE_ _LINE_))
+;; (def _ (test (c/reify-const (c/type-op c/call-value-op reified-val
+;;                                        [str-c int-vect-2])
+;;                             '_ [])
+;;              (c/NoValues [(c/IntegerConstraint c/no-int 2147483647 1 empty-list c/no-symbol "")
+;;                           (c/VectorConstraint
+;;                            [c/int-constraint
+;;                             c/int-constraint]
+;;                            c/no-tail empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/reify-const (c/type-op c/call-value-op reified-val
-                                       [str-c int-vect-2])
-                            '_ [])
-             (c/NoValues [(c/IntegerConstraint c/no-int 2147483647 1 empty-list c/no-symbol "")
-                          (c/VectorConstraint
-                           [c/int-constraint
-                            c/int-constraint]
-                           c/no-tail empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (c/reify-const (c/type-op c/call-value-op (c/fn-c []
+;;                                                                {1 (c/fn-arity 'arity-1
+;;                                                                               (c/list-c [str-c])
+;;                                                                               param)})
+;;                                        [c/string-constraint])
+;;                             '_ [])
+;;              str-c
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/reify-const (c/type-op c/call-value-op (c/fn-c []
-                                                               {1 (c/fn-arity 'arity-1
-                                                                              (c/list-c [str-c])
-                                                                              param)})
-                                       [c/string-constraint])
-                            '_ [])
-             str-c
-             _FILE_ _LINE_))
+;; (def _ (test (c/reify-const (c/type-op c/call-value-op
+;;                                        (.invoke-fn reified-val
+;;                                                    (c/fn-c [2]
+;;                                                            {2 (c/fn-arity 'arity-1
+;;                                                                           (c/list-c [c/top-type pos-int])
+;;                                                                           (.param-index param 1))}))
+;;                                        [str-c])
+;;                             '_ [])
+;;              (c/NoValues [(c/IntegerConstraint c/no-int 2147483647 1 empty-list c/no-symbol "")
+;;                           (c/StrBuffConstraint "buffr" empty-list c/no-symbol "")])
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/reify-const (c/type-op c/call-value-op
-                                       (.invoke-fn reified-val
-                                                   (c/fn-c [2]
-                                                           {2 (c/fn-arity 'arity-1
-                                                                          (c/list-c [c/top-type pos-int])
-                                                                          (.param-index param 1))}))
-                                       [str-c])
-                            '_ [])
-             (c/NoValues [(c/IntegerConstraint c/no-int 2147483647 1 empty-list c/no-symbol "")
-                          (c/StrBuffConstraint "buffr" empty-list c/no-symbol "")])
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/int-constraint
+;;                           c/inner-type-of)
+;;              (c/NoValues [c/int-constraint c/empty-reified])
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/int-constraint
-                          c/inner-type-of)
-             (c/NoValues [c/int-constraint c/empty-reified])
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/empty-list-constraint
+;;                           c/inner-type-of)
+;;              c/top-type
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/empty-list-constraint
-                          c/inner-type-of)
-             c/top-type
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect maybe-int
+;;                           c/inner-type-of)
+;;              c/int-constraint
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect maybe-int
-                          c/inner-type-of)
-             c/int-constraint
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect (c/ListConstraint [c/top-type pos-int] c/no-tail empty-list c/no-symbol "")
+;;                           c/inner-type-of)
+;;              pos-int
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/ListConstraint [c/top-type pos-int] c/no-tail empty-list c/no-symbol "")
-                          c/inner-type-of)
-             pos-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect (c/VectorConstraint [sym-c pos-int] c/no-tail empty-list c/no-symbol "")
+;;                           c/inner-type-of)
+;;              (c/sum-type [sym-c pos-int])
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/VectorConstraint [sym-c pos-int] c/no-tail empty-list c/no-symbol "")
-                          c/inner-type-of)
-             (c/sum-type [sym-c pos-int])
-             _FILE_ _LINE_))
+;; (def _ (test (c/intersect c/list-constraint
+;;                           get-first)
+;;              c/top-type
+;;              _FILE_ _LINE_))
 
-(def _ (test (c/intersect c/list-constraint
-                          get-first)
-             c/top-type
-             _FILE_ _LINE_))
-
-(def _ (test (c/reify-const (c/type-op c/get-from-op (c/list-c [c/int-constraint pos-int])
-                                       [pos-1])
-                            '_ [])
-             pos-int
-             _FILE_ _LINE_))
+;; (def _ (test (c/reify-const (c/type-op c/get-from-op (c/list-c [c/int-constraint pos-int])
+;;                                        [pos-1])
+;;                             '_ [])
+;;              pos-int
+;;              _FILE_ _LINE_))
 
 ;; (def _ (test (c/intersect (c/VectorConstraint [pos-int str-c] c/no-tail empty-list c/no-symbol "")
 ;;                           (c/TypeOp c/get-from-op [pos-1] empty-list))
