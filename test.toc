@@ -205,31 +205,13 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-(def _ (test (reify-c
-              (c/type-op c/call-value-op
-                         (c/multi [(c/param 'fn-arity243 1)
-                                   (-> c/fn-constraint 
-                                       (.required-arities [1])
-                                       (.arities (select-keys (.arities c/fn-constraint) [2 c/variadic]))
-                                       (c/intersect (c/coll-of-c c/list-constraint)))])
-                         [(c/type-op c/inner-type-of-op
-                                     (c/multi
-                                      [(c/param 'fn-arity243 0)
-                                       (c/list-c []
-                                                 (c/coll-of-c (c/type-op c/arg-of-op
-                                                                         (c/param 'fn-arity243 1)
-                                                                         0)))]))] (symbol "#result"))
-              'fn-arity243
-              [(c/list-c [(c/IntegerConstraint 1 2147483647 -2147483648)
-                          (c/IntegerConstraint 4 2147483647 -2147483648)
-                          (c/IntegerConstraint 5 2147483647 -2147483648)])
-               (c/fn-c []
-                       {c/variadic (c/fn-arity 'fn-arity93
-                                               (c/list-c []
-                                                         (c/multi [(c/param 'fn-arity93 0)
-                                                                   c/list-constraint]))
-                                               (c/multi [(c/param 'fn-arity93 0)
-                                                         c/list-constraint]))}), c/empty-list-constraint])
+(def _ (test (reify-c (c/multi [(c/type-op c/list-from-op
+                                           (c/param 'fn-arity115 0))
+                                (c/list-c []
+                                          c/substr-constraint)])
+                      'fn-arity115
+                      [(c/StrBuffConstraint "abc")
+                       c/empty-list-constraint])
              '_
              _FILE_ _LINE_))
 

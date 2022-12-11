@@ -484,7 +484,9 @@
                           "}"
                           "\n" (str invoke-fn)
                           ;; (str (interpose (cons 'list path) " "))
-                          " empty-list" (sym-str sym) " \"" (str var) "\")" )]
+                          " empty-list" (either (map (= no-symbol) (partial str " "))
+                                                (sym-str sym))
+                          " \"" (str var) "\")" )]
       (cond (= type-number MaybeType)
             (either (map (get fields 'contents)
                          (fn [contents]
@@ -520,7 +522,7 @@
                       (cond (= no-string static)
                             (list "c/strbuff-constraint")
 
-                            (list "(c/StrBuffConstraint " (str static) ")")))
+                            (list "(c/StrBuffConstraint " (str "\"" static "\"") ")")))
                     long-form)
 
             (= type-number SubStringType)
@@ -910,24 +912,7 @@
 (def SeqConstraint (any-of VectorConstraint
                            ListConstraint))
 
-(def top-type (AllValues empty-list ""))
-(def bottom-type (NoValues []))
 (def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol ""))
-(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
-                                      {} {} empty-fn-constraint
-                                      empty-list no-symbol ""))
-(def empty-reified (ReifiedConstraint 0 no-symbol {} {}
-                                      empty-fn-constraint
-                                      empty-list  no-symbol ""))
-(def inner-type-of (type-op inner-type-of-op top-type))
-(def first-of (type-op first-of-op top-type))
-(def last-of (type-op last-of-op top-type))
-(def rest-of (type-op rest-of-op top-type))
-(def butlast-of (type-op butlast-of-op top-type))
-(def list-from (type-op list-from-op top-type))
-(def vect-from (type-op vect-from-op top-type))
-(def result-of (type-op call-value-op top-type))
-
 
 (defn IntegerConstraint
   ([static-value]
@@ -990,6 +975,14 @@
    (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var)))
 
 
+(def top-type (AllValues empty-list ""))
+(def bottom-type (NoValues []))
+(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
+                                      {} {} empty-fn-constraint
+                                      empty-list no-symbol ""))
+(def empty-reified (ReifiedConstraint 0 no-symbol {} {}
+                                      empty-fn-constraint
+                                      empty-list  no-symbol ""))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
@@ -1053,7 +1046,16 @@
 (def arity-constraint (ReifiedConstraint FnArityType 'FnArity {} {}
                                          (.arities fn-constraint {})
                                          empty-list no-symbol ""))
-
+(def inner-type-of (type-op inner-type-of-op top-type))
+(def first-of (multi [maybe-constraint
+                      (type-op first-of-op top-type)]))
+(def last-of (multi [maybe-constraint
+                     (type-op last-of-op top-type)]))
+(def rest-of (type-op rest-of-op top-type))
+(def butlast-of (type-op butlast-of-op top-type))
+(def list-from (type-op list-from-op top-type))
+(def vect-from (type-op vect-from-op top-type))
+(def result-of (type-op call-value-op top-type))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1517,6 +1519,8 @@
               (instance? NoValues y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y)))
               (instance? TypeOp y))
           (intersect y x)
 
@@ -1637,6 +1641,8 @@
               (instance? NoValues y)
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y)))
               (instance? TypeOp y))
           (intersect y x)
 
@@ -1744,7 +1750,9 @@
           (instance? ParamConstraint y)
           (MultiConstraint [x y] empty-list (.sym x))
 
-          (instance? MultiConstraint y)
+          (or (instance? MultiConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
           (intersect y x)
 
           (let [inters (map (.alts x) (fn [alt]
@@ -1847,7 +1855,9 @@
           x
 
           (or (instance? AllValues y)
-              (instance? NoValues y))
+              (instance? NoValues y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
           (intersect y x)
 
           (instance? MultiConstraint y)
@@ -1900,7 +1910,9 @@
 
           (or (instance? AllValues y)
               (instance? NoValues y)
-              (instance? MultiConstraint y))
+              (instance? MultiConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
           (intersect y x)
 
           (MultiConstraint [x y] empty-list (.sym x)))))
@@ -2021,13 +2033,15 @@
             (list "(.required-arities c/fn-constraint " (str (.required-arities c) ")"))
 
             (and (= (count (.arities c)) (count (.arities fn-constraint)))
-                 (empty? (.required-arities c))
                  (flat-map (first results)
                            (fn [result]
                              (every results (partial = result)))))
-            (cond (= result top-type)
-                  (list "c/fn-constraint")
-                  (list "(c/intersect c/fn-constraint (c/coll-of-c " (str result) "))"))
+            (let [fn-str (cond (empty? (.required-arities c))
+                               "c/fn-constraint"
+                               (str "(.required-arities c/fn-constraint " (.required-arities c) ")"))]
+              (cond (= result top-type)
+                    (list fn-str)
+                    (list "(c/intersect " fn-str "\n(c/coll-of-c " (str result) "))")))
 
             (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
                   "\n" (str (.arities c)) ")"))))
@@ -2071,7 +2085,9 @@
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
-              (instance? TypeOp y))
+              (instance? TypeOp y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
           (intersect y x)
 
           (instance? CollectionOf y)
@@ -2228,9 +2244,6 @@
     (cond (=* x y)
           x
 
-          (= (.type-number x) UnknownType)
-          y
-
           (or (instance? ParamConstraint y)
               (instance? AllValues y)
               (instance? NoValues y)
@@ -2268,15 +2281,22 @@
             (either (= bottom-type new-invoke)
                     (.invoke-fn x new-invoke)))
 
-          (and (instance? ReifiedConstraint y)
-               (= (type-num x) (type-num y)))
-          (intersect-reified x y)
+          (instance? ReifiedConstraint y)
+          (cond (= (type-num x) (type-num y))
+                (intersect-reified x y)
+
+                (or (= UnknownType (.type-number y))
+                    (= UnknownType (.type-number x)))
+                (multi [x y])
+
+                (NoValues [x y]))
 
           (either (and (= UnknownType (.type-number x))
-                       (map (get-in x [.fields 'contents])
-                            (fn [cnts]
-                              (intersect (coll-of-c cnts)
-                                         y))))
+                       (or (map (get-in x [.fields 'contents])
+                                (fn [cnts]
+                                  (intersect (coll-of-c cnts)
+                                             y)))
+                           (maybe y)))
                   (NoValues [x y])))))
 
 (defn do-call-value [base args loc-path]
@@ -2323,9 +2343,11 @@
                            base]))
 
         (instance? ReifiedConstraint base)
-        (do-call-value (.invoke-fn base) (cond (instance? NoArgs args)
-                                               [base]
-                                               (comp [base] args)))
+        (do-call-value (.invoke-fn base)
+                       (cond (instance? NoArgs args)
+                             [base]
+                             (comp [base] args))
+                       loc-path)
 
         (cond (some-constraint (partial instance? ParamConstraint) base)
               (TypeOp call-value-op base args no-symbol loc-path)
@@ -2425,13 +2447,13 @@
   (either (map (get-in c [.fields 'static-value])
                (fn [static]
                  (cond (= static no-string)
-                       (.tail-c seq-c substr-constraint)
+                       (.tail-c seq-c (coll-of-c substr-constraint))
                        (.items seq-c
                                (map (vec static)
                                     (fn [s]
                                       (assoc-in substr-constraint [.fields 'static-value]
                                                 s)))))))
-          (.tail-c seq-c string-constraint)))
+          (.tail-c seq-c (coll-of-c substr-constraint))))
 
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
@@ -2507,7 +2529,7 @@
                                         (-> empty-list-constraint
                                             (.items (.items base))
                                             (.tail-c (.tail-c base))
-                                            (.path (.path base))))
+                                            (.path (comp loc-path (.path base)))))
 
                                       (and (instance? ReifiedConstraint base)
                                                 (or (= (.type-number base) StringBufferType)
@@ -2529,7 +2551,7 @@
                                         (-> empty-vect-constraint
                                             (.items (.items base))
                                             (.tail-c (.tail-c base))
-                                            (.path (.path base))))
+                                            (.path (comp loc-path (.path base)))))
 
                                       (and (instance? ReifiedConstraint base)
                                            (or (= (.type-number base) StringBufferType)
@@ -2561,6 +2583,9 @@
 
 (extend-type TypeOp
   Constraint
+  (trim-const [c]
+    (reify-const c no-symbol []))
+
   (contents-constraint [c]
     (.base inner-type-of c))
 
