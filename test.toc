@@ -205,12 +205,9 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-;; (def _ (test (reify-c (c/type-op c/list-from-op
-;;                                  (c/param 'seq 0))
-;;                       'seq
-;;                       [(c/ReifiedConstraint 0 c/no-symbol {} {}
-;;                                             (c/fn-c [] {}) empty-list c/no-symbol "")
-;;                        c/empty-list-constraint])
+;; (def _ (test (c/trim (c/type-op c/list-from-op
+;;                                  (c/ReifiedConstraint 0 c/no-symbol {} {}
+;;                                                       (c/fn-c [] {}) empty-list c/no-symbol "")))
 ;;              '_
 ;;              _FILE_ _LINE_))
 
@@ -407,61 +404,6 @@
                           (c/PromiseConstraint c/top-type empty-list c/no-symbol ""))
              (c/PromiseConstraint param empty-list c/no-symbol "")
              _FILE_ _LINE_))
-
-;; (def computed-bottom (c/ComputedConstraint [param c/int-constraint c/string-constraint]
-;;                                            empty-list c/no-symbol ""))
-
-;; (def _ (test (cata c/find-bottom computed-bottom)
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (.items c/list-constraint [computed-bottom]))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (.tail-c c/vect-constraint computed-bottom))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (.contents c/coll-of-any computed-bottom))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (c/SumConstraint [computed-bottom]
-;;                                                   empty-list c/no-symbol ""))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (.arities c/fn-constraint
-;;                                            {1 (c/fn-arity c/no-symbol
-;;                                                           (.items c/list-constraint [computed-bottom])
-;;                                                           c/int-constraint)}))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom (.arities c/fn-constraint
-;;                                            {1 (c/fn-arity c/no-symbol
-;;                                                           (.items c/list-constraint [c/int-constraint])
-;;                                                           computed-bottom)}))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (cata c/find-bottom
-;;                    (.invoke-fn c/arity-constraint
-;;                                (.arities c/fn-constraint
-;;                                          {1 (c/fn-arity c/no-symbol
-;;                                                         (.items c/list-constraint [computed-bottom])
-;;                                                         c/int-constraint)})))
-;;              (c/NoValues [c/int-constraint
-;;                           (c/StrBuffConstraint c/no-string empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/fn-constraint
                           (c/FnConstraint [1]

@@ -920,6 +920,7 @@
   ([static-value max min]
    (IntegerConstraint static-value max min empty-list no-symbol ""))
   ([static-value max min path sym var]
+   ;; TODO: make 'min' and 'max' be constraints as well as integers
    (ReifiedConstraint IntegerType 'Integer {}
                       {'static-value static-value 'max max 'min min}
                       empty-fn-constraint path sym var)))
@@ -2463,6 +2464,10 @@
                                               (= (.type-number base) SubStringType)))
                                      (MaybeConstraint substr-constraint empty-list no-symbol "")
 
+                                     (and (instance? ReifiedConstraint base)
+                                          (= (.type-number base) UnknownType))
+                                     maybe-constraint
+
                                      (cond (some-constraint (partial instance? ParamConstraint) base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
 
@@ -2481,6 +2486,10 @@
                                              (= (.type-number base) SubStringType)))
                                     (MaybeConstraint substr-constraint empty-list no-symbol "")
 
+                                    (and (instance? ReifiedConstraint base)
+                                         (= (.type-number base) UnknownType))
+                                    maybe-constraint
+
                                     (cond (some-constraint (partial instance? ParamConstraint) base)
                                           (TypeOp last-of-op base params no-symbol loc-path)
 
@@ -2494,6 +2503,10 @@
                                          (or (= (.type-number base) StringBufferType)
                                              (= (.type-number base) SubStringType)))
                                     substr-constraint
+
+                                    (and (instance? ReifiedConstraint base)
+                                         (= (.type-number base) UnknownType))
+                                    (type-op rest-of-op top-type params)
 
                                     (cond (some-constraint (partial instance? ParamConstraint) base)
                                           (TypeOp rest-of-op base params no-symbol loc-path)
@@ -2512,6 +2525,10 @@
                                                 (= (.type-number base) SubStringType)))
                                        substr-constraint
 
+                                       (and (instance? ReifiedConstraint base)
+                                            (= (.type-number base) UnknownType))
+                                       (type-op butlast-of-op top-type params)
+
                                        (cond (some-constraint (partial instance? ParamConstraint) base)
                                              (TypeOp butlast-of-op base params no-symbol loc-path)
 
@@ -2528,10 +2545,14 @@
                                             (.path (comp loc-path (.path base)))))
 
                                       (and (instance? ReifiedConstraint base)
-                                                (or (= (.type-number base) StringBufferType)
-                                                    (= (.type-number base) SubStringType)))
+                                           (or (= (.type-number base) StringBufferType)
+                                               (= (.type-number base) SubStringType)))
                                       (-> (seq-from-str base empty-list-constraint)
-                                          (.path (.path base)))
+                                          (.path (comp loc-path (.path base))))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (= (.type-number base) UnknownType))
+                                      (type-op list-from-op top-type params)
 
                                       (cond (some-constraint (partial instance? ParamConstraint)
                                                              base)
@@ -2553,7 +2574,11 @@
                                            (or (= (.type-number base) StringBufferType)
                                                (= (.type-number base) SubStringType)))
                                       (-> (seq-from-str base empty-vect-constraint)
-                                          (.path (.path base)))
+                                          (.path (comp loc-path (.path base))))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (= (.type-number base) UnknownType))
+                                      (type-op vect-from-op top-type params)
 
                                       (cond (some-constraint (partial instance? ParamConstraint)
                                                              base)
