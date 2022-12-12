@@ -139,6 +139,20 @@
 
 (def no-tail (NoTail))
 
+(deftype NoContents []
+  Stringable
+  (string-list [_]
+    (list "c/no-contents"))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
+(def no-contents (NoContents))
+
 (deftype NoFields []
   Stringable
   (string-list [_]
@@ -492,6 +506,9 @@
                          (fn [contents]
                            (cond (instance? AllValues contents)
                                  (list "c/maybe-constraint")
+
+                                 (= no-contents contents)
+                                 (list "c/nothing-constraint")
 
                                  (list "(c/MaybeConstraint " (str contents) ")"))))
                     long-form)
@@ -1036,6 +1053,7 @@
                                          empty-list no-symbol ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
 (def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
+(def nothing-constraint  (MaybeConstraint no-contents empty-list no-symbol ""))
 (def set-constraint (ReifiedConstraint HashSetType 'HashSet
                                          {(Field (symbol ".set-map")) hashmap-constraint}
                                          {(Field (symbol ".set-map")) hashmap-constraint}
@@ -2103,7 +2121,9 @@
   (either (for [_ (= (type-num x) (type-num y))
                 cnts-x (get-in x [.fields 'contents])
                 cnts-y (get-in y [.fields 'contents])]
-            (let [new-cnts (intersect cnts-x cnts-y)]
+            (let [new-cnts (either (or (= cnts-x no-contents)
+                                       (= cnts-y no-contents))
+                                   (intersect cnts-x cnts-y))]
               (either (= bottom-type new-cnts)
                       (assoc-in x [.fields 'contents] new-cnts))))
 
@@ -2379,7 +2399,7 @@
                      "\n\n" 'v v)
           (abort))
 
-        (NoValues [(type-op set-to-op top-type [path v]) base])))
+        (NoValues [(type-op set-to-op top-type [path v] loc-path) base])))
 
 (defn do-get-from [base path loc-path]
   ;; TODO: check for ParamConstraints
@@ -2392,7 +2412,8 @@
         (either (map (first path)
                      (fn [fld]
                        (do-get-from (get-from base fld)
-                                    (rest path))))
+                                    (rest path)
+                                    loc-path)))
 
                 base)
 
@@ -2429,7 +2450,8 @@
 
         (instance? ReifiedConstraint base)
         (do-arg-of (.invoke-fn base)
-                   (inc arg-pos))
+                   (inc arg-pos)
+                   loc-path)
 
         (let [as-fn (intersect base fn-constraint)]
           (cond (instance? FnConstraint as-fn)
@@ -2456,13 +2478,19 @@
                                     (contents-constraint base))
                  first-of-op (fn [base params loc-path]
                                (cond (instance? SeqConstraint base)
-                                     (either (first (get-items base 1))
-                                             maybe-constraint)
+                                     (either (map (first (get-items base 1))
+                                                  MaybeConstraint)
+                                             nothing-constraint)
 
                                      (and (instance? ReifiedConstraint base)
                                           (or (= (.type-number base) StringBufferType)
                                               (= (.type-number base) SubStringType)))
-                                     (MaybeConstraint substr-constraint empty-list no-symbol "")
+                                     (either (map (get-in base [.fields 'static-value])
+                                                  (fn [sv]
+                                                    (cond (= sv "")
+                                                          nothing-constraint
+                                                          (MaybeConstraint substr-constraint))))
+                                             (MaybeConstraint substr-constraint))
 
                                      (and (instance? ReifiedConstraint base)
                                           (= (.type-number base) UnknownType))
@@ -2475,16 +2503,22 @@
                  last-of-op (fn [base params loc-path]
                               (cond (instance? SeqConstraint base)
                                     (let [base (trim base)]
-                                      (either (and (= no-tail (.tail-c base))
-                                                   (last (.items base)))
-
-                                              (either (first (get-items (.tail-c base) 1))
-                                                      maybe-constraint)))
+                                      (either (or (and (= no-tail (.tail-c base))
+                                                       (or (map (last (.items base))
+                                                                MaybeConstraint)
+                                                           (maybe nothing-constraint)))
+                                                  (first (get-items (.tail-c base) 1)))
+                                              maybe-constraint))
 
                                     (and (instance? ReifiedConstraint base)
                                          (or (= (.type-number base) StringBufferType)
                                              (= (.type-number base) SubStringType)))
-                                    (MaybeConstraint substr-constraint empty-list no-symbol "")
+                                    (either (map (get-in base [.fields 'static-value])
+                                                 (fn [sv]
+                                                   (cond (= sv "")
+                                                         nothing-constraint
+                                                         (MaybeConstraint substr-constraint))))
+                                            (MaybeConstraint substr-constraint))
 
                                     (and (instance? ReifiedConstraint base)
                                          (= (.type-number base) UnknownType))
@@ -2542,13 +2576,13 @@
                                         (-> empty-list-constraint
                                             (.items (.items base))
                                             (.tail-c (.tail-c base))
-                                            (.path (comp loc-path (.path base)))))
+                                            (.path (.path base))))
 
                                       (and (instance? ReifiedConstraint base)
                                            (or (= (.type-number base) StringBufferType)
                                                (= (.type-number base) SubStringType)))
                                       (-> (seq-from-str base empty-list-constraint)
-                                          (.path (comp loc-path (.path base))))
+                                          (.path (.path base)))
 
                                       (and (instance? ReifiedConstraint base)
                                            (= (.type-number base) UnknownType))
@@ -2568,13 +2602,13 @@
                                         (-> empty-vect-constraint
                                             (.items (.items base))
                                             (.tail-c (.tail-c base))
-                                            (.path (comp loc-path (.path base)))))
+                                            (.path (.path base))))
 
                                       (and (instance? ReifiedConstraint base)
                                            (or (= (.type-number base) StringBufferType)
                                                (= (.type-number base) SubStringType)))
                                       (-> (seq-from-str base empty-vect-constraint)
-                                          (.path (comp loc-path (.path base))))
+                                          (.path (.path base)))
 
                                       (and (instance? ReifiedConstraint base)
                                            (= (.type-number base) UnknownType))
