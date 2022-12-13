@@ -827,6 +827,12 @@
     (list "c/call-value-op")))
 (def call-value-op (CallValue))
 
+(deftype Concat []
+  Stringable
+  (string-list [_]
+    (list "c/concat-op")))
+(def concat-op (Concat))
+
 ;; TODO: should be an enum
 (def TypeOpCodes (any-of InnerTypeOf
                          FirstOf
@@ -838,7 +844,8 @@
                          ArgOf
                          GetFrom
                          SetTo
-                         CallValue))
+                         CallValue
+                         Concat))
 
 ;; type operations
 (deftype TypeOp [op-code base params sym path]
@@ -1075,6 +1082,7 @@
 (def list-from (type-op list-from-op top-type))
 (def vect-from (type-op vect-from-op top-type))
 (def result-of (type-op call-value-op top-type))
+(def concat (type-op concat-op list-constraint))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -2316,6 +2324,34 @@
                            (maybe y)))
                   (NoValues [x y])))))
 
+(defn do-concat [base args loc-path]
+  (cond (some-constraint (partial = bottom-type)
+                         (intersect base (coll-of-c seq-constraint)))
+        (do
+          (print-err "Compiler error at:" _FILE_ _LINE_
+                     "\n\n" 'base base
+                     "\n\n" 'inter (intersect base (coll-of-c seq-constraint)))
+          (abort))
+
+        (some-constraint (partial instance? ParamConstraint) base)
+        (TypeOp concat-op base no-args no-symbol loc-path)
+
+        (let [tail-seq (cond (= no-tail (.tail-c base))
+                             empty-list-constraint
+
+                             (contents-constraint (.items base [])))]
+          (-> (reverse (.items base))
+              (reduce tail-seq
+                      (fn [tail arg]
+                        (assert (instance? SeqConstraint arg))
+
+                        (cond (= (.tail-c arg) no-tail)
+                              (.tail-c arg tail)
+
+                              (.tail-c arg (sum-type [(coll-of-c (contents-constraint tail))
+                                                      (.tail-c arg)])))))
+              trim))))
+
 (defn do-call-value [base args loc-path]
   (cond (instance? FnConstraint base)
         (either (or (map (instance? NoArgs args)
@@ -2369,16 +2405,18 @@
         (cond (some-constraint (partial instance? ParamConstraint) base)
               (TypeOp call-value-op base args no-symbol loc-path)
 
+              (and (= nothing (= args no-args))
+                   (some args (partial some-constraint
+                                       (partial instance? ParamConstraint))))
+              (maybe (TypeOp call-value-op base args no-symbol loc-path))
+
+              ;; TODO: this is to convert ProtoImpls to a FnConstraint
               (let [as-fn (intersect base fn-constraint)]
-                (cond (instance? FnConstraint as-fn)
-                      (do-call-value as-fn args loc-path)
+                (either (some-constraint (partial = bottom-type) as-fn)
+                        (cond (instance? FnConstraint as-fn)
+                              (do-call-value as-fn args loc-path)
 
-                      (or (some-constraint (partial instance? ParamConstraint) base)
-                          (some args (partial some-constraint
-                                              (partial instance? ParamConstraint))))
-                      (maybe (TypeOp call-value-op base args no-symbol loc-path))
-
-                      (NoValues [(type-op call-value-op top-type args) base]))))))
+                              (NoValues [(type-op call-value-op top-type args) base])))))))
 
 (defn do-set-to [base [path v] loc-path]
   ;; TODO: check for ParamConstraints
@@ -2623,7 +2661,8 @@
                  arg-of-op do-arg-of
                  get-from-op do-get-from
                  set-to-op do-set-to
-                 call-value-op do-call-value})
+                 call-value-op do-call-value
+                 concat-op do-concat})
 
 (def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
                   first-of-op (constantly ["First value of seq" ""])

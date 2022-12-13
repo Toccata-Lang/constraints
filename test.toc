@@ -822,12 +822,61 @@
              _FILE_ _LINE_))
 
 
-(def _ (test (c/type-num (c/SumConstraint [pos-int int-0]))
+(def _ (test (c/type-num (c/sum-type [pos-int int-0]))
              c/IntegerType
              _FILE_ _LINE_))
 
 (def _ (test (c/type-num c/string-constraint)
              c/UnknownType
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/list-c []
+                                                                   (c/coll-of-c c/int-constraint)))))
+             (c/list-c [] (c/coll-of-c c/int-constraint))
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/coll-of-c c/int-constraint))))
+             (c/coll-of-c c/int-constraint)
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [(c/list-c [c/int-constraint])]))
+             (c/list-c [c/int-constraint])
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [(c/list-c [c/int-constraint])]
+                                         (c/coll-of-c (c/vect-c []
+                                                                (c/coll-of-c pos-int)))))
+             (c/list-c [c/int-constraint]
+                       (c/coll-of-c pos-int))
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [(c/vect-c [c/int-constraint])
+                                          (c/list-c [c/string-constraint])]))
+             (c/vect-c [c/int-constraint c/string-constraint])
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [(c/list-c [pos-int] (c/coll-of-c c/int-constraint))
+                                          (c/list-c [c/sym-constraint])]))
+             (c/list-c [pos-int]
+                       (c/coll-of-c (c/sum-c [c/sym-constraint
+                                              c/int-constraint])))
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/list-c [(c/list-c [neg-10 pos-int] (c/coll-of-c c/int-constraint))
+                                          (c/list-c [c/sym-constraint])]
+                                         (c/coll-of-c (c/list-c [neg-10]))))
+             (c/list-c [neg-10 pos-int]
+                       (c/coll-of-c (c/sum-c [c/sym-constraint
+                                              neg-10
+                                              c/int-constraint])))
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/concat (c/multi [param
+                                         (c/list-c []
+                                                   (c/coll-of-c c/seq-constraint))]))
+             (c/multi [(c/type-op c/concat-op
+                                  (c/param 'arity-1 0))
+                       c/seq-constraint])
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
