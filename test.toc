@@ -830,6 +830,18 @@
              c/UnknownType
              _FILE_ _LINE_))
 
+;; (def _ (test (test-op c/concat (c/list-c [c/string-constraint] (c/coll-of-c str-c)))
+;;              '_
+;;              _FILE_ _LINE_))
+
+;; (def _ (test (test-op c/concat (c/list-c [substr-c] (c/coll-of-c str-c)))
+;;              '_
+;;              _FILE_ _LINE_))
+
+;; (def _ (test (test-op c/concat (c/list-c [substr-c str-c]))
+;;              '_
+;;              _FILE_ _LINE_))
+
 (def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/list-c []
                                                                    (c/coll-of-c c/int-constraint)))))
              (c/list-c [] (c/coll-of-c c/int-constraint))
@@ -878,6 +890,51 @@
                                   (c/param 'arity-1 0))
                        c/seq-constraint])
              _FILE_ _LINE_))
+
+;; TODO: bring these back in when you want to really test apply
+;; (def _ (test (reify-c (c/type-op c/apply-op
+;;                                  (c/fn-c []
+;;                                          {2 (c/fn-arity 'fn-arity13
+;;                                                         (c/list-c [(c/multi [(c/param 'fn-arity13 0)
+;;                                                                              c/int-constraint])
+;;                                                                    (c/multi [(c/param 'fn-arity13 1)
+;;                                                                              c/int-constraint])])
+;;                                                         c/int-constraint)})
+;;                                  (c/multi [(c/list-c [(c/IntegerConstraint 9)
+;;                                                       (c/IntegerConstraint 7)])
+;;                                            (c/coll-of-c c/int-constraint)
+;;                                            c/seq-constraint]))
+;;                       'nada
+;;                       [])
+;;              c/int-constraint
+;;              _FILE_ _LINE_))
+
+;; (def _ (test (reify-c
+;;               (c/type-op c/apply-op
+;;                          (c/fn-c []
+;;                                  {1 (c/fn-arity 'fn-arity12
+;;                                                 (c/list-c [(c/multi
+;;                                                             [(c/param 'fn-arity12 0)
+;;                                                              (c/list-c []
+;;                                                                        (c/coll-of-c
+;;                                                                         (c/sum-c [c/list-constraint
+;;                                                                                   c/vect-constraint])))])])
+;;                                                 ;; returns
+;;                                                 (c/multi [(c/type-op c/concat-op
+;;                                                                      (c/param 'fn-arity12 0))
+;;                                                           c/seq-constraint]))})
+;;                          (c/sum-type [(c/list-c [(c/list-c [(c/IntegerConstraint 9)
+;;                                                             (c/IntegerConstraint 7)])
+;;                                                  (c/list-c [(c/IntegerConstraint 1)
+;;                                                             (c/IntegerConstraint 3)])])
+;;                                       (c/list-c [(c/list-c [(c/IntegerConstraint 3)
+;;                                                             (c/IntegerConstraint 2)])
+;;                                                  (c/list-c [(c/IntegerConstraint 9)
+;;                                                             (c/IntegerConstraint 8)])])]))
+;;                       'nada
+;;                       [])
+;;              '_
+;;              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))

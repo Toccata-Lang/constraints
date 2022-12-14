@@ -833,6 +833,12 @@
     (list "c/concat-op")))
 (def concat-op (Concat))
 
+(deftype Apply []
+  Stringable
+  (string-list [_]
+    (list "c/apply-op")))
+(def apply-op (Apply))
+
 ;; TODO: should be an enum
 (def TypeOpCodes (any-of InnerTypeOf
                          FirstOf
@@ -845,7 +851,8 @@
                          GetFrom
                          SetTo
                          CallValue
-                         Concat))
+                         Concat
+                         Apply))
 
 ;; type operations
 (deftype TypeOp [op-code base params sym path]
@@ -868,42 +875,7 @@
          (= op-code (.op-code y))
          (= base (.base y))
          (= params (.params y))
-         (maybe x)))
-
-  Container
-  (map [tc f]
-    (cond (= op-code set-to-op)
-          (let [[path v] (.params tc)]
-            (-> tc
-                (.base (f base))
-                (.params [(map path f) (f v)])))
-
-          (instance? Vector params)
-          (-> tc
-              (.base (f base))
-              (.params (map (.params tc) f)))
-
-          (.base tc (f base))))
-
-  (map [tc f embed]
-    (cond (= op-code set-to-op)
-          (let [[path v] (.params tc)]
-            (for [new-base (f base)
-                  new-path (map path f embed)
-                  new-v (f v)]
-              (-> tc
-                  (.base new-base)
-                  (.params [new-path new-v]))))
-
-          (instance? Vector params)
-          (for [new-base (f base)
-                new-params (map params f embed)]
-            (-> tc
-                (.base new-base)
-                (.params new-params)))
-
-          (map (f base)
-               (partial .base tc)))))
+         (maybe x))))
 
 (defn type-op
   ([op-code base]
@@ -1083,6 +1055,7 @@
 (def vect-from (type-op vect-from-op top-type))
 (def result-of (type-op call-value-op top-type))
 (def concat (type-op concat-op list-constraint))
+(def apply-fn (type-op apply-op list-constraint))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1184,7 +1157,10 @@
 
   ;; get only the fixeditems from a list or vector
   (get-items [c]
-    (assert (instance? (any-of SumConstraint SeqConstraint) c))
+    (assert (instance? (any-of SumConstraint
+                               SeqConstraint
+                               MultiConstraint)
+                       c))
     (assert-result r (instance? Vector r))
 
     [])
@@ -1726,7 +1702,7 @@
 
   (get-tail [l]
     (-> (.alts l)
-        (map  get-tail)
+        (map get-tail)
         sum-type))
 
   (get-items [c items-count]
@@ -1870,6 +1846,9 @@
 
   (get-items [c items-count]
     (get-items (derive c top-type) items-count))
+
+  (get-items [c]
+    (get-items (derive c top-type)))
 
   (trim-const [c]
     (reduce (.constraints c) top-type intersect))
@@ -2327,10 +2306,13 @@
 (defn do-concat [base args loc-path]
   (cond (some-constraint (partial = bottom-type)
                          (intersect base (coll-of-c seq-constraint)))
-        (do
+        (let [[file line] (either (last loc-path)
+                                  ["Unknown" 0])]
           (print-err "Compiler error at:" _FILE_ _LINE_
+                     "\n At:" file line
                      "\n\n" 'base base
-                     "\n\n" 'inter (intersect base (coll-of-c seq-constraint)))
+                     "\n\n" 'inter (intersect base (sum-type [(coll-of-c seq-constraint)
+                                                              (coll-of-c string-constraint)])))
           (abort))
 
         (some-constraint (partial instance? ParamConstraint) base)
@@ -2343,8 +2325,6 @@
           (-> (reverse (.items base))
               (reduce tail-seq
                       (fn [tail arg]
-                        (assert (instance? SeqConstraint arg))
-
                         (cond (= (.tail-c arg) no-tail)
                               (.tail-c arg tail)
 
@@ -2383,14 +2363,9 @@
                                                  (cata (fn [c]
                                                          (reify-const c (.arity-id arity)
                                                                       new-args))
-                                                       arity)))
-                                 reified (is-bottom reified)]
-                             (either (= bottom-type reified)
-                                     (.result-const reified)))))
-                    (and (or (some-constraint (partial instance? ParamConstraint) base)
-                             (some args (partial some-constraint
-                                                 (partial instance? ParamConstraint))))
-                         (maybe (TypeOp call-value-op base args no-symbol loc-path))))
+                                                       arity)))]
+                             (either (some-constraint (partial = bottom-type) reified)
+                                     (.result-const reified))))))
 
                 (NoValues [(type-op call-value-op top-type args)
                            base]))
@@ -2417,6 +2392,19 @@
                               (do-call-value as-fn args loc-path)
 
                               (NoValues [(type-op call-value-op top-type args) base])))))))
+
+(defn do-apply-value [base args loc-path]
+  (cond (some-constraint (partial instance? ParamConstraint) args)
+        (TypeOp apply-op base args no-symbol loc-path)
+
+        (or (instance? FnConstraint base)
+                 (instance? ReifiedConstraint base))
+        (do-call-value base (get-items args) loc-path)
+
+        (cond (some-constraint (partial instance? ParamConstraint) base)
+              (TypeOp apply-op base args no-symbol loc-path)
+
+              (do-call-value base (get-items args) loc-path))))
 
 (defn do-set-to [base [path v] loc-path]
   ;; TODO: check for ParamConstraints
@@ -2662,7 +2650,8 @@
                  get-from-op do-get-from
                  set-to-op do-set-to
                  call-value-op do-call-value
-                 concat-op do-concat})
+                 concat-op do-concat
+                 apply-op do-apply-value})
 
 (def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
                   first-of-op (constantly ["First value of seq" ""])
@@ -2676,6 +2665,46 @@
                   call-value-op (fn [c] ["Called at " ""])})
 
 (extend-type TypeOp
+  Container
+  (map [tc f]
+    (cond (= (.op-code tc) set-to-op)
+          (let [[path v] (.params tc)]
+            (-> tc
+                (.base (f (.base tc)))
+                (.params [(map path f) (f v)])))
+
+          (or (instance? Constraints (.params tc))
+              (instance? Vector (.params tc)))
+          (-> tc
+              (.base (f (.base tc)))
+              (.params (map (.params tc) f)))
+
+          (.base tc (f (.base tc)))))
+
+  (map [tc f embed]
+    (cond (= (.op-code tc) set-to-op)
+          (let [[path v] (.params tc)]
+            (for [new-base (f (.base tc))
+                  new-path (map path f embed)
+                  new-v (f v)]
+              (-> tc
+                  (.base new-base)
+                  (.params [new-path new-v]))))
+
+          (or (instance? TypeOfConstraint (.params tc))
+              (instance? Vector (.params tc)))
+          (for [new-base (f (.base tc))
+                new-params (cond (instance? TypeOfConstraint (.params tc))
+                                 (f (.params tc))
+
+                                 (map (.params tc) f embed))]
+            (-> tc
+                (.base new-base)
+                (.params new-params)))
+
+          (map (f (.base tc))
+               (partial .base tc))))
+
   Constraint
   (trim-const [c]
     (reify-const c no-symbol []))
