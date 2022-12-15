@@ -175,7 +175,11 @@
     x)
 
   (map [x f embed]
-    (embed x)))
+    (embed x))
+
+  Seqable
+  (first [_]
+    nothing))
 
 (def no-args (NoArgs))
 
@@ -761,6 +765,26 @@
   (map [x f embed]
     (embed x)))
 
+(deftype ProtoImpls [fn-sym default-impl impl-fns]
+  (assert (instance? Symbol fn-sym))
+  (assert (instance? FnConstraint default-impl))
+  (assert (instance? (map-of Integer FnConstraint) impl-fns))
+
+  Stringable
+  (string-list [_]
+    (list "(ProtoImpls '" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
+
+  Container
+  (map [x f]
+    (ProtoImpls fn-sym
+                (map default-impl f)
+                (map-vals impl-fns f)))
+
+  (map [x f embed]
+    (for [def-impl (map default-impl f embed)
+          impl-fns (contextual-map-vals impl-fns f embed)]
+      (ProtoImpls fn-sym def-impl impl-fns))))
+
 (deftype InnerTypeOf []
   Stringable
   (string-list [_]
@@ -903,6 +927,7 @@
                              AllValues))
 
 (def Constraints (any-of ValueConstraint
+                         ProtoImpls
                          NoValues))
 
 (def SeqConstraint (any-of VectorConstraint
@@ -2377,21 +2402,21 @@
                              (comp [base] args))
                        loc-path)
 
-        (cond (some-constraint (partial instance? ParamConstraint) base)
+        (instance? ProtoImpls base)
+        (let [disp-type (either (map (first args) type-num)
+                                UnknownType)]
+          (either (map (get (.impl-fns base) disp-type)
+                       (fn [f]
+                         (do-call-value f args loc-path)))
+                  (do-call-value (.default-impl base) args loc-path)))
+
+        (cond (or (some-constraint (partial instance? ParamConstraint) base)
+                  (and (= nothing (= args no-args))
+                       (some args (partial some-constraint
+                                           (partial instance? ParamConstraint)))))
               (TypeOp call-value-op base args no-symbol loc-path)
 
-              (and (= nothing (= args no-args))
-                   (some args (partial some-constraint
-                                       (partial instance? ParamConstraint))))
-              (maybe (TypeOp call-value-op base args no-symbol loc-path))
-
-              ;; TODO: this is to convert ProtoImpls to a FnConstraint
-              (let [as-fn (intersect base fn-constraint)]
-                (either (some-constraint (partial = bottom-type) as-fn)
-                        (cond (instance? FnConstraint as-fn)
-                              (do-call-value as-fn args loc-path)
-
-                              (NoValues [(type-op call-value-op top-type args) base])))))))
+              (NoValues [(type-op call-value-op top-type args) base]))))
 
 (defn do-apply-value [base args loc-path]
   (cond (some-constraint (partial instance? ParamConstraint) args)
@@ -2479,14 +2504,13 @@
                    (inc arg-pos)
                    loc-path)
 
-        (let [as-fn (intersect base fn-constraint)]
-          (cond (instance? FnConstraint as-fn)
-                (do-arg-of as-fn arg-pos loc-path)
+        (instance? ProtoImpls base)
+        (do-arg-of (.default-impl base) arg-pos loc-path)
 
-                (cond (some-constraint (partial instance? ParamConstraint) base)
-                      (TypeOp arg-of-op base arg-pos no-symbol loc-path)
+        (cond (some-constraint (partial instance? ParamConstraint) base)
+              (TypeOp arg-of-op base arg-pos no-symbol loc-path)
 
-                      (NoValues [(type-op arg-of-op top-type arg-pos) base]))))))
+              (NoValues [(type-op arg-of-op top-type arg-pos) base]))))
 
 (defn seq-from-str [c seq-c]
   (either (map (get-in c [.fields 'static-value])
@@ -2789,6 +2813,29 @@
 
   (show-full [c]
     (string-list c)))
+
+(extend-type ProtoImpls
+  Constraint
+  (show-full [c]
+    (comp (list (str "prototype " (.fn-sym c)))
+          (show-full (.default-impl c))
+          (list (str (map-vals (.impl-fns c) (fn [x]
+                                               (to-str (interpose x "\n"))))))))
+
+  (format-path [x n]
+    (format-path (.default-impl x) n))
+
+  (assertion-path [x]
+    (assertion-path (.default-impl x)))
+
+  (intersect [x y]
+    (cond (= x y)
+          x
+
+          (either (some-constraint (partial = bottom-type)
+                                   (intersect (.default-impl x) y))
+
+                  (multi [x y])))))
 
 ;; (extend-type HashMapConstraint)
 
