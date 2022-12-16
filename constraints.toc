@@ -232,6 +232,8 @@
   (map [x f embed]
     (embed x)))
 
+(def top-type (AllValues empty-list ""))
+
 (deftype NoValues [constraints]
   Stringable
   (string-list [_]
@@ -252,6 +254,36 @@
              (maybe x)))))
 
 ;; container types
+(deftype CollectionOf [contents path sym var]
+  (assert (instance? (list-of Vector) path))
+  (assert (instance? OptionalSym sym))
+  (assert (instance? String var))
+
+  Stringable
+  (string-list [_]
+    (list "(c/coll-of-c " (str contents) ")"))
+
+  Eq
+  (=* [x y]
+    (and (instance? CollectionOf y)
+         (= contents (.contents y))
+         (maybe x)))
+
+  Container
+  (map [x f]
+    (.contents x (f (.contents x))))
+
+  (map [x f embed]
+    (-> (.contents x)
+        f
+        (map (partial .contents x)))))
+
+(defn coll-of-c
+  ([contents]
+   (CollectionOf contents empty-list no-symbol ""))
+  ([contents path sym var]
+   (CollectionOf contents path sym var)))
+
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
   (assert (instance? (list-of Vector) path))
@@ -265,7 +297,7 @@
           (list "c/empty-list-constraint")
 
           (and (empty? items)
-               (instance? AllValues tail-c))
+               (= tail-c (coll-of-c top-type)))
           (list "c/list-constraint")
 
           (list "(c/list-c [" (to-str (interpose items "\n")) "]"
@@ -316,7 +348,7 @@
           (list "c/empty-vect-constraint")
 
           (and (empty? items)
-               (instance? AllValues tail-c))
+               (= tail-c (coll-of-c top-type)))
           (list "c/vect-constraint")
 
           (list "(c/vect-c [" (to-str (interpose items "\n")) "]"
@@ -621,36 +653,6 @@
           (.invoke-fn new-invoke)))))
 
 ;; type attributes
-(deftype CollectionOf [contents path sym var]
-  (assert (instance? (list-of Vector) path))
-  (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
-
-  Stringable
-  (string-list [_]
-    (list "(c/coll-of-c " (str contents) ")"))
-
-  Eq
-  (=* [x y]
-    (and (instance? CollectionOf y)
-         (= contents (.contents y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.contents x (f (.contents x))))
-
-  (map [x f embed]
-    (-> (.contents x)
-        f
-        (map (partial .contents x)))))
-
-(defn coll-of-c
-  ([contents]
-   (CollectionOf contents empty-list no-symbol ""))
-  ([contents path sym var]
-   (CollectionOf contents path sym var)))
-
 ;; sum type
 (deftype SumConstraint [alts path sym var]
   (assert (instance? Vector alts))
@@ -997,7 +999,6 @@
    (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var)))
 
 
-(def top-type (AllValues empty-list ""))
 (def bottom-type (NoValues []))
 (def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
                                       {} {} empty-fn-constraint
@@ -1006,8 +1007,8 @@
                                       empty-fn-constraint
                                       empty-list  no-symbol ""))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
-(def list-constraint (ListConstraint [] top-type empty-list no-symbol ""))
-(def vect-constraint (VectorConstraint [] top-type empty-list no-symbol ""))
+(def list-constraint (ListConstraint [] (coll-of-c top-type) empty-list no-symbol ""))
+(def vect-constraint (VectorConstraint [] (coll-of-c top-type) empty-list no-symbol ""))
 (def seq-constraint (SumConstraint [vect-constraint list-constraint]
                                      empty-list no-symbol ""))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
@@ -1378,9 +1379,6 @@
           (map (.constraints c) (partial str "  "))))
 
   (contents-constraint [c]
-    c)
-
-  (reify-const [c arity args]
     c)
 
   (trim-const [c]
@@ -1755,6 +1753,9 @@
                      (.path trimmed (.path c))))
               trimmed)))
 
+  (reify-const [c arity args]
+    (trim c))
+
   (intersect [x y]
     (cond (= x y)
           x
@@ -1876,9 +1877,17 @@
     (get-items (derive c top-type)))
 
   (trim-const [c]
-    (reduce (.constraints c) top-type intersect))
+    (let [[params others] (reduce (.constraints c) [[] []]
+                                  (fn [[params others] inner]
+                                    (cond (instance? ParamConstraint inner)
+                                          [(conj params inner) others]
 
-  (intersect [x y]
+                                          [params (conj others inner)])))]
+      (reduce params
+              (reduce others top-type intersect)
+              intersect)))
+
+  (intersect [x y] 
     (cond (or (=* x y)
               (some (.constraints x) (partial = y)))
           x
@@ -1942,7 +1951,7 @@
                    (= UnknownType (.type-number y))))
           (intersect y x)
 
-          (MultiConstraint [x y] empty-list (.sym x)))))
+          (MultiConstraint [y x] empty-list (.sym x)))))
 
 (extend-type fn-arity
   Eq
@@ -2367,10 +2376,11 @@
                                             (assert (instance? fn-arity arity))
                                             (conj arities (derive (.result-const arity) top-type))))
                                sum-type)))
+                    ;; get the arity
                     (map (or (get-in base [.arities (count args)])
                              (get-in base [.arities variadic]))
                          (fn [arity]
-                           ;; TODO: make sure all param constraints are satisfied by the arg constraints
+                           (assert (instance? fn-arity arity))
                            (let [new-args (intersect (.items empty-list-constraint args)
                                                      (.param-consts arity))
                                  reified (cond (= bottom-type new-args)

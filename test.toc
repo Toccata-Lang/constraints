@@ -204,11 +204,23 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-;; (def _ (test (c/trim (c/type-op c/list-from-op
-;;                                  (c/ReifiedConstraint 0 c/no-symbol {} {}
-;;                                                       (c/fn-c [] {}) empty-list c/no-symbol "")))
-;;              '_
-;;              _FILE_ _LINE_))
+(def _ (test (c/trim
+              (c/fn-arity 'fn-arity193
+                          (c/list-c [(c/multi [c/maybe-constraint
+                                               (c/param 'fn-arity193 0)])
+                                     (c/multi [(.required-arities c/fn-constraint [1])
+                                               (c/param 'fn-arity193 1)])])
+                          ;; returns
+                          (c/MaybeConstraint (c/type-op c/call-value-op
+                                                        (c/param 'fn-arity193 1)
+                                                        [(c/multi [(c/type-op c/arg-of-op
+                                                                              (c/param 'fn-arity193 1)
+                                                                              0)
+                                                                   (c/type-op c/inner-type-of-op
+                                                                              (c/param 'fn-arity193 0))])])))
+)
+             '_
+             _FILE_ _LINE_))
 
 (def _
   (test (c/intersect (c/multi 
