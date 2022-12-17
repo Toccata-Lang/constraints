@@ -2760,7 +2760,11 @@
     (.base inner-type-of c))
 
   (find-constraint [c pred]
-    (pred (.base c)))
+    (or (pred (.base c))
+        (and (instance? Vector (.params c))
+             (some (.params c) pred))
+        (map (instance? Constraints (.params c))
+             pred)))
 
   (derive-const [op]
     (fn [c]
