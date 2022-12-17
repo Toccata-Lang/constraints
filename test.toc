@@ -204,24 +204,100 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-(def _ (test (c/trim
-              (c/fn-arity 'fn-arity193
-                          (c/list-c [(c/multi [c/maybe-constraint
-                                               (c/param 'fn-arity193 0)])
-                                     (c/multi [(.required-arities c/fn-constraint [1])
-                                               (c/param 'fn-arity193 1)])])
-                          ;; returns
-                          (c/MaybeConstraint (c/type-op c/call-value-op
-                                                        (c/param 'fn-arity193 1)
-                                                        [(c/multi [(c/type-op c/arg-of-op
-                                                                              (c/param 'fn-arity193 1)
-                                                                              0)
-                                                                   (c/type-op c/inner-type-of-op
-                                                                              (c/param 'fn-arity193 0))])])))
-)
+(def _ (test (c/do-call-value
+              (c/fn-c []
+                      {3 (c/fn-arity 'fn-arity78
+                                     (c/list-c [(c/multi [(c/list-c []
+                                                                    (c/coll-of-c (c/type-op c/arg-of-op
+                                                                                            (c/param 'fn-arity78 2)
+                                                                                            1)))
+                                                          (c/param 'fn-arity78 0)])
+                                                (c/param 'fn-arity78 1)
+                                                (c/multi [(.required-arities c/fn-constraint [2])
+                                                          (c/param 'fn-arity78 2)])])
+                                     ;; returns
+                                     (c/sum-c
+                                      [(c/param 'fn-arity78 1)
+                                       (c/multi [(c/type-op c/call-value-op
+                                                            (c/multi [(.required-arities c/fn-constraint [2])
+                                                                      (c/param 'fn-arity78 2)])
+                                                            [(c/sum-c
+                                                              [(c/param 'fn-arity78 1)
+                                                               (c/type-op c/call-value-op
+                                                                          (c/multi
+                                                                           [(.required-arities c/fn-constraint [2])
+                                                                            (c/param 'fn-arity78 2)]))])
+                                                             (c/multi [(c/type-op c/arg-of-op
+                                                                                  (c/param 'fn-arity78 2)
+                                                                                  1)
+                                                                       (c/type-op c/inner-type-of-op
+                                                                                  (c/param 'fn-arity78 0))])])
+                                                 (c/param 'fn-arity78 1)])
+                                       (c/type-op c/call-value-op
+                                                  (c/multi [(.required-arities c/fn-constraint [2])
+                                                            (c/param 'fn-arity78 2)])
+                                                  [(c/sum-c
+                                                    [(c/param 'fn-arity78 1)
+                                                     (c/type-op c/call-value-op
+                                                                (c/multi [(.required-arities c/fn-constraint [2])
+                                                                          (c/param 'fn-arity78 2)]))])
+                                                   (c/multi [(c/type-op c/arg-of-op
+                                                                        (c/param 'fn-arity78 2)
+                                                                        1)
+                                                             (c/type-op c/inner-type-of-op
+                                                                        (c/param 'fn-arity78 0))])])]))})
+              [(c/list-c []
+                         (c/coll-of-c (c/param 'fn-arity205 0))), (c/type-op c/list-from-op
+                         (c/multi [(c/sum-c [c/list-constraint
+                                             c/vect-constraint])
+                                   (c/param 'fn-arity205 0)]))
+                         (c/ProtoImpls 'conj
+                                       (c/fn-c []
+                                               {2 (c/fn-arity 'conj
+                                                              (c/list-c [(c/param 'conj 0)
+                                                                         (c/param 'conj 1)])
+                                                              ;; returns
+                                                              c/top-type)})
+
+                                       {8 (c/fn-c []
+                                                  {2 (c/fn-arity 'fn-arity89
+                                                                 (c/list-c [(c/multi [c/vect-constraint
+                                                                                      (c/param 'fn-arity89 0)])
+                                                                            (c/param 'fn-arity89 1)])
+                                                                 ;; returns
+                                                                 (c/vect-c []
+                                                                           (c/coll-of-c
+                                                                            (c/sum-c
+                                                                             [(c/type-op c/inner-type-of-op
+                                                                                         (c/param 'fn-arity89 0))
+                                                                              (c/param 'fn-arity89 1)]))))})})]
+              empty-list)
              '_
              _FILE_ _LINE_))
+(c/NoValues
+ [(c/type-op c/arg-of-op
+             c/top-type
+             1)
+  (c/multi [(c/ProtoImpls 'conj
+                          (c/fn-c []
+                                  {2 (c/fn-arity 'conj
+                                                 (c/list-c [(c/param 'conj 0)
+                                                            (c/param 'conj 1)])
+                                                 ;; returns
+                                                 c/top-type)})
 
+                          {8 (c/fn-c []
+                                     {2 (c/fn-arity 'fn-arity89
+                                                    (c/list-c [(c/multi [c/vect-constraint
+                                                                         (c/param 'fn-arity89 0)])
+                                                               (c/param 'fn-arity89 1)])
+                                                    ;; returns
+                                                    (c/vect-c []
+                                                              (c/coll-of-c
+                                                               (c/sum-c [(c/type-op c/inner-type-of-op
+                                                                                    (c/param 'fn-arity89 0))
+                                                                         (c/param 'fn-arity89 1)]))))})})
+            (.required-arities c/fn-constraint [2])])])
 (def _
   (test (c/intersect (c/multi 
                       [(c/type-op c/call-value-op (c/param 'fn-arity243 1) [c/top-type])

@@ -774,7 +774,7 @@
 
   Stringable
   (string-list [_]
-    (list "(ProtoImpls '" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
+    (list "(c/ProtoImpls '" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
 
   Container
   (map [x f]
@@ -2367,6 +2367,8 @@
               trim))))
 
 (defn do-call-value [base args loc-path]
+  (assert (instance? Constraints base))
+
   (cond (instance? FnConstraint base)
         (either (or (map (instance? NoArgs args)
                          (fn [_]
@@ -2711,7 +2713,12 @@
               (instance? Vector (.params tc)))
           (-> tc
               (.base (f (.base tc)))
-              (.params (map (.params tc) f)))
+              (.params (map (.params tc)
+                            (fn [param]
+                              (cond (instance? Integer param)
+                                    param
+
+                                    (f param))))))
 
           (.base tc (f (.base tc)))))
 
@@ -2725,13 +2732,19 @@
                   (.base new-base)
                   (.params [new-path new-v]))))
 
-          (or (instance? TypeOfConstraint (.params tc))
+          (or (instance? Constraints (.params tc))
               (instance? Vector (.params tc)))
           (for [new-base (f (.base tc))
-                new-params (cond (instance? TypeOfConstraint (.params tc))
+                new-params (cond (instance? Constraints (.params tc))
                                  (f (.params tc))
 
-                                 (map (.params tc) f embed))]
+                                 (map (.params tc)
+                                      (fn [param]
+                                        (cond (instance? Integer param)
+                                              (embed param)
+
+                                              (f param)))
+                                      embed))]
             (-> tc
                 (.base new-base)
                 (.params new-params)))
