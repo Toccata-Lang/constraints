@@ -2056,30 +2056,33 @@
 (extend-type FnConstraint
   Stringable
   (string-list [c]
-    (let [results (-> (.arities c)
-                      vals
-                      (map .result-const))
-          result (either (first results)
-                         bottom-type)]
+    (let [long-form (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
+                          "\n" (str (.arities c)) ")")]
       (cond (= c fn-constraint)
             (list "c/fn-constraint")
 
             (= (.arities c) (.arities fn-constraint))
             (list "(.required-arities c/fn-constraint " (str (.required-arities c) ")"))
 
-            (and (= (count (.arities c)) (count (.arities fn-constraint)))
-                 (flat-map (first results)
-                           (fn [result]
-                             (every results (partial = result)))))
+            (and (every (vals (.arities c)) (partial instance? fn-arity))
+                 (= (count (.arities c)) (count (.arities fn-constraint))))
             (let [fn-str (cond (empty? (.required-arities c))
                                "c/fn-constraint"
-                               (str "(.required-arities c/fn-constraint " (.required-arities c) ")"))]
-              (cond (= result top-type)
-                    (list fn-str)
-                    (list "(c/intersect " fn-str "\n(c/coll-of-c " (str result) "))")))
+                               (str "(.required-arities c/fn-constraint " (.required-arities c) ")"))
+                  results (-> (.arities c)
+                              vals
+                              (map .result-const))]
+              (either (flat-map (first results)
+                                (fn [result]
+                                  (or (and (= result top-type)
+                                           (maybe (list fn-str)))
 
-            (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
-                  "\n" (str (.arities c)) ")"))))
+                                      (and (every results (partial = result))
+                                           (maybe (list "(c/intersect " fn-str "\n(c/coll-of-c "
+                                                        (str result) "))"))))))
+                      long-form))
+
+            long-form)))
 
   Constraint
   (type-num [c] FunctionType)
@@ -2765,8 +2768,8 @@
     (or (pred (.base c))
         (and (instance? Vector (.params c))
              (some (.params c) pred))
-        (map (instance? Constraints (.params c))
-             pred)))
+        (flat-map (instance? Constraints (.params c))
+                  pred)))
 
   (derive-const [op]
     (fn [c]
@@ -2845,6 +2848,11 @@
 
 (extend-type ProtoImpls
   Constraint
+  (derive-const [op]
+    (fn [c]
+      (map op (fn [contents]
+                (contents top-type)))))
+
   (show-full [c]
     (comp (list (str "prototype " (.fn-sym c)))
           (show-full (.default-impl c))
