@@ -1000,12 +1000,10 @@
 
 
 (def bottom-type (NoValues []))
-(def not-container (ReifiedConstraint UnknownType (symbol "Can not contain other values")
-                                      {} {} empty-fn-constraint
-                                      empty-list no-symbol ""))
-(def empty-reified (ReifiedConstraint 0 no-symbol {} {}
+(def empty-reified (ReifiedConstraint UnknownType no-symbol {} {}
                                       empty-fn-constraint
                                       empty-list  no-symbol ""))
+(def not-container (.type-symbol empty-reified (symbol "Can not contain other values")))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
 (def list-constraint (ListConstraint [] (coll-of-c top-type) empty-list no-symbol ""))
 (def vect-constraint (VectorConstraint [] (coll-of-c top-type) empty-list no-symbol ""))
@@ -1148,6 +1146,7 @@
   (type-num [c]
     (assert-result r (instance? Integer r))
 
+    ;; TODO: must implement this for TypeOp
     UnknownType)
 
   (type-sym [c]
@@ -2415,12 +2414,15 @@
                        loc-path)
 
         (instance? ProtoImpls base)
-        (let [disp-type (either (map (first args) type-num)
-                                UnknownType)]
-          (either (map (get (.impl-fns base) disp-type)
-                       (fn [f]
-                         (do-call-value f args loc-path)))
-                  (do-call-value (.default-impl base) args loc-path)))
+        (either (map (first args)
+                     (fn [disp-arg]
+                       (either (or (and (instance? ParamConstraint disp-arg)
+                                        (maybe (TypeOp call-value-op base args no-symbol loc-path)))
+                                   (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                                         :when (get-in impl-fn [.arities (count args)])]
+                                     (do-call-value impl-fn args loc-path)))
+                               (do-call-value (.default-impl base) args loc-path))))
+                (NoValues [base (.type-symbol empty-reified (symbol "Insufficient number of arguments."))]))
 
         (cond (or (some-constraint (partial instance? ParamConstraint) base)
                   (and (= nothing (= args no-args))
