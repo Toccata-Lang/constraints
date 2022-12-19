@@ -2850,8 +2850,7 @@
   Constraint
   (derive-const [op]
     (fn [c]
-      (map op (fn [contents]
-                (contents top-type)))))
+      (intersect c (.default-impl op))))
 
   (show-full [c]
     (comp (list (str "prototype " (.fn-sym c)))
