@@ -1182,17 +1182,11 @@
 
   ;; get only the fixeditems from a list or vector
   (get-items [c]
-    (assert (instance? (any-of SumConstraint
-                               SeqConstraint
-                               MultiConstraint)
-                       c))
     (assert-result r (instance? Vector r))
 
     [])
 
   (get-tail [c]
-    (assert (instance? (any-of SumConstraint SeqConstraint) c))
-
     no-tail)
 
   (get-items [c items-count]
@@ -1222,6 +1216,24 @@
   (intersect [c1 c2]
     ;; 'top-type' is the undefined result
     top-type))
+
+(defn set-items [c items]
+  (assert (instance? Vector items))
+
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (RecurseFinal (.items c items))
+
+               (RecurseWith c)))
+       c))
+
+(defn set-tail [c tail]
+  (apo (fn [c]
+         (cond (instance? SeqConstraint c)
+               (RecurseFinal (.tail-c c tail))
+
+               (RecurseWith c)))
+       c))
 
 (defn format-path* [path desired-len]
   (assert (instance? List path))
@@ -1701,7 +1713,9 @@
                           (map alt-strs (partial str "  ")))))))
 
   (contents-constraint [c]
-    c)
+    (-> (.alts c)
+        (map contents-constraint)
+        sum-type))
 
   (derive-const [op]
     (fn [c]
@@ -1743,14 +1757,12 @@
     (let [all-alts (flat-map (.alts c) (fn [c]
                                          (either (map (instance? SumConstraint c) .alts)
                                                  [c])))
-          new-c (sum-type all-alts)
-          trimmed (cond (instance? SymbolConstraints new-c)
-                        (.sym new-c (.sym c))
-                        new-c)]
-      (either (map (instance? SumConstraint trimmed)
-                   (fn [_]
-                     (.path trimmed (.path c))))
-              trimmed)))
+          new-c (sum-type all-alts)]
+      (cond (instance? SymbolConstraints new-c)
+            (-> new-c
+                (.path (.path c))
+                (.sym (.sym c)))
+            new-c)))
 
   (reify-const [c arity args]
     (trim c))
@@ -1798,6 +1810,8 @@
 
 (extend-type CollectionOf
   Constraint
+  (get-tail [c] c)
+
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
@@ -2340,33 +2354,33 @@
                   (NoValues [x y])))))
 
 (defn do-concat [base args loc-path]
-  (cond (some-constraint (partial = bottom-type)
-                         (intersect base (coll-of-c seq-constraint)))
-        (let [[file line] (either (last loc-path)
-                                  ["Unknown" 0])]
-          (print-err "Compiler error at:" _FILE_ _LINE_
-                     "\n At:" file line
-                     "\n\n" 'base base
-                     "\n\n" 'inter (intersect base (sum-type [(coll-of-c seq-constraint)
-                                                              (coll-of-c string-constraint)])))
-          (abort))
+  (let [new-base (trim (intersect base (coll-of-c (sum-c [string-constraint
+                                                          seq-constraint]))))]
+    (cond (some-constraint (partial = bottom-type)
+                           new-base)
+          (NoValues [(-> empty-reified
+                         (replace-path loc-path)
+                         (.type-symbol (symbol "Can not concatenate contents")))
+                     base])
 
-        (some-constraint (partial instance? ParamConstraint) base)
-        (TypeOp concat-op base no-args no-symbol loc-path)
+          (some-constraint (partial instance? ParamConstraint) base)
+          (TypeOp concat-op base no-args no-symbol loc-path)
 
-        (let [tail-seq (cond (= no-tail (.tail-c base))
-                             empty-list-constraint
+          (let [tail-seq (cond (= no-tail (get-tail new-base))
+                               empty-list-constraint
 
-                             (contents-constraint (.items base [])))]
-          (-> (reverse (.items base))
-              (reduce tail-seq
-                      (fn [tail arg]
-                        (cond (= (.tail-c arg) no-tail)
-                              (.tail-c arg tail)
+                               (coll-of-c (-> (get-tail new-base)
+                                              contents-constraint
+                                              contents-constraint)))]
+            (-> (reverse (get-items new-base))
+                (reduce tail-seq
+                        (fn [tail arg]
+                          (cond (= (get-tail arg) no-tail)
+                                (set-tail arg tail)
 
-                              (.tail-c arg (sum-type [(coll-of-c (contents-constraint tail))
-                                                      (.tail-c arg)])))))
-              trim))))
+                                (set-tail arg (sum-type [(coll-of-c (contents-constraint tail))
+                                                         (get-tail arg)])))))
+                trim)))))
 
 (defn do-call-value [base args loc-path]
   (assert (instance? Constraints base))
@@ -2417,15 +2431,19 @@
                        loc-path)
 
         (instance? ProtoImpls base)
-        (either (map (first args)
-                     (fn [disp-arg]
-                       (either (or (and (instance? ParamConstraint disp-arg)
-                                        (maybe (TypeOp call-value-op base args no-symbol loc-path)))
-                                   (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
-                                         :when (get-in impl-fn [.arities (count args)])]
-                                     (do-call-value impl-fn args loc-path)))
-                               (do-call-value (.default-impl base) args loc-path))))
-                (NoValues [base (.type-symbol empty-reified (symbol "Insufficient number of arguments."))]))
+        (either (or (and (= args no-args)
+                         (maybe (do-call-value (.default-impl base) args loc-path)))
+                    (map (first args)
+                         (fn [disp-arg]
+                           (either (or (and (instance? ParamConstraint disp-arg)
+                                            (maybe (TypeOp call-value-op base args no-symbol loc-path)))
+                                       (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                                             :when (get-in impl-fn [.arities (count args)])]
+                                         (do-call-value impl-fn args loc-path)))
+                                   (do-call-value (.default-impl base) args loc-path)))))
+                (NoValues [base (-> empty-reified
+                                    (replace-path loc-path)
+                                    (.type-symbol (symbol "Insufficient number of arguments.")))]))
 
         (cond (or (some-constraint (partial instance? ParamConstraint) base)
                   (and (= nothing (= args no-args))
@@ -2505,7 +2523,7 @@
 
                                           (let [arity (reify-type-constraint arity (.arity-id arity)
                                                                              (repeat num-args top-type)
-                                                                             (Location _FILE_ _LINE_))]
+                                                                             (Location "" 0))]
                                             (either (map (-> (.param-consts arity)
                                                              (get-items num-args)
                                                              (nth arg-pos))
@@ -2900,21 +2918,3 @@
 
 ;; combine two constraints to produce a new constraint
 ;; that is the same or more restrictive than either constraint
-
-(defn set-items [c items]
-  (assert (instance? Vector items))
-
-  (apo (fn [c]
-         (cond (instance? SeqConstraint c)
-               (RecurseFinal (.items c items))
-
-               (RecurseWith c)))
-       c))
-
-(defn set-tail [c tail]
-  (apo (fn [c]
-         (cond (instance? SeqConstraint c)
-               (RecurseFinal (.tail-c c tail))
-
-               (RecurseWith c)))
-       c))

@@ -204,30 +204,43 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-(def _ (test (c/do-call-value (c/ProtoImpls 'first
-                                            (c/fn-c []
-                                                    {1 (c/fn-arity 'first
-                                                                   (c/list-c [(c/param 'first 0)])
-                                                                   ;; returns
-                                                                   (c/multi [(c/type-op c/first-of-op
-                                                                                        (c/param 'first 0))
-                                                                             c/maybe-constraint]))})
+;; (def _ (test (c/trim
+;;               (c/type-op c/concat-op
+;;                          (c/multi [(c/list-c []
+;;                                              (c/coll-of-c (c/sum-c [c/strbuff-constraint
+;;                                                                     c/substr-constraint
+;;                                                                     c/list-constraint
+;;                                                                     c/vect-constraint])))
+;;                                    (c/param 'fn-arity12 0)]) (symbol "#result")))
+;;              '_
+;;              _FILE_ _LINE_))
 
-                                            {})
-                              [(c/type-op c/call-value-op
-                                          (c/ProtoImpls 'rest
-                                                        (c/fn-c []
-                                                                {1 (c/fn-arity 'rest
-                                                                               (c/list-c [(c/param 'rest 0)])
-                                                                               ;; returns
-                                                                               (c/type-op c/rest-of-op
-                                                                                          (c/param 'rest 0)))})
-
-                                                        {})
-                                          [(c/param 'fn-arity77 0)])]
-                              empty-list)
-             '_
-             _FILE_ _LINE_))
+;; (def _ (test
+;;         (reify-c
+;;          (c/fn-arity 'fn-arity263
+;;                      (c/list-c [(c/multi [c/vect-constraint
+;;                                           (c/param 'fn-arity263 0)])
+;;                                 (c/multi [(c/list-c []
+;;                                                     (c/coll-of-c (c/sum-c [c/list-constraint
+;;                                                                            c/vect-constraint])))
+;;                                           (c/param 'fn-arity263 1)])])
+;;                      ;; returns
+;;                      (c/type-op c/concat-op
+;;                                 (c/list-c [(c/multi [c/vect-constraint
+;;                                                      (c/param 'fn-arity263 0)])]
+;;                                           (c/multi [(c/list-c []
+;;                                                               (c/coll-of-c (c/sum-c [c/list-constraint
+;;                                                                                      c/vect-constraint])))
+;;                                                     (c/param 'fn-arity263 1)]))))
+;;          'fn-arity263
+;;          [(c/vect-c [(c/SymbolConstraint 'a)
+;;                      (c/SymbolConstraint 'b)])
+;;           (c/list-c [(c/vect-c [(c/SymbolConstraint 'x)
+;;                                 (c/SymbolConstraint 'y)])
+;;                      (c/vect-c [(c/IntegerConstraint 9 2147483647 -2147483648)
+;;                                 (c/IntegerConstraint 2 2147483647 -2147483648)])])])
+;;         '_
+;;         _FILE_ _LINE_))
 
 (def _
   (test (c/intersect (c/multi 
@@ -863,7 +876,7 @@
 
 (def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/list-c []
                                                                    (c/coll-of-c c/int-constraint)))))
-             (c/list-c [] (c/coll-of-c c/int-constraint))
+             (c/coll-of-c c/int-constraint)
              _FILE_ _LINE_))
 
 (def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/coll-of-c c/int-constraint))))
@@ -907,26 +920,33 @@
                                                    (c/coll-of-c c/seq-constraint))]))
              (c/multi [(c/type-op c/concat-op
                                   (c/param 'arity-1 0))
-                       c/seq-constraint])
+                       (c/coll-of-c c/top-type)])
              _FILE_ _LINE_))
 
-;; TODO: bring these back in when you want to really test apply
-;; (def _ (test (reify-c (c/type-op c/apply-op
-;;                                  (c/fn-c []
-;;                                          {2 (c/fn-arity 'fn-arity13
-;;                                                         (c/list-c [(c/multi [(c/param 'fn-arity13 0)
-;;                                                                              c/int-constraint])
-;;                                                                    (c/multi [(c/param 'fn-arity13 1)
-;;                                                                              c/int-constraint])])
-;;                                                         c/int-constraint)})
-;;                                  (c/multi [(c/list-c [(c/IntegerConstraint 9)
-;;                                                       (c/IntegerConstraint 7)])
-;;                                            (c/coll-of-c c/int-constraint)
-;;                                            c/seq-constraint]))
-;;                       'nada
-;;                       [])
-;;              c/int-constraint
-;;              _FILE_ _LINE_))
+(def _ (test (c/contents-constraint (c/sum-c [maybe-str
+                                              maybe-int
+                                              maybe-sym]))
+             (c/sum-c [(c/StrBuffConstraint "buffr")
+                       c/int-constraint
+                       (c/SymbolConstraint 'this-sym)])
+             _FILE_ _LINE_))
+
+(def _ (test (reify-c (c/type-op c/apply-op
+                                 (c/fn-c []
+                                         {2 (c/fn-arity 'fn-arity13
+                                                        (c/list-c [(c/multi [(c/param 'fn-arity13 0)
+                                                                             c/int-constraint])
+                                                                   (c/multi [(c/param 'fn-arity13 1)
+                                                                             c/int-constraint])])
+                                                        c/int-constraint)})
+                                 (c/multi [(c/list-c [(c/IntegerConstraint 9)
+                                                      (c/IntegerConstraint 7)])
+                                           (c/coll-of-c c/int-constraint)
+                                           c/seq-constraint]))
+                      'nada
+                      [])
+             c/int-constraint
+             _FILE_ _LINE_))
 
 ;; (def _ (test (reify-c
 ;;               (c/type-op c/apply-op
