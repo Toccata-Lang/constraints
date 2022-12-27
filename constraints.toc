@@ -401,54 +401,59 @@
 
           (str " " st))))
 
-(deftype HashMapConstraint [type-num kv-pairs keys-c vals-c path sym var]
+(deftype HashMapConstraint [type-num path sym var]
   (assert (instance? (list-of Vector) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(c/hashmap-c " (str type-num) " " (str kv-pairs) " "
-          (str keys-c) " " (str vals-c) ")"))
+    (list "(c/hashmap-c " (str type-num)
+          ;; " " (str kv-pairs) " " (str keys-c) " " (str vals-c)
+          ")"))
 
   Eq
   (=* [x y]
     (and (instance? HashMapConstraint y)
          (= type-num (.type-num y))
-         (= kv-pairs (.kv-pairs y))
-         (= keys-c (.keys-c y))
-         (= vals-c (.vals-c y))
+         ;; (= kv-pairs (.kv-pairs y))
+         ;; (= keys-c (.keys-c y))
+         ;; (= vals-c (.vals-c y))
          (maybe x)))
 
   Container
   (map [c f]
-    (-> c
-        (.keys-c (f (.keys-c c)))
-        (.vals-c (f (.vals-c c)))
-        (.kv-pairs (-> (.kv-pairs c)
-                       vec
-                       (reduce {} (fn [m [k v]]
-                                    (assoc m
-                                      (f k) (f v))))))))
+    c
+    ;; (-> c
+    ;;     (.keys-c (f (.keys-c c)))
+    ;;     (.vals-c (f (.vals-c c)))
+    ;;     (.kv-pairs (-> (.kv-pairs c)
+    ;;                    vec
+    ;;                    (reduce {} (fn [m [k v]]
+    ;;                                 (assoc m
+    ;;                                   (f k) (f v)))))))
+    )
 
   (map [c f embed]
-    (for [new-keys (f (.keys-c c))
-          new-vals (f (.vals-c c))
-          new-kv (-> (.kv-pairs c)
-                     vec
-                     (map (fn [[key-c val-c]]
-                            (for [new-key (f key-c)
-                                  new-val (f val-c)]
-                              [new-key new-val]))
-                          embed))]
-      (-> c
-          (.keys-c new-keys)
-          (.vals-c new-vals)
-          (.kv-pairs (reduce new-kv {} (fn [m [k v]]
-                                         (assoc m k v))))))))
+    (embed c)
+    ;; (for [new-keys (f (.keys-c c))
+    ;;       new-vals (f (.vals-c c))
+    ;;       new-kv (-> (.kv-pairs c)
+    ;;                  vec
+    ;;                  (map (fn [[key-c val-c]]
+    ;;                         (for [new-key (f key-c)
+    ;;                               new-val (f val-c)]
+    ;;                           [new-key new-val]))
+    ;;                       embed))]
+    ;;   (-> c
+    ;;       (.keys-c new-keys)
+    ;;       (.vals-c new-vals)
+    ;;       (.kv-pairs (reduce new-kv {} (fn [m [k v]]
+    ;;                                      (assoc m k v))))))
+    ))
 
-(defn hashmap-c [type-num kv-pairs keys-c vals-c]
-  (HashMapConstraint type-num kv-pairs keys-c vals-c empty-list no-symbol ""))
+(defn hashmap-c [type-num]
+  (HashMapConstraint type-num empty-list no-symbol ""))
 
 (deftype fn-arity [arity-id param-consts result-const]
   (assert (instance? OptionalSym arity-id))
@@ -1049,9 +1054,9 @@
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
 (def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
                                             empty-list no-symbol ""))
-(def hash-coll-constraint (HashMapConstraint HashCollisionNodeType {} top-type top-type empty-list no-symbol ""))
-(def array-constraint (HashMapConstraint ArrayNodeType {} top-type top-type empty-list no-symbol ""))
-(def bitmap-constraint (HashMapConstraint BitmapIndexedType {} top-type top-type empty-list no-symbol ""))
+(def hash-coll-constraint (HashMapConstraint HashCollisionNodeType empty-list no-symbol ""))
+(def array-constraint (HashMapConstraint ArrayNodeType empty-list no-symbol ""))
+(def bitmap-constraint (HashMapConstraint BitmapIndexedType empty-list no-symbol ""))
 (def hashmap-constraint (SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
                                          empty-list no-symbol ""))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
@@ -2892,7 +2897,68 @@
 
                   (multi [x y])))))
 
-;; (extend-type HashMapConstraint)
+(def hashmap-names {BitmapIndexedType 'BitmapIndexedNode
+                    ArrayNodeType 'ArrayNode
+                    HashCollisionNodeType 'HashCollisionNode})
+
+(extend-type HashMapConstraint
+  Constraint
+  (type-num [c] (.type-num c))
+
+  (type-sym [c]
+    (either (get hashmap-names (.type-num c))
+            'HashMap))
+
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons [(str (type-sym x) " from:") ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (set-to [x fld-path fld-c]
+    (print-err "HashMapConstraint needs to be finished" _LINE_)
+    (abort))
+
+  (get-from [x idx]
+    (print-err "HashMapConstraint needs to be finished" _LINE_)
+    (abort))
+
+  (contents-constraint [c]
+    (print-err "HashMapConstraint needs to be finished" _LINE_)
+    (abort))
+
+  (derive-const [op]
+    (print-err "HashMapConstraint needs to be finished" _LINE_)
+    (abort)
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (maybe c))
+
+  (trim-const [c]
+    c)
+
+  (intersect [x y]
+    (cond (= x y)
+          x
+
+          (or (instance? ParamConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y)
+              (instance? SumConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y)))
+              (instance? TypeOp y))
+          (intersect y x)
+
+          (NoValues [x y]))))
 
 
 ;; misc
