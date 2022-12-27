@@ -948,39 +948,33 @@
              c/int-constraint
              _FILE_ _LINE_))
 
-;; (def _ (test (reify-c
-;;               (c/type-op c/apply-op
-;;                          (c/fn-c []
-;;                                  {1 (c/fn-arity 'fn-arity12
-;;                                                 (c/list-c [(c/multi
-;;                                                             [(c/param 'fn-arity12 0)
-;;                                                              (c/list-c []
-;;                                                                        (c/coll-of-c
-;;                                                                         (c/sum-c [c/list-constraint
-;;                                                                                   c/vect-constraint])))])])
-;;                                                 ;; returns
-;;                                                 (c/multi [(c/type-op c/concat-op
-;;                                                                      (c/param 'fn-arity12 0))
-;;                                                           c/seq-constraint]))})
-;;                          (c/sum-type [(c/list-c [(c/list-c [(c/IntegerConstraint 9)
-;;                                                             (c/IntegerConstraint 7)])
-;;                                                  (c/list-c [(c/IntegerConstraint 1)
-;;                                                             (c/IntegerConstraint 3)])])
-;;                                       (c/list-c [(c/list-c [(c/IntegerConstraint 3)
-;;                                                             (c/IntegerConstraint 2)])
-;;                                                  (c/list-c [(c/IntegerConstraint 9)
-;;                                                             (c/IntegerConstraint 8)])])]))
-;;                       'nada
-;;                       [])
-;;              '_
-;;              _FILE_ _LINE_))
-
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]
          (let [c12 (test-intersect c1 c2)
                c23 (test-intersect c2 c3)]
            (test-intersect c12 c23))))
+
+;; (def _ (test (reify-c
+;;               (c/vect-c []
+;;                         (c/coll-of-c (c/type-op c/inner-type-of-op
+;;                                                 (c/type-op c/call-value-op
+;;                                                            (c/param 'fn-arity298 1)
+;;                                                            [(c/type-op c/inner-type-of-op
+;;                                                                        (c/param 'fn-arity298 0))]))))
+;;               'fn-arity298
+;;               [(c/vect-c [(c/IntegerConstraint 1 2147483647 -2147483648)
+;;                           (c/IntegerConstraint 4 2147483647 -2147483648)
+;;                           (c/IntegerConstraint 5 2147483647 -2147483648)])
+;;                (c/fn-c []
+;;                        {1 (c/fn-arity 'fn-arity306
+;;                                       (c/list-c [(c/multi [c/int-constraint
+;;                                                            (c/param 'fn-arity306 0)])])
+;;                                       ;; returns
+;;                                       (c/vect-c [c/int-constraint
+;;                                                  c/int-constraint]))})])
+;;              '_
+;;              _FILE_ _LINE_))
 
 ;; (def NoTest (any-of c/ParamConstraint))
 
@@ -993,20 +987,3 @@
 
 (main [_]
   (print-err 'testing-constraints))
-
-;; TODO: come back to this later
-;; (def _ (test (c/derive (c/ComputedConstraint
-;;                         [(c/ComputedConstraint
-;;                           [(c/ParamConstraint 'fn-arity78 0 empty-list 'f "")
-;;                            (c/TypeOp c/call-value
-;;                             [(c/ParamConstraint 'fn-arity78 1 empty-list 'y "")] empty-list c/no-symbol "")]
-;;                           empty-list 'f "")
-;;                          c/inner-type-of]
-;;                         empty-list 'result "")
-
-;;                        c/top-type)
-;;              (c/ComputedConstraint
-;;               [(c/TypeOp c/call-value [c/top-type] empty-list c/no-symbol "")
-;;                c/inner-type-of]
-;;               empty-list c/no-symbol "")
-;;              _FILE_ _LINE_))

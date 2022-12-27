@@ -408,15 +408,13 @@
 
   Stringable
   (string-list [_]
-    (list "(c/HashMapConstraint " (str type-num) " " (str kv-pairs) " "
-          (str keys-c) " " (str vals-c) " "
-          "empty-list"
-          ;; (str (cons 'list path))
-           (sym-str sym) " \"" (str var) "\")" ))
+    (list "(c/hashmap-c " (str type-num) " " (str kv-pairs) " "
+          (str keys-c) " " (str vals-c) ")"))
 
   Eq
   (=* [x y]
     (and (instance? HashMapConstraint y)
+         (= type-num (.type-num y))
          (= kv-pairs (.kv-pairs y))
          (= keys-c (.keys-c y))
          (= vals-c (.vals-c y))
@@ -449,6 +447,8 @@
           (.kv-pairs (reduce new-kv {} (fn [m [k v]]
                                          (assoc m k v))))))))
 
+(defn hashmap-c [type-num kv-pairs keys-c vals-c]
+  (HashMapConstraint type-num kv-pairs keys-c vals-c empty-list no-symbol ""))
 
 (deftype fn-arity [arity-id param-consts result-const]
   (assert (instance? OptionalSym arity-id))
@@ -1087,13 +1087,14 @@
   (either (or (flat-map (every const-cs (partial = bottom-type))
                         (fn [_]
                           (first const-cs)))
-              (let [const-cs (remove const-cs (partial = bottom-type))
-                    const-cs (reduce const-cs []
-                                     (fn [cs c]
-                                       (cond (some cs (partial = c))
-                                             cs
+              (let [const-cs (-> const-cs
+                                 (remove (partial = bottom-type))
+                                 (reduce []
+                                         (fn [cs c]
+                                           (cond (some cs (partial = c))
+                                                 cs
 
-                                             (conj cs c))))]
+                                                 (conj cs c)))))]
                 (or (and (= 1 (count const-cs))
                          (first const-cs))
                     (and (empty? const-cs)
