@@ -537,6 +537,14 @@
                             (list "(c/SubStrConstraint " (str static) ")")))
                     long-form)
 
+            (= type-number PromiseType)
+            (either (for [contents (get fields 'contents)]
+                      (cond (= top-type contents)
+                            (list "c/promise-constraint")
+
+                            (list "(c/PromiseConstraint " (str contents) ")")))
+                    long-form)
+
             (= type-number BitmapIndexedType)
             (cond (and (empty? field-consts)
                        (empty? fields))
