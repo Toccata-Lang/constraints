@@ -2231,7 +2231,8 @@
                        (fn [_]
                          (str-inner c)))
                   (map (or (= AgentType type-number)
-                           (= PromiseType type-number))
+                           (= PromiseType type-number)
+                           (= FutureType type-number))
                        (fn [_]
                          top-type))
                   (get-in c [.fields 'contents]))
@@ -2309,7 +2310,8 @@
 
                                        (multi [x (.contents y intersected)])))))
                         (and (or (= AgentType type-number)
-                                 (= PromiseType type-number))
+                                 (= PromiseType type-number)
+                                 (= FutureType type-number))
                              (maybe x))
                         (map (= UnknownType type-number)
                              (fn [_]
