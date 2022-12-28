@@ -538,12 +538,10 @@
                     long-form)
 
             (= type-number PromiseType)
-            (either (for [contents (get fields 'contents)]
-                      (cond (= top-type contents)
-                            (list "c/promise-constraint")
+            (list "c/promise-constraint")
 
-                            (list "(c/PromiseConstraint " (str contents) ")")))
-                    long-form)
+            (= type-number AgentType)
+            (list "c/agent-constraint")
 
             (= type-number BitmapIndexedType)
             (cond (and (empty? field-consts)
@@ -963,16 +961,16 @@
    (ReifiedConstraint MaybeType 'Maybe {} {'contents contents} empty-fn-constraint path sym var)))
 
 (defn PromiseConstraint
-  ([contents]
-   (PromiseConstraint contents empty-list no-symbol ""))
-  ([contents path sym var]
-   (ReifiedConstraint PromiseType 'Promise {} {'contents contents} empty-fn-constraint path sym var)))
+  ([]
+   (ReifiedConstraint PromiseType 'Promise {} {} empty-fn-constraint empty-list no-symbol ""))
+  ([path sym var]
+   (ReifiedConstraint PromiseType 'Promise {} {} empty-fn-constraint path sym var)))
 
 (defn AgentConstraint
-  ([contents]
-   (AgentConstraint contents empty-list no-symbol ""))
-  ([contents path sym var]
-   (ReifiedConstraint AgentType 'Agent {} {'contents contents} empty-fn-constraint path sym var)))
+  ([]
+   (ReifiedConstraint AgentType 'Agent {} {} empty-fn-constraint empty-list no-symbol ""))
+  ([path sym var]
+   (ReifiedConstraint AgentType 'Agent {} {} empty-fn-constraint path sym var)))
 
 (defn StrBuffConstraint
   ([static-value]
@@ -1049,8 +1047,8 @@
                                          {(Field (symbol ".set-map")) hashmap-constraint}
                                          {(Field (symbol ".set-map")) hashmap-constraint}
                                          (.arities fn-constraint {}) empty-list no-symbol ""))
-(def agent-constraint (AgentConstraint top-type empty-list no-symbol ""))
-(def promise-constraint (PromiseConstraint top-type empty-list no-symbol ""))
+(def agent-constraint (AgentConstraint))
+(def promise-constraint (PromiseConstraint))
 (def future-constraint (FutureConstraint empty-list no-symbol ""))
 (def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
 (def arity-constraint (ReifiedConstraint FnArityType 'FnArity {} {}
@@ -2198,8 +2196,8 @@
                    OpaqueType (fn [x y] (NoValues [x y]))
                    FutureType (fn [x y] (NoValues [x y]))
                    MaybeType intersect-simple-container
-                   PromiseType intersect-simple-container
-                   AgentType intersect-simple-container})
+                   PromiseType (fn [x _] x)
+                   AgentType (fn [x _] x)})
 
 (defn intersect-reified [x y]
   (either (map (get intersectors (type-num x))
@@ -2227,12 +2225,17 @@
 (extend-type ReifiedConstraint
   Constraint
   (contents-constraint [c]
-    (either (or (map (or (= StringBufferType (type-num c))
-                         (= SubStringType (type-num c)))
-                     (fn [_]
-                       (str-inner c)))
-                (get-in c [.fields 'contents]))
-            (NoValues [c not-container])))
+    (let [type-number (type-num c)]
+      (either (or (map (or (= StringBufferType type-number)
+                           (= SubStringType type-number))
+                       (fn [_]
+                         (str-inner c)))
+                  (map (or (= AgentType type-number)
+                           (= PromiseType type-number))
+                       (fn [_]
+                         top-type))
+                  (get-in c [.fields 'contents]))
+              (NoValues [c not-container]))))
 
   (type-sym [c]
     (.type-symbol c))
@@ -2284,63 +2287,67 @@
         (pred (.invoke-fn c))))
 
   (intersect [x y]
-    (cond (=* x y)
-          x
+    (let [type-number (type-num x)]
+      (cond (=* x y)
+            x
 
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? MultiConstraint y)
-              (instance? SumConstraint y)
-              (instance? TypeOp y))
-          (intersect y x)
+            (or (instance? ParamConstraint y)
+                (instance? AllValues y)
+                (instance? NoValues y)
+                (instance? MultiConstraint y)
+                (instance? SumConstraint y)
+                (instance? TypeOp y))
+            (intersect y x)
 
-          (instance? CollectionOf y)
-          (either (or (map (or (= StringBufferType (type-num x))
-                               (= SubStringType (type-num x)))
-                           (fn [_]
-                             (let [intersected (intersect (str-inner x) (.contents y))]
-                               (cond (= intersected bottom-type)
-                                     (NoValues [x y])
+            (instance? CollectionOf y)
+            (either (or (map (or (= StringBufferType type-number)
+                                 (= SubStringType type-number))
+                             (fn [_]
+                               (let [intersected (intersect (str-inner x) (.contents y))]
+                                 (cond (= intersected bottom-type)
+                                       (NoValues [x y])
 
-                                     (multi [x (.contents y intersected)])))))
-                      (map (= UnknownType (type-num x))
-                           (fn [_]
-                             (assoc-in x [.fields 'contents]
-                                       (intersect (get y .contents)
-                                                  (either (get-in x [.fields 'contents])
-                                                          top-type)))))
-                      (for [cnts-x (or (get-in x [.fields 'contents])
-                                       (maybe (NoValues [x not-container])))
-                            cnts-y (get y .contents)]
-                        (let [new-cnts (intersect cnts-x cnts-y)]
-                          (either (= bottom-type new-cnts)
-                                  (assoc-in x [.fields 'contents] new-cnts)))))
+                                       (multi [x (.contents y intersected)])))))
+                        (and (or (= AgentType type-number)
+                                 (= PromiseType type-number))
+                             (maybe x))
+                        (map (= UnknownType type-number)
+                             (fn [_]
+                               (assoc-in x [.fields 'contents]
+                                         (intersect (get y .contents)
+                                                    (either (get-in x [.fields 'contents])
+                                                            top-type)))))
+                        (for [cnts-x (or (get-in x [.fields 'contents])
+                                         (maybe (NoValues [x not-container])))
+                              cnts-y (get y .contents)]
+                          (let [new-cnts (intersect cnts-x cnts-y)]
+                            (either (= bottom-type new-cnts)
+                                    (assoc-in x [.fields 'contents] new-cnts)))))
+
+                    (NoValues [x y]))
+
+            (instance? FnConstraint y)
+            (let [new-invoke (intersect-fns (.invoke-fn x) y)]
+              (either (= bottom-type new-invoke)
+                      (.invoke-fn x new-invoke)))
+
+            (instance? ReifiedConstraint y)
+            (cond (= type-number (type-num y))
+                  (intersect-reified x y)
+
+                  (or (= UnknownType (type-num y))
+                      (= UnknownType type-number))
+                  (multi [x y])
 
                   (NoValues [x y]))
 
-          (instance? FnConstraint y)
-          (let [new-invoke (intersect-fns (.invoke-fn x) y)]
-            (either (= bottom-type new-invoke)
-                    (.invoke-fn x new-invoke)))
-
-          (instance? ReifiedConstraint y)
-          (cond (= (type-num x) (type-num y))
-                (intersect-reified x y)
-
-                (or (= UnknownType (.type-number y))
-                    (= UnknownType (.type-number x)))
-                (multi [x y])
-
-                (NoValues [x y]))
-
-          (either (and (= UnknownType (.type-number x))
-                       (or (map (get-in x [.fields 'contents])
-                                (fn [cnts]
-                                  (intersect (coll-of-c cnts)
-                                             y)))
-                           (maybe y)))
-                  (NoValues [x y])))))
+            (either (and (= UnknownType type-number)
+                         (or (map (get-in x [.fields 'contents])
+                                  (fn [cnts]
+                                    (intersect (coll-of-c cnts)
+                                               y)))
+                             (maybe y)))
+                    (NoValues [x y]))))))
 
 (defn do-concat [base args loc-path]
   (let [new-base (trim (intersect base (coll-of-c (sum-c [string-constraint
