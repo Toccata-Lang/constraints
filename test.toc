@@ -19,11 +19,6 @@
 (def str-c (c/StrBuffConstraint "buffr" empty-list c/no-symbol ""))
 (def coll-of-str (c/CollectionOf c/string-constraint empty-list c/no-symbol ""))
 
-(def hash-coll-constraint (c/HashMapConstraint c/HashCollisionNodeType {}
-                                               c/top-type c/top-type empty-list c/no-symbol ""))
-(def array-constraint (c/HashMapConstraint c/ArrayNodeType {} c/top-type c/top-type empty-list c/no-symbol ""))
-(def bitmap-constraint (c/HashMapConstraint c/BitmapIndexedType {} c/top-type c/top-type empty-list c/no-symbol ""))
-
 (def pos-int (c/IntegerConstraint c/no-int int-max 1 empty-list c/no-symbol ""))
 (def neg-int (c/IntegerConstraint c/no-int -1 int-min empty-list c/no-symbol ""))
 (def pos-1 (c/IntegerConstraint 1 int-max int-min empty-list c/no-symbol ""))
