@@ -1133,7 +1133,6 @@
   (type-num [c]
     (assert-result r (instance? Integer r))
 
-    ;; TODO: must implement this for TypeOp
     UnknownType)
 
   (type-sym [c]
@@ -1857,7 +1856,7 @@
     (trim c))
 
   (type-num [c]
-    (let [new-c (derive c top-type)]
+    (let [new-c (trim (derive c top-type))]
       (type-num new-c)))
 
   (derive-const [op]
@@ -2107,9 +2106,9 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
-                 c)))
+      (let [derived (map op (fn [contents]
+                              (contents top-type)))]
+        (intersect derived c))))
 
   (find-constraint [c pred]
     (some (vals (.arities c)) pred))
@@ -2774,6 +2773,9 @@
                (partial .base tc))))
 
   Constraint
+  (type-num [c]
+    (type-num (trim (derive c top-type))))
+
   (trim-const [c]
     (reify-const c no-symbol []))
 
@@ -2791,10 +2793,7 @@
     (fn [c]
       (let [op (map op (fn [f]
                          (f top-type)))]
-        (cond (= c top-type)
-              c
-
-              (intersect c op)))))
+        (intersect c op))))
 
   (reify-const [c arity-id arg-cs]
     (let [base (.base c)
@@ -2866,7 +2865,9 @@
   Constraint
   (derive-const [op]
     (fn [c]
-      (intersect c (.default-impl op))))
+      (let [derived (map (.default-impl op) (fn [f]
+                                              (f top-type)))]
+        (intersect c derived))))
 
   (show-full [c]
     (comp (list (str "prototype " (.fn-sym c)))

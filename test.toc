@@ -409,28 +409,6 @@
                           c/int-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/AgentConstraint c/sym-constraint empty-list c/no-symbol "")
-                          (c/AgentConstraint c/int-constraint empty-list c/no-symbol ""))
-             (c/NoValues [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
-                          c/int-constraint])
-             _FILE_ _LINE_))
-
-(def _ (test (c/intersect (c/PromiseConstraint c/sym-constraint empty-list c/no-symbol "")
-                          (c/PromiseConstraint c/int-constraint empty-list c/no-symbol ""))
-             (c/NoValues [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
-                          c/int-constraint])
-             _FILE_ _LINE_))
-
-(def _ (test (c/intersect coll-of-int
-                          (c/PromiseConstraint pos-int empty-list c/no-symbol ""))
-             (c/PromiseConstraint pos-int empty-list c/no-symbol "")
-             _FILE_ _LINE_))
-
-(def _ (test (c/intersect (c/PromiseConstraint param empty-list c/no-symbol "")
-                          (c/PromiseConstraint c/top-type empty-list c/no-symbol ""))
-             (c/PromiseConstraint param empty-list c/no-symbol "")
-             _FILE_ _LINE_))
-
 (def _ (test (c/intersect c/fn-constraint
                           (c/FnConstraint [1]
                                           {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
@@ -950,24 +928,178 @@
                c23 (test-intersect c2 c3)]
            (test-intersect c12 c23))))
 
-;; (def _ (test (reify-c
-;;               (c/vect-c []
-;;                         (c/coll-of-c (c/type-op c/inner-type-of-op
-;;                                                 (c/type-op c/call-value-op
-;;                                                            (c/param 'fn-arity298 1)
-;;                                                            [(c/type-op c/inner-type-of-op
-;;                                                                        (c/param 'fn-arity298 0))]))))
-;;               'fn-arity298
-;;               [(c/vect-c [(c/IntegerConstraint 1 2147483647 -2147483648)
-;;                           (c/IntegerConstraint 4 2147483647 -2147483648)
-;;                           (c/IntegerConstraint 5 2147483647 -2147483648)])
+;; (def _ (test (c/do-call-value
+;;               (c/ProtoImpls 'map
+;;                             (c/fn-c []
+;;                                     {2 (c/fn-arity 'map
+;;                                                    (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                 (c/param 'map 1)
+;;                                                                                                 0))
+;;                                                                         (c/param 'map 0)])
+;;                                                               (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                         (c/param 'map 1)])])
+;;                                                    ;; returns
+;;                                                    c/top-type)
+;;                                      3 (c/fn-arity 'map
+;;                                                    (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                 (c/param 'map 1)
+;;                                                                                                 0))
+;;                                                                         (c/param 'map 0)])
+;;                                                               (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                         (c/param 'map 1)])
+;;                                                               (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                         (c/param 'map 2)])])
+;;                                                    ;; returns
+;;                                                    c/top-type)})
+
+;;                             {6 (c/fn-c []
+;;                                        {2 (c/fn-arity 'fn-arity172
+;;                                                       (c/list-c [(c/multi [(c/list-c []
+;;                                                                                      (c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                              (c/param 'fn-arity172 1)
+;;                                                                                                              0)))
+;;                                                                            (c/param 'fn-arity172 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity172 1)])])
+;;                                                       ;; returns
+;;                                                       (c/list-c []
+;;                                                                 (c/coll-of-c (c/type-op c/call-value-op
+;;                                                                                         (c/param 'fn-arity172 1)
+;;                                                                                         [(c/multi [(c/type-op c/arg-of-op
+;;                                                                                                               (c/param 'fn-arity172 1)
+;;                                                                                                               0)
+;;                                                                                                    (c/type-op c/inner-type-of-op
+;;                                                                                                               (c/param 'fn-arity172 0))])])))), 3 (c/fn-arity 'fn-arity173
+;;                                                       (c/list-c [(c/multi [(c/list-c []
+;;                                                                                      (c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                              (c/param 'fn-arity173 1)
+;;                                                                                                              0)))
+;;                                                                            (c/param 'fn-arity173 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity173 1)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity173 2)])])
+;;                                                       ;; returns
+;;                                                       c/top-type)}), 8 (c/fn-c []
+;;                                        {2 (c/fn-arity 'fn-arity318
+;;                                                       (c/list-c [(c/multi [(c/vect-c []
+;;                                                                                      (c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                              (c/param 'fn-arity318 1)
+;;                                                                                                              0)))
+;;                                                                            (c/param 'fn-arity318 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity318 1)])])
+;;                                                       ;; returns
+;;                                                       (c/sum-c [(c/vect-c []
+;;                                                                           (c/coll-of-c (c/type-op c/call-value-op
+;;                                                                                                   (c/param 'fn-arity318 1)
+;;                                                                                                   [(c/multi [(c/type-op c/arg-of-op
+;;                                                                                                                         (c/param 'fn-arity318 1)
+;;                                                                                                                         0)
+;;                                                                                                              (c/type-op c/inner-type-of-op
+;;                                                                                                                         (c/param 'fn-arity318 0))])])))
+;;                                                                 c/empty-vect-constraint])), 3 (c/fn-arity 'fn-arity320
+;;                                                       (c/list-c [(c/multi [(c/vect-c []
+;;                                                                                      (c/coll-of-c (c/type-op c/arg-of-op
+;;                                                                                                              (c/param 'fn-arity320 1)
+;;                                                                                                              0)))
+;;                                                                            (c/param 'fn-arity320 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity320 1)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity320 2)])])
+;;                                                       ;; returns
+;;                                                       c/top-type)}), 15 (c/fn-c []
+;;                                        {2 (c/fn-arity 'fn-arity354
+;;                                                       (c/list-c [(c/multi [c/promise-constraint
+;;                                                                            (c/param 'fn-arity354 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity354 1)])])
+;;                                                       ;; returns
+;;                                                       c/promise-constraint)}), 16 (c/fn-c []
+;;                                        {2 (c/fn-arity 'fn-arity373
+;;                                                       (c/list-c [(c/multi [(c/ReifiedConstraint 16 (symbol "Future")
+;;                                                                                                 {}
+;;                                                                                                 {}
+;;                                                                                                 (c/fn-c []
+;;                                                                                                         {}) empty-list c/no-symbol "")
+;;                                                                            (c/param 'fn-arity373 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity373 1)])])
+;;                                                       ;; returns
+;;                                                       (c/ReifiedConstraint 16 (symbol "Future")
+;;                                                                            {}
+;;                                                                            {}
+;;                                                                            (c/fn-c []
+;;                                                                                    {}) empty-list c/no-symbol ""))}), 7 (c/fn-c []
+;;                                        {2 (c/fn-arity 'fn-arity140
+;;                                                       (c/list-c [(c/multi [(c/MaybeConstraint (c/type-op c/arg-of-op
+;;                                                                                                          (c/param 'fn-arity140 1)
+;;                                                                                                          0))
+;;                                                                            (c/param 'fn-arity140 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity140 1)])])
+;;                                                       ;; returns
+;;                                                       (c/MaybeConstraint (c/type-op c/call-value-op
+;;                                                                                     (c/param 'fn-arity140 1)
+;;                                                                                     [(c/multi [(c/type-op c/arg-of-op
+;;                                                                                                           (c/param 'fn-arity140 1)
+;;                                                                                                           0)
+;;                                                                                                (c/type-op c/inner-type-of-op
+;;                                                                                                           (c/param 'fn-arity140 0))])]))), 3 (c/fn-arity 'fn-arity141
+;;                                                       (c/list-c [(c/multi [(c/MaybeConstraint (c/type-op c/arg-of-op
+;;                                                                                                          (c/param 'fn-arity141 1)
+;;                                                                                                          0))
+;;                                                                            (c/param 'fn-arity141 0)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity141 1)])
+;;                                                                  (c/multi [(.required-arities c/fn-constraint [1])
+;;                                                                            (c/param 'fn-arity141 2)])])
+;;                                                       ;; returns
+;;                                                       c/top-type)})})
+;;               [(c/type-op c/call-value-op
+;;                           (c/ProtoImpls '<*
+;;                                         (c/fn-c []
+;;                                                 {2 (c/fn-arity '<*
+;;                                                                (c/list-c [(c/param '<* 0)
+;;                                                                           (c/param '<* 1)])
+;;                                                                ;; returns
+;;                                                                (c/MaybeConstraint (c/param '<* 0)))})
+
+;;                                         {2 (c/fn-c []
+;;                                                    {2 (c/fn-arity 'fn-arity236
+;;                                                                   (c/list-c [(c/multi [c/strbuff-constraint
+;;                                                                                        (c/param 'fn-arity236 0)])
+;;                                                                              (c/param 'fn-arity236 1)])
+;;                                                                   ;; returns
+;;                                                                   (c/MaybeConstraint (c/param 'fn-arity236 0)))}), 5 (c/fn-c []
+;;                                                    {2 (c/fn-arity 'fn-arity237
+;;                                                                   (c/list-c [(c/multi [c/substr-constraint
+;;                                                                                        (c/param 'fn-arity237 0)])
+;;                                                                              (c/param 'fn-arity237 1)])
+;;                                                                   ;; returns
+;;                                                                   (c/MaybeConstraint (c/param 'fn-arity237 0)))}), 1 (c/fn-c []
+;;                                                    {2 (c/fn-arity 'fn-arity117
+;;                                                                   (c/list-c [(c/multi [c/int-constraint
+;;                                                                                        (c/param 'fn-arity117 0)])
+;;                                                                              (c/param 'fn-arity117 1)])
+;;                                                                   ;; returns
+;;                                                                   (c/MaybeConstraint (c/param 'fn-arity117 0)))}), 10 (c/fn-c []
+;;                                                    {2 (c/fn-arity 'fn-arity191
+;;                                                                   (c/list-c [(c/multi [c/sym-constraint
+;;                                                                                        (c/param 'fn-arity191 0)])
+;;                                                                              (c/param 'fn-arity191 1)])
+;;                                                                   ;; returns
+;;                                                                   (c/MaybeConstraint (c/multi [c/sym-constraint
+;;                                                                                                (c/param 'fn-arity191 0)])))})})
+;;                           [(c/param 'fn-arity401 1)
+;;                            (c/param 'fn-arity401 0)])
 ;;                (c/fn-c []
-;;                        {1 (c/fn-arity 'fn-arity306
-;;                                       (c/list-c [(c/multi [c/int-constraint
-;;                                                            (c/param 'fn-arity306 0)])])
+;;                        {1 (c/fn-arity 'fn-arity402
+;;                                       (c/list-c [(c/param 'fn-arity402 0)])
 ;;                                       ;; returns
-;;                                       (c/vect-c [c/int-constraint
-;;                                                  c/int-constraint]))})])
+;;                                       (c/param 'fn-arity401 0))})]
+;;               empty-list)
 ;;              '_
 ;;              _FILE_ _LINE_))
 
