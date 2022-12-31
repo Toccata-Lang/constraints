@@ -3,19 +3,6 @@
 
 (add-ns c (module "constraints.toc"))
 
-(def _ (do
-         (print-err (c/is-bottom (c/ReifiedConstraint 11 c/no-symbol
-                                                      {(c/Field (symbol "field")) c/top-type}
-                                                      {(c/Field (symbol "field")) (c/NoValues [c/int-constraint
-                                                                                               c/sym-constraint])}
-                                                      (c/fn-c []
-                                                              {}) empty-list c/no-symbol "")))
-         ;; (abort)
-         ))
-
-(def _ (print-err 'sc _LINE_ (c/some-constraint (partial instance? c/ParamConstraint)
-                                                (c/param 'fn-arity0 0))))
-
 (def coll-of-int (c/CollectionOf c/int-constraint empty-list c/no-symbol ""))
 (def int-list (c/ListConstraint [] coll-of-int empty-list c/no-symbol ""))
 (def int-list-1 (c/ListConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol ""))

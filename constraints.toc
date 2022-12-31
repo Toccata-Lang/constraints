@@ -1169,6 +1169,11 @@
   (found-constraint [c]
     nothing)
 
+  (find-param [c]
+    (assert-result t (instance? RecurseNext t))
+
+    (RecurseWith c))
+
   ;; get only the fixeditems from a list or vector
   (get-items [c]
     (assert-result r (instance? Vector r))
@@ -1287,10 +1292,11 @@
 (defn some-constraint [pred c]
   (elgot (fn [c]
            (let [found (pred c)]
-             (cond found
-                   (RecurseFinal found)
+             (either (instance? RecurseNext found)
+                     (cond found
+                           (RecurseFinal found)
 
-                   (RecurseWith c))))
+                           (RecurseWith c)))))
          found-constraint
          c))
 
@@ -1963,6 +1969,9 @@
     (fn [c]
       c))
 
+  (find-param [c]
+    (RecurseFinal (maybe c)))
+
   (intersect [x y]
     (cond (or (=* x y)
               (and (instance? ReifiedConstraint y)
@@ -2148,6 +2157,9 @@
 
   (found-constraint [c]
     (some (vals (.arities c)) identity))
+
+  (find-param [c]
+    (RecurseFinal nothing))
 
   (intersect [x y]
     (cond (=* x y)
@@ -2404,7 +2416,7 @@
                          (.type-symbol (symbol "Can not concatenate contents")))
                      base])
 
-          (some-constraint (partial instance? ParamConstraint) base)
+          (some-constraint find-param base)
           (TypeOp concat-op base no-args no-symbol loc-path)
 
           (let [tail-seq (cond (= no-tail (get-tail new-base))
@@ -2498,23 +2510,22 @@
                                     (replace-path loc-path)
                                     (.type-symbol (symbol "Insufficient number of arguments.")))]))
 
-        (cond (or (some-constraint (partial instance? ParamConstraint) base)
+        (cond (or (some-constraint find-param base)
                   (and (= nothing (= args no-args))
-                       (some args (partial some-constraint
-                                           (partial instance? ParamConstraint)))))
+                       (some args (partial some-constraint find-param))))
               (TypeOp call-value-op base args no-symbol loc-path)
 
               (NoValues [(type-op call-value-op top-type args) base]))))
 
 (defn do-apply-value [base args loc-path]
-  (cond (some-constraint (partial instance? ParamConstraint) args)
+  (cond (some-constraint find-param args)
         (TypeOp apply-op base args no-symbol loc-path)
 
         (or (instance? FnConstraint base)
                  (instance? ReifiedConstraint base))
         (do-call-value base (get-items args) loc-path)
 
-        (cond (some-constraint (partial instance? ParamConstraint) base)
+        (cond (some-constraint find-param base)
               (TypeOp apply-op base args no-symbol loc-path)
 
               (do-call-value base (get-items args) loc-path))))
@@ -2595,7 +2606,7 @@
         (instance? ProtoImpls base)
         (do-arg-of (.default-impl base) arg-pos loc-path)
 
-        (cond (some-constraint (partial instance? ParamConstraint) base)
+        (cond (some-constraint find-param base)
               (TypeOp arg-of-op base arg-pos no-symbol loc-path)
 
               (NoValues [(type-op arg-of-op top-type arg-pos) base]))))
@@ -2634,7 +2645,7 @@
                                           (= (.type-number base) UnknownType))
                                      maybe-constraint
 
-                                     (cond (some-constraint (partial instance? ParamConstraint) base)
+                                     (cond (some-constraint find-param base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
 
                                            (NoValues [(type-op first-of-op top-type params) base]))))
@@ -2662,7 +2673,7 @@
                                          (= (.type-number base) UnknownType))
                                     maybe-constraint
 
-                                    (cond (some-constraint (partial instance? ParamConstraint) base)
+                                    (cond (some-constraint find-param base)
                                           (TypeOp last-of-op base params no-symbol loc-path)
 
                                           (NoValues [(type-op last-of-op top-type params) base]))))
@@ -2680,7 +2691,7 @@
                                          (= (.type-number base) UnknownType))
                                     (type-op rest-of-op top-type params)
 
-                                    (cond (some-constraint (partial instance? ParamConstraint) base)
+                                    (cond (some-constraint find-param base)
                                           (TypeOp rest-of-op base params no-symbol loc-path)
 
                                           (NoValues [(type-op rest-of-op top-type params) base]))))
@@ -2701,7 +2712,7 @@
                                             (= (.type-number base) UnknownType))
                                        (type-op butlast-of-op top-type params)
 
-                                       (cond (some-constraint (partial instance? ParamConstraint) base)
+                                       (cond (some-constraint find-param base)
                                              (TypeOp butlast-of-op base params no-symbol loc-path)
 
                                              (NoValues [(type-op butlast-of-op top-type params) base]))))
@@ -2726,7 +2737,7 @@
                                            (= (.type-number base) UnknownType))
                                       (type-op list-from-op top-type params)
 
-                                      (cond (some-constraint (partial instance? ParamConstraint)
+                                      (cond (some-constraint find-param
                                                              base)
                                             (TypeOp list-from-op base params no-symbol loc-path)
 
@@ -2752,7 +2763,7 @@
                                            (= (.type-number base) UnknownType))
                                       (type-op vect-from-op top-type params)
 
-                                      (cond (some-constraint (partial instance? ParamConstraint)
+                                      (cond (some-constraint find-param
                                                              base)
                                             (TypeOp vect-from-op base params no-symbol loc-path)
 
