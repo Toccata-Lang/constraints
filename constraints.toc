@@ -1166,6 +1166,9 @@
     (assert-result x (instance? (maybe-of Constraints) x))
     nothing)
 
+  (found-constraint [c]
+    nothing)
+
   ;; get only the fixeditems from a list or vector
   (get-items [c]
     (assert-result r (instance? Vector r))
@@ -1282,8 +1285,18 @@
   ((cata derive-const op) c))
 
 (defn some-constraint [pred c]
-  (or (pred c)
-      (find-constraint c (partial some-constraint pred))))
+  (elgot (fn [c]
+           (let [found (pred c)]
+             (cond found
+                   (RecurseFinal found)
+
+                   (RecurseWith c))))
+         found-constraint
+         c))
+
+;; (defn some-constraint [pred c]
+;;   (or (pred c)
+;;       (find-constraint c (partial some-constraint pred))))
 
 (defn is-bottom [c]
   (either (some-constraint (partial = bottom-type) c)
@@ -1510,6 +1523,10 @@
     (or (some (.items c) pred)
         (pred (.tail-c c))))
 
+  (found-constraint [c]
+    (or (some (.items c) identity)
+        (.tail-c c)))
+
   (get-items [l]
     (.items l))
 
@@ -1631,6 +1648,10 @@
   (find-constraint [c pred]
     (or (some (.items c) pred)
         (pred (.tail-c c))))
+
+  (found-constraint [c]
+    (or (some (.items c) identity)
+        (.tail-c c)))
 
   (get-items [l]
     (.items l))
@@ -1820,6 +1841,9 @@
   (find-constraint [c pred]
     (pred (.contents c)))
 
+  (found-constraint [c]
+    (.contents c))
+
   (get-items [c items-count]
     (repeat items-count (.contents c)))
 
@@ -1868,12 +1892,14 @@
 
   (find-constraint [c pred]
     (some (.constraints c) pred))
+  (found-constraint [c]
+    (some (.constraints c) identity))
 
   (get-items [c items-count]
-    (get-items (derive c top-type) items-count))
+    (get-items (trim (derive c top-type)) items-count))
 
   (get-items [c]
-    (get-items (derive c top-type)))
+    (get-items (trim (derive c top-type))))
 
   (trim-const [c]
     (let [[params others] (reduce (.constraints c) [[] []]
@@ -2000,6 +2026,13 @@
             pred)
         (pred (.result-const c))))
 
+  (found-constraint [c]
+    (or (-> (.param-consts c)
+            .items
+            (some identity))
+        (.tail-c (.param-consts c))
+        (.result-const c)))
+
   (intersect [ar1 ar2]
     (assert (instance? fn-arity ar2))
 
@@ -2112,6 +2145,9 @@
 
   (find-constraint [c pred]
     (some (vals (.arities c)) pred))
+
+  (found-constraint [c]
+    (some (vals (.arities c)) identity))
 
   (intersect [x y]
     (cond (=* x y)
@@ -2286,6 +2322,14 @@
                                       (pred val-c))))
         (pred (.invoke-fn c))))
 
+  (found-constraint [c]
+    (or (some (seq (.fields c)) (fn [[fld-c val-c]]
+                                  (or (either (instance? Maybe fld-c)
+                                              nothing)
+                                      (either (instance? Maybe val-c)
+                                              nothing))))
+        (.invoke-fn c)))
+
   (intersect [x y]
     (let [type-number (type-num x)]
       (cond (=* x y)
@@ -2432,6 +2476,18 @@
                          (maybe (do-call-value (.default-impl base) args loc-path)))
                     (map (first args)
                          (fn [disp-arg]
+                           ;; TODO: possible alternative
+                           ;; (either (or (and (some args (partial some-constraint
+                           ;;                                      (fn [c]
+                           ;;                                        (cond (instance? FnConstraint c)
+                           ;;                                              nothing
+
+                           ;;                                              (instance? ParamConstraint c)))))
+                           ;;                  (maybe (TypeOp call-value-op base args no-symbol loc-path)))
+                           ;;             (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                           ;;                   :when (get-in impl-fn [.arities (count args)])]
+                           ;;               (do-call-value impl-fn args loc-path)))
+                           ;;         (do-call-value (.default-impl base) args loc-path))
                            (either (or (and (instance? ParamConstraint disp-arg)
                                             (maybe (TypeOp call-value-op base args no-symbol loc-path)))
                                        (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
@@ -2788,6 +2844,13 @@
              (some (.params c) pred))
         (flat-map (instance? Constraints (.params c))
                   pred)))
+
+  (found-constraint [c]
+    (or (.base c)
+        (and (instance? Vector (.params c))
+             (some (.params c) identity))
+        (either (instance? Maybe (.params c))
+                nothing)))
 
   (derive-const [op]
     (fn [c]
