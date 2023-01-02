@@ -407,7 +407,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/fn-arity " (str "'" arity-id) "\n"
+    (list "(c/fn-arity\n" (str "'" arity-id) "\n"
           (str param-consts) "\n;; returns\n" (str result-const) ")"))
 
   Container
@@ -534,7 +534,7 @@
                       (cond (= no-string static)
                             (list "c/substr-constraint")
 
-                            (list "(c/SubStrConstraint " (str static) ")")))
+                            (list "(c/SubStrConstraint " (str "\"" static "\"") ")")))
                     long-form)
 
             (= type-number PromiseType)
@@ -752,7 +752,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ProtoImpls '" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
+    (list "(c/ProtoImpls\n'" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
 
   Container
   (map [x f]
@@ -1111,6 +1111,9 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (descend? [c]
+    (RecurseWith c))
+
   (set-path [c new-path]
     (assert (instance? (list-of Vector) new-path))
     (assert-result r (instance? RecurseNext r))
@@ -1886,8 +1889,18 @@
     (trim c))
 
   (type-num [c]
-    (let [new-c (trim (derive c top-type))]
-      (type-num new-c)))
+    (either (-> (.constraints c)
+                (map type-num)
+                (reduce (maybe UnknownType) (fn [x y]
+                                              (flat-map x (fn [inner]
+                                                            (cond (= inner UnknownType)
+                                                                  (maybe y)
+
+                                                                  (= y UnknownType)
+                                                                  x
+
+                                                                  (= inner y)))))))
+            UnknownType))
 
   (derive-const [op]
     (fn [c]
@@ -2489,23 +2502,20 @@
                     (map (first args)
                          (fn [disp-arg]
                            ;; TODO: possible alternative
-                           ;; (either (or (and (some args (partial some-constraint
-                           ;;                                      (fn [c]
-                           ;;                                        (cond (instance? FnConstraint c)
-                           ;;                                              nothing
-
-                           ;;                                              (instance? ParamConstraint c)))))
+                           (either (or (and (some args (partial some-constraint find-param))
+                                            (maybe (TypeOp call-value-op (.impl-fns base {}) args
+                                                           no-symbol loc-path)))
+                                       (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                                             :when (get-in impl-fn [.arities (count args)])]
+                                         (do-call-value impl-fn args loc-path)))
+                                   (do-call-value (.default-impl base) args loc-path))
+                           ;; (either (or (and (instance? ParamConstraint disp-arg)
                            ;;                  (maybe (TypeOp call-value-op base args no-symbol loc-path)))
                            ;;             (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
                            ;;                   :when (get-in impl-fn [.arities (count args)])]
                            ;;               (do-call-value impl-fn args loc-path)))
                            ;;         (do-call-value (.default-impl base) args loc-path))
-                           (either (or (and (instance? ParamConstraint disp-arg)
-                                            (maybe (TypeOp call-value-op base args no-symbol loc-path)))
-                                       (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
-                                             :when (get-in impl-fn [.arities (count args)])]
-                                         (do-call-value impl-fn args loc-path)))
-                                   (do-call-value (.default-impl base) args loc-path)))))
+                           )))
                 (NoValues [base (-> empty-reified
                                     (replace-path loc-path)
                                     (.type-symbol (symbol "Insufficient number of arguments.")))]))
@@ -2645,6 +2655,9 @@
                                           (= (.type-number base) UnknownType))
                                      maybe-constraint
 
+                                     (instance? CollectionOf base)
+                                     (MaybeConstraint (.contents base))
+
                                      (cond (some-constraint find-param base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
 
@@ -2673,6 +2686,9 @@
                                          (= (.type-number base) UnknownType))
                                     maybe-constraint
 
+                                     (instance? CollectionOf base)
+                                     (MaybeConstraint (.contents base))
+
                                     (cond (some-constraint find-param base)
                                           (TypeOp last-of-op base params no-symbol loc-path)
 
@@ -2690,6 +2706,9 @@
                                     (and (instance? ReifiedConstraint base)
                                          (= (.type-number base) UnknownType))
                                     (type-op rest-of-op top-type params)
+
+                                    (instance? CollectionOf base)
+                                    base
 
                                     (cond (some-constraint find-param base)
                                           (TypeOp rest-of-op base params no-symbol loc-path)
@@ -2711,6 +2730,9 @@
                                        (and (instance? ReifiedConstraint base)
                                             (= (.type-number base) UnknownType))
                                        (type-op butlast-of-op top-type params)
+
+                                       (instance? CollectionOf base)
+                                       base
 
                                        (cond (some-constraint find-param base)
                                              (TypeOp butlast-of-op base params no-symbol loc-path)
@@ -2737,6 +2759,9 @@
                                            (= (.type-number base) UnknownType))
                                       (type-op list-from-op top-type params)
 
+                                      (instance? CollectionOf base)
+                                      (.tail-c empty-list-constraint base)
+
                                       (cond (some-constraint find-param
                                                              base)
                                             (TypeOp list-from-op base params no-symbol loc-path)
@@ -2762,6 +2787,9 @@
                                       (and (instance? ReifiedConstraint base)
                                            (= (.type-number base) UnknownType))
                                       (type-op vect-from-op top-type params)
+
+                                      (instance? CollectionOf base)
+                                      (.tail-c empty-vect-constraint base)
 
                                       (cond (some-constraint find-param
                                                              base)
@@ -2937,6 +2965,12 @@
 
 (extend-type ProtoImpls
   Constraint
+  (find-param [c]
+    (RecurseFinal nothing))
+
+  (descend? [c]
+    (RecurseFinal c))
+
   (derive-const [op]
     (fn [c]
       (let [derived (map (.default-impl op) (fn [f]
