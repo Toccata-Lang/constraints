@@ -199,41 +199,271 @@
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
 
-(def _ (print-err 'start))
-(def _ (test (c/trim 
-              (c/type-op c/first-of-op
-                         (c/multi [(c/StrBuffConstraint "8815")
-                                   (c/coll-of-c (c/sum-c [(c/SubStrConstraint "8")
-                                                          (c/SubStrConstraint "1")
-                                                          (c/SubStrConstraint "5")]))])))
+(def _ (test (c/sum-c [(c/type-op c/inner-type-of-op
+                                  (c/multi [(c/type-op c/call-value-op
+                                                       (c/ProtoImpls
+                                                        'flat-map
+                                                        (c/fn-c []
+                                                                {2 (c/fn-arity
+                                                                    'flat-map
+                                                                    (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                 (c/param 'flat-map 1)
+                                                                                                                 0))
+                                                                                         (c/param 'flat-map 0)])
+                                                                               (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                         (c/param 'flat-map 1)])])
+                                                                    ;; returns
+                                                                    c/top-type)})
+
+                                                        {})
+                                                       [(c/type-op c/call-value-op
+                                                                   (c/ProtoImpls
+                                                                    'first
+                                                                    (c/fn-c []
+                                                                            {1 (c/fn-arity
+                                                                                'first
+                                                                                (c/list-c [(c/param 'first 0)])
+                                                                                ;; returns
+                                                                                (c/multi [(c/type-op c/first-of-op
+                                                                                                     (c/param 'first 0))
+                                                                                          (c/MaybeConstraint (c/type-op c/inner-type-of-op
+                                                                                                                        (c/param 'first 0)))]))})
+
+                                                                    {})
+                                                                   [(c/multi [c/list-constraint
+                                                                              (c/param 'fn-arity178 0)])])
+                                                        (c/fn-c []
+                                                                {1 (c/fn-arity
+                                                                    'fn-arity179
+                                                                    (c/list-c [(c/param 'fn-arity179 0)])
+                                                                    ;; returns
+                                                                    (c/type-op c/call-value-op
+                                                                               (c/ProtoImpls
+                                                                                'map
+                                                                                (c/fn-c []
+                                                                                        {2 (c/fn-arity
+                                                                                            'map
+                                                                                            (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                         (c/param 'map 1)
+                                                                                                                                         0))
+                                                                                                                 (c/param 'map 0)])
+                                                                                                       (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                 (c/param 'map 1)])])
+                                                                                            ;; returns
+                                                                                            c/top-type), 3 (c/fn-arity
+                                                                                            'map
+                                                                                            (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                         (c/param 'map 1)
+                                                                                                                                         0))
+                                                                                                                 (c/param 'map 0)])
+                                                                                                       (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                 (c/param 'map 1)])
+                                                                                                       (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                 (c/param 'map 2)])])
+                                                                                            ;; returns
+                                                                                            c/top-type)})
+
+                                                                                {})
+                                                                               [(c/type-op c/call-value-op
+                                                                                           (c/ProtoImpls
+                                                                                            'first
+                                                                                            (c/fn-c []
+                                                                                                    {1 (c/fn-arity
+                                                                                                        'first
+                                                                                                        (c/list-c [(c/param 'first 0)])
+                                                                                                        ;; returns
+                                                                                                        (c/multi [(c/type-op c/first-of-op
+                                                                                                                             (c/param 'first 0))
+                                                                                                                  (c/MaybeConstraint (c/type-op c/inner-type-of-op
+                                                                                                                                                (c/param 'first 0)))]))})
+
+                                                                                            {})
+                                                                                           [(c/param 'fn-arity178 1)])
+                                                                                (c/fn-c []
+                                                                                        {1 (c/fn-arity
+                                                                                            'fn-arity180
+                                                                                            (c/list-c [(c/multi [(c/coll-of-c c/top-type)
+                                                                                                                 (c/param 'fn-arity180 0)])])
+                                                                                            ;; returns
+                                                                                            (c/sum-c [(c/type-op c/list-from-op
+                                                                                                                 (c/type-op c/inner-type-of-op
+                                                                                                                            (c/type-op c/call-value-op
+                                                                                                                                       (c/ProtoImpls
+                                                                                                                                        'map
+                                                                                                                                        (c/fn-c []
+                                                                                                                                                {2 (c/fn-arity
+                                                                                                                                                    'map
+                                                                                                                                                    (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                                 (c/param 'map 1)
+                                                                                                                                                                                                 0))
+                                                                                                                                                                         (c/param 'map 0)])
+                                                                                                                                                               (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                         (c/param 'map 1)])])
+                                                                                                                                                    ;; returns
+                                                                                                                                                    c/top-type), 3 (c/fn-arity
+                                                                                                                                                    'map
+                                                                                                                                                    (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                                 (c/param 'map 1)
+                                                                                                                                                                                                 0))
+                                                                                                                                                                         (c/param 'map 0)])
+                                                                                                                                                               (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                         (c/param 'map 1)])
+                                                                                                                                                               (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                         (c/param 'map 2)])])
+                                                                                                                                                    ;; returns
+                                                                                                                                                    c/top-type)})
+
+                                                                                                                                        {})
+                                                                                                                                       [(c/type-op c/call-value-op
+                                                                                                                                                   (c/ProtoImpls
+                                                                                                                                                    'first
+                                                                                                                                                    (c/fn-c []
+                                                                                                                                                            {1 (c/fn-arity
+                                                                                                                                                                'first
+                                                                                                                                                                (c/list-c [(c/param 'first 0)])
+                                                                                                                                                                ;; returns
+                                                                                                                                                                (c/multi [(c/type-op c/first-of-op
+                                                                                                                                                                                     (c/param 'first 0))
+                                                                                                                                                                          (c/MaybeConstraint (c/type-op c/inner-type-of-op
+                                                                                                                                                                                                        (c/param 'first 0)))]))})
+
+                                                                                                                                                    {})
+                                                                                                                                                   [(c/type-op c/call-value-op
+                                                                                                                                                               (c/ProtoImpls
+                                                                                                                                                                'rest
+                                                                                                                                                                (c/fn-c []
+                                                                                                                                                                        {1 (c/fn-arity
+                                                                                                                                                                            'rest
+                                                                                                                                                                            (c/list-c [(c/param 'rest 0)])
+                                                                                                                                                                            ;; returns
+                                                                                                                                                                            (c/multi [(c/type-op c/rest-of-op
+                                                                                                                                                                                                 (c/param 'rest 0))
+                                                                                                                                                                                      (c/coll-of-c (c/type-op c/inner-type-of-op
+                                                                                                                                                                                                              (c/param 'rest 0)))]))})
+
+                                                                                                                                                                {})
+                                                                                                                                                               [(c/param 'fn-arity178 1)])])
+                                                                                                                                        (c/fn-c []
+                                                                                                                                                {1 (c/fn-arity
+                                                                                                                                                    'fn-arity148
+                                                                                                                                                    (c/list-c [(c/multi [(c/coll-of-c c/top-type)
+                                                                                                                                                                         (c/param 'fn-arity148 0)])])
+                                                                                                                                                    ;; returns
+                                                                                                                                                    c/top-type)})])))
+                                                                                                      (c/type-op c/list-from-op
+                                                                                                                 (c/type-op c/call-value-op
+                                                                                                                            (c/ProtoImpls
+                                                                                                                             'map
+                                                                                                                             (c/fn-c []
+                                                                                                                                     {2 (c/fn-arity
+                                                                                                                                         'map
+                                                                                                                                         (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                      (c/param 'map 1)
+                                                                                                                                                                                      0))
+                                                                                                                                                              (c/param 'map 0)])
+                                                                                                                                                    (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                              (c/param 'map 1)])])
+                                                                                                                                         ;; returns
+                                                                                                                                         c/top-type), 3 (c/fn-arity
+                                                                                                                                         'map
+                                                                                                                                         (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                      (c/param 'map 1)
+                                                                                                                                                                                      0))
+                                                                                                                                                              (c/param 'map 0)])
+                                                                                                                                                    (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                              (c/param 'map 1)])
+                                                                                                                                                    (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                              (c/param 'map 2)])])
+                                                                                                                                         ;; returns
+                                                                                                                                         c/top-type)})
+
+                                                                                                                             {})
+                                                                                                                            [(c/multi [(c/type-op c/call-value-op
+                                                                                                                                                  (c/ProtoImpls
+                                                                                                                                                   'map
+                                                                                                                                                   (c/fn-c []
+                                                                                                                                                           {2 (c/fn-arity
+                                                                                                                                                               'map
+                                                                                                                                                               (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                                            (c/param 'map 1)
+                                                                                                                                                                                                            0))
+                                                                                                                                                                                    (c/param 'map 0)])
+                                                                                                                                                                          (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                                    (c/param 'map 1)])])
+                                                                                                                                                               ;; returns
+                                                                                                                                                               c/top-type), 3 (c/fn-arity
+                                                                                                                                                               'map
+                                                                                                                                                               (c/list-c [(c/multi [(c/coll-of-c (c/type-op c/arg-of-op
+                                                                                                                                                                                                            (c/param 'map 1)
+                                                                                                                                                                                                            0))
+                                                                                                                                                                                    (c/param 'map 0)])
+                                                                                                                                                                          (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                                    (c/param 'map 1)])
+                                                                                                                                                                          (c/multi [(.required-arities c/fn-constraint [1])
+                                                                                                                                                                                    (c/param 'map 2)])])
+                                                                                                                                                               ;; returns
+                                                                                                                                                               c/top-type)})
+
+                                                                                                                                                   {})
+                                                                                                                                                  [(c/param 'fn-arity180 0)
+                                                                                                                                                   (c/fn-c []
+                                                                                                                                                           {c/variadic (c/fn-arity
+                                                                                                                                                                        'fn-arity109
+                                                                                                                                                                        (c/list-c []
+                                                                                                                                                                                  (c/multi [c/list-constraint
+                                                                                                                                                                                            (c/param 'fn-arity109 0)]))
+                                                                                                                                                                        ;; returns
+                                                                                                                                                                        (c/type-op c/call-value-op
+                                                                                                                                                                                   (c/ProtoImpls
+                                                                                                                                                                                    'vec
+                                                                                                                                                                                    (c/fn-c []
+                                                                                                                                                                                            {1 (c/fn-arity
+                                                                                                                                                                                                'vec
+                                                                                                                                                                                                (c/list-c [(c/param 'vec 0)])
+                                                                                                                                                                                                ;; returns
+                                                                                                                                                                                                (c/type-op c/vect-from-op
+                                                                                                                                                                                                           (c/param 'vec 0)))})
+
+                                                                                                                                                                                    {})
+                                                                                                                                                                                   [(c/multi [c/list-constraint
+                                                                                                                                                                                              (c/param 'fn-arity109 0)])]))})])
+                                                                                                                                       (c/coll-of-c c/top-type)])
+                                                                                                                             (c/fn-c []
+                                                                                                                                     {1 (c/fn-arity
+                                                                                                                                         'fn-arity151
+                                                                                                                                         (c/list-c [(c/param 'fn-arity151 0)])
+                                                                                                                                         ;; returns
+                                                                                                                                         (c/type-op c/call-value-op
+                                                                                                                                                    (c/ProtoImpls
+                                                                                                                                                     'apply
+                                                                                                                                                     (c/fn-c []
+                                                                                                                                                             {2 (c/fn-arity
+                                                                                                                                                                 'apply
+                                                                                                                                                                 (c/list-c [(c/param 'apply 0)
+                                                                                                                                                                            (c/multi [(c/sum-c [c/list-constraint
+                                                                                                                                                                                                c/vect-constraint])
+                                                                                                                                                                                      (c/param 'apply 1)])])
+                                                                                                                                                                 ;; returns
+                                                                                                                                                                 c/top-type)})
+
+                                                                                                                                                     {})
+                                                                                                                                                    [(c/param 'fn-arity179 0)
+                                                                                                                                                     (c/type-op c/call-value-op
+                                                                                                                                                                (c/ProtoImpls
+                                                                                                                                                                 'seq
+                                                                                                                                                                 (c/fn-c []
+                                                                                                                                                                         {1 (c/fn-arity
+                                                                                                                                                                             'seq
+                                                                                                                                                                             (c/list-c [c/top-type])
+                                                                                                                                                                             ;; returns
+                                                                                                                                                                             c/top-type)})
+
+                                                                                                                                                                 {})
+                                                                                                                                                                [(c/param 'fn-arity151 0)])]))})]))]))})]))})])
+                                            c/maybe-constraint]))
+                       c/empty-list-constraint])
              '_
              _FILE_ _LINE_))
-
-;; (def _ (test (c/do-call-value
-;;               (c/fn-c []
-;;                       {1 (c/fn-arity
-;;                           'fn-arity220
-;;                           (c/list-c [(c/coll-of-c c/substr-constraint)])
-;;                           ;; returns
-;;                           (c/type-op c/call-value-op
-;;                                      (c/fn-c []
-;;                                              {1 (c/fn-arity
-;;                                                  'first
-;;                                                  (c/list-c [(c/param 'first 0)])
-;;                                                  ;; returns
-;;                                                  (c/multi [(c/type-op c/first-of-op
-;;                                                                       (c/param 'first 0))
-;;                                                            (c/MaybeConstraint (c/type-op c/inner-type-of-op
-;;                                                                                          c/strbuff-constraint))]))})
-;;                                      [(c/param 'fn-arity220 0)]))})
-;;               [(c/StrBuffConstraint "8815")]
-;;               empty-list)
-;;              '_
-;;              _FILE_ _LINE_))
-
-(def _ (do
-         (print-err 'done)
-         (abort)))
 
 ;; (def _ (test
 ;;         (reify-c

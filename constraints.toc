@@ -1067,36 +1067,6 @@
 (def concat (type-op concat-op list-constraint))
 (def apply-fn (type-op apply-op list-constraint))
 
-(defn sum-type [const-cs]
-  (assert (instance? Vector const-cs))
-
-  (either (or (flat-map (every const-cs (partial = bottom-type))
-                        (fn [_]
-                          (first const-cs)))
-              (let [const-cs (-> const-cs
-                                 (remove (partial = bottom-type))
-                                 (reduce []
-                                         (fn [cs c]
-                                           (cond (some cs (partial = c))
-                                                 cs
-
-                                                 (conj cs c)))))]
-                (or (and (= 1 (count const-cs))
-                         (first const-cs))
-                    (and (empty? const-cs)
-                         (maybe top-type))
-                    (some const-cs (partial = top-type))
-                    (apply = const-cs)
-                    (and (every const-cs (partial instance? CollectionOf))
-                         (-> const-cs
-                             (map .contents)
-                             sum-type
-                             (CollectionOf empty-list no-symbol "")
-                             maybe))
-                    (and (< 1 (count const-cs))
-                         (maybe (SumConstraint const-cs empty-list no-symbol ""))))))
-          top-type))
-
 (defn missing-field [fld]
   (ReifiedConstraint UnknownType (symbol (str "Field/index '" fld "' required"))
                      {} {} empty-fn-constraint
@@ -1322,12 +1292,43 @@
   ;;                       arity "\n\n"
   ;;                       'args arg-cs)
   ;;            nothing)))
-  (let [r (cata (fn [c]
-                  (reify-const c arity-id arg-cs))
+  (let [r (ana (fn [c]
+                 (reify-const c arity-id arg-cs))
                 arity)]
     (-> r
         trim
         (update-path loc))))
+
+(defn sum-type [const-cs]
+  (assert (instance? Vector const-cs))
+
+  (let [alts (map const-cs is-bottom)]
+    (either (or (flat-map (every alts (partial = bottom-type))
+                          (fn [_]
+                            (first alts)))
+                (let [alts (-> alts
+                               (remove (partial = bottom-type))
+                               (reduce []
+                                       (fn [cs c]
+                                         (cond (some cs (partial = c))
+                                               cs
+
+                                               (conj cs c)))))]
+                  (or (and (= 1 (count alts))
+                           (first alts))
+                      (and (empty? alts)
+                           (maybe top-type))
+                      (some alts (partial = top-type))
+                      (apply = alts)
+                      (and (every alts (partial instance? CollectionOf))
+                           (-> alts
+                               (map .contents)
+                               sum-type
+                               (CollectionOf empty-list no-symbol "")
+                               maybe))
+                      (and (< 1 (count alts))
+                           (maybe (SumConstraint alts empty-list no-symbol ""))))))
+            top-type)))
 
 (extend-type ValueConstraint
   Constraint
@@ -1971,9 +1972,13 @@
   (contents-constraint [c]
     (.base inner-type-of c))
 
-  (reify-const [c arity args]
-    (cond (= (.arity c) arity)
-          (either (get args (.param-index c))
+  (reify-const [c arity-id args]
+    (cond (= (.arity c) arity-id)
+          (either (for [arg (get args (.param-index c))
+                        new-args (store args (.param-index c) top-type)]
+                    (ana (fn [c]
+                           (reify-const c arity-id new-args))
+                         arg))
                   top-type)
 
           c))
@@ -2422,44 +2427,41 @@
 (defn do-concat [base args loc-path]
   (let [new-base (trim (intersect base (coll-of-c (sum-c [string-constraint
                                                           seq-constraint]))))]
-    (cond (some-constraint (partial = bottom-type)
-                           new-base)
-          (NoValues [(-> empty-reified
-                         (replace-path loc-path)
-                         (.type-symbol (symbol "Can not concatenate contents")))
-                     base])
+    (either (some-constraint (partial = bottom-type)
+                             new-base)
+            (cond (some-constraint find-param base)
+                  (TypeOp concat-op base no-args no-symbol loc-path)
 
-          (some-constraint find-param base)
-          (TypeOp concat-op base no-args no-symbol loc-path)
+                  (let [tail-seq (cond (= no-tail (get-tail new-base))
+                                       empty-list-constraint
 
-          (let [tail-seq (cond (= no-tail (get-tail new-base))
-                               empty-list-constraint
+                                       (coll-of-c (-> (get-tail new-base)
+                                                      contents-constraint
+                                                      contents-constraint)))]
+                    (-> (reverse (get-items new-base))
+                        (reduce tail-seq
+                                (fn [tail arg]
+                                  (cond (= (get-tail arg) no-tail)
+                                        (set-tail arg tail)
 
-                               (coll-of-c (-> (get-tail new-base)
-                                              contents-constraint
-                                              contents-constraint)))]
-            (-> (reverse (get-items new-base))
-                (reduce tail-seq
-                        (fn [tail arg]
-                          (cond (= (get-tail arg) no-tail)
-                                (set-tail arg tail)
-
-                                (set-tail arg (sum-type [(coll-of-c (contents-constraint tail))
-                                                         (get-tail arg)])))))
-                trim)))))
+                                        (set-tail arg (sum-type [(coll-of-c (contents-constraint tail))
+                                                                 (get-tail arg)])))))
+                        trim))))))
 
 (defn do-call-value [base args loc-path]
   (assert (instance? Constraints base))
+  (assert-result r (instance? Vector r))
 
   (cond (instance? FnConstraint base)
-        (either (or (map (instance? NoArgs args)
+        (either (or (map (= no-args args)
                          (fn [_]
                            (-> (.arities base)
                                vals
                                (reduce [] (fn [arities arity]
                                             (assert (instance? fn-arity arity))
                                             (conj arities (derive (.result-const arity) top-type))))
-                               sum-type)))
+                               sum-type
+                               (vector args))))
                     ;; get the arity
                     (map (or (get-in base [.arities (count args)])
                              (get-in base [.arities variadic]))
@@ -2483,11 +2485,15 @@
                                                          (reify-const c (.arity-id arity)
                                                                       new-args))
                                                        arity)))]
-                             (either (some-constraint (partial = bottom-type) reified)
-                                     (.result-const reified))))))
+                             (either (map (some-constraint (partial = bottom-type) reified)
+                                          (fn [err-c]
+                                            [err-c args]))
+                                     [(.result-const reified)
+                                      (get-items (.param-consts reified) (count args))])))))
 
-                (NoValues [(type-op call-value-op top-type args)
-                           base]))
+                [(NoValues [(type-op call-value-op top-type args)
+                            base])
+                 args])
 
         (instance? ReifiedConstraint base)
         (do-call-value (.invoke-fn base)
@@ -2503,8 +2509,19 @@
                          (fn [disp-arg]
                            ;; TODO: possible alternative
                            (either (or (and (some args (partial some-constraint find-param))
-                                            (maybe (TypeOp call-value-op (.impl-fns base {}) args
-                                                           no-symbol loc-path)))
+                                            (or (map (get-in base [.default-impl .arities (count args)])
+                                                     (fn [default-arity]
+                                                       [(TypeOp call-value-op (.impl-fns base {}) args
+                                                                no-symbol loc-path)
+                                                        (-> default-arity
+                                                            (reify-type-constraint (.arity-id default-arity)
+                                                                                   args (Location "" 0))
+                                                            .param-consts
+                                                            .items)]))
+                                                (maybe [(NoValues [base (-> empty-reified
+                                                                             (replace-path loc-path)
+                                                                             (.type-symbol (symbol "No arity found")))])
+                                                        args])))
                                        (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
                                              :when (get-in impl-fn [.arities (count args)])]
                                          (do-call-value impl-fn args loc-path)))
@@ -2516,27 +2533,32 @@
                            ;;               (do-call-value impl-fn args loc-path)))
                            ;;         (do-call-value (.default-impl base) args loc-path))
                            )))
-                (NoValues [base (-> empty-reified
-                                    (replace-path loc-path)
-                                    (.type-symbol (symbol "Insufficient number of arguments.")))]))
+                [(NoValues [base (-> empty-reified
+                                      (replace-path loc-path)
+                                      (.type-symbol (symbol "Insufficient number of arguments.")))])
+                 args])
 
         (cond (or (some-constraint find-param base)
                   (and (= nothing (= args no-args))
                        (some args (partial some-constraint find-param))))
-              (TypeOp call-value-op base args no-symbol loc-path)
+              [(TypeOp call-value-op base args no-symbol loc-path)
+               args]
 
-              (NoValues [(type-op call-value-op top-type args) base]))))
+              [(NoValues [(type-op call-value-op top-type args) base])
+               args])))
 
 (defn do-apply-value [base args loc-path]
+  (assert-result r (instance? Vector r))
+
   (cond (some-constraint find-param args)
-        (TypeOp apply-op base args no-symbol loc-path)
+        [(TypeOp apply-op base args no-symbol loc-path) args]
 
         (or (instance? FnConstraint base)
                  (instance? ReifiedConstraint base))
         (do-call-value base (get-items args) loc-path)
 
         (cond (some-constraint find-param base)
-              (TypeOp apply-op base args no-symbol loc-path)
+              [(TypeOp apply-op base args no-symbol loc-path) args]
 
               (do-call-value base (get-items args) loc-path))))
 
@@ -2800,9 +2822,13 @@
                  arg-of-op do-arg-of
                  get-from-op do-get-from
                  set-to-op do-set-to
-                 call-value-op do-call-value
+                 call-value-op (fn [base args loc-path]
+                                 (let [[result-type] (do-call-value base args loc-path)]
+                                   result-type))
                  concat-op do-concat
-                 apply-op do-apply-value})
+                 apply-op (fn [base args loc-path]
+                                 (let [[result-type] (do-apply-value base args loc-path)]
+                                   result-type))})
 
 (def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
                   first-of-op (constantly ["First value of seq" ""])
