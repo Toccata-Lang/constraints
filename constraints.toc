@@ -273,7 +273,7 @@
 
 ;; container types
 (deftype CollectionOf [contents path sym var]
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -304,7 +304,7 @@
 
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -355,7 +355,7 @@
 
 (deftype VectorConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -451,7 +451,7 @@
 (deftype FnConstraint [required-arities arities path sym var]
   ;; (assert (instance? (map-of ArityRank fn-arity) arities))
   (assert (instance? (vector-of Integer) required-arities))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -486,7 +486,7 @@
   ;; (assert (instance? (min-value 1) type-num))
   (assert (instance? OptionalSym type-symbol))
   (assert (instance? HashMap fields))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -654,7 +654,7 @@
   (assert (instance? Vector alts))
   (assert (instance? (min-count 1) alts))
   (assert (instance? OptionalSym sym))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? String var))
 
   Stringable
@@ -739,7 +739,7 @@
 
 ;; Get's replaced with the constraint of the param-sym, so not many implementations for it
 (deftype TypeOfConstraint [param-sym path sym var]
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
@@ -879,7 +879,7 @@
 ;; type operations
 (deftype TypeOp [op-code base params sym path]
   (assert (instance? TypeOpCodes op-code))
-  (assert (instance? (list-of Vector) path))
+  (assert (instance? (list-of Location) path))
 
   Stringable
   (string-list [_]
@@ -1103,7 +1103,7 @@
     (RecurseWith c))
 
   (set-path [c new-path]
-    (assert (instance? (list-of Vector) new-path))
+    (assert (instance? (list-of Location) new-path))
     (assert-result r (instance? RecurseNext r))
 
     (RecurseWith c))
@@ -1118,7 +1118,8 @@
 
     c)
 
-  (add-to-path [constraint file-name line-number]
+  (add-to-path [constraint loc]
+    (assert (instance? Location loc))
     constraint)
 
   (type-num [c]
@@ -1264,15 +1265,10 @@
          (set-path c new-path))
        c))
 
-(defn update-path
-  ([c loc]
-   (assert (instance? Location loc))
-   (update-path c (.file loc) (.line loc)))
-
-  ([c file-name line-number]
-   (cata (fn [c]
-           (add-to-path c file-name line-number))
-         c)))
+(defn update-path [c loc]
+  (cata (fn [c]
+          (add-to-path c loc))
+        c))
 
 (defn trim [c]
   (cata trim-const c))
@@ -1350,11 +1346,11 @@
 
 (extend-type ValueConstraint
   Constraint
-  (add-to-path [c file line]
-    (cond (or (= file "")
-              (some (.path c) (partial = [file line])))
+  (add-to-path [c loc]
+    (cond (or (= loc no-loc)
+              (some (.path c) (partial = loc)))
           c
-          (.path c (cons [file line] (.path c))))))
+          (.path c (cons loc (.path c))))))
 
 (extend-type SymbolConstraints
   Constraint
