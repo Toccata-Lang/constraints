@@ -24,7 +24,10 @@
 
   Stringable
   (string-list [_]
-    (list (str file) ": " (str line)))
+    (list (either (and (= file 'core)
+                       (maybe "core"))
+                  (str file))
+          ": " (str line)))
 
   Container
   (map [x f]
@@ -33,17 +36,19 @@
   (map [x f embed]
     (embed x)))
 
+(def no-loc (Location "" 0))
+
 ;; TODO: remove unused types
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
 (def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
 (def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
 (def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
-;; (def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
+(def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
 (def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaybeType};"))
-;; (def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
-;; (def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
-;; (def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
+(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
+(def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
+(def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
 (def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SymbolType};"))
 (def BitmapIndexedType (inline C Integer "(Value *)&(Integer){IntegerType, -2, BitmapIndexedType};"))
 (def ArrayNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ArrayNodeType};"))
@@ -52,19 +57,19 @@
 (def FutureType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FutureType};"))
 (def AgentType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AgentType};"))
 (def OpaqueType (inline C Integer "(Value *)&(Integer){IntegerType, -2, OpaqueType};"))
-;; (def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
-;; (def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
-;; (def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
-;; ;; TODO: what the heck is this used for. Get rid of it
-;; (def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
-;; (def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
+(def NoValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoValuesType};"))
+(def AllValuesType (inline C Integer "(Value *)&(Integer){IntegerType, -2, AllValuesType};"))
+(def ResultConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ResultConstraintType};"))
+;; TODO: what the heck is this used for. Get rid of it
+(def InferredInnerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InferredInnerType};"))
+(def ContentsConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ContentsConstraintType};"))
 (def HashSetType (inline C Integer "(Value *)&(Integer){IntegerType, -2, HashSetType};"))
-;; (def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
-;; (def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
-;; (def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
-;; (def TypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeOfConstraintType};"))
-;; (def InnerTypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InnerTypeOfConstraintType};"))
-;; (def DebugConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, DebugConstraintType};"))
+(def ProtoDispatcherType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ProtoDispatcherType};"))
+(def FloatType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FloatType};"))
+(def SumConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SumConstraintType};"))
+(def TypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeOfConstraintType};"))
+(def InnerTypeOfConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, InnerTypeOfConstraintType};"))
+(def DebugConstraintType (inline C Integer "(Value *)&(Integer){IntegerType, -2, DebugConstraintType};"))
 (def TypeCount (inline C Integer "(Value *)&(Integer){IntegerType, -2, TypeCount};"))
 
 ;; type compoonents
@@ -195,12 +200,6 @@
     nothing))
 
 (def no-args (NoArgs))
-
-(deftype NoVarArg []
-  Stringable
-  (string-list [_] (list "c/no-var-arg")))
-
-(def no-var-arg (NoVarArg))
 
 (deftype Variadic []
   Stringable
@@ -682,7 +681,6 @@
 (defn sum-c
   ([alts]
    (SumConstraint alts empty-list no-symbol ""))
-
   ([alts path sym var]
    (SumConstraint alts path sym var)))
 
@@ -1004,6 +1002,7 @@
   ([static-value path sym var]
    (ReifiedConstraint SubStringType 'String {} {'static-value static-value} empty-fn-constraint path sym var)))
 
+
 (def bottom-type (NoValues []))
 (def empty-reified (ReifiedConstraint UnknownType no-symbol {} {}
                                       empty-fn-constraint
@@ -1086,24 +1085,6 @@
 (def concat (type-op concat-op list-constraint))
 (def apply-fn (type-op apply-op list-constraint))
 
-(def core-type-constraints {'Integer int-constraint
-                            'StringBuffer strbuff-constraint
-                            'SubString substr-constraint
-                            'FnArity arity-constraint
-                            'BitmapIndexedNode bitmap-constraint
-                            'ArrayNode array-constraint
-                            'HashCollisionNode hash-coll-constraint
-                            'Fn fn-constraint
-                            'List list-constraint
-                            'Maybe maybe-constraint
-                            'Vector vect-constraint
-                            'Symbol sym-constraint
-                            'HashMap hashmap-constraint
-                            'Promise promise-constraint
-                            'Future future-constraint
-                            'Agent agent-constraint
-                            'Opaque opaque-constraint})
-
 (defn missing-field [fld]
   (ReifiedConstraint UnknownType (symbol (str "Field/index '" fld "' required"))
                      {} {} empty-fn-constraint
@@ -1137,8 +1118,7 @@
 
     c)
 
-  (add-to-path [constraint loc]
-    (assert (instance? Location loc))
+  (add-to-path [constraint file-name line-number]
     constraint)
 
   (type-num [c]
@@ -1222,11 +1202,6 @@
     ;; 'top-type' is the undefined result
     top-type))
 
-(defn update-path [c loc]
-  (cata (fn [c]
-          (add-to-path c loc))
-        c))
-
 (defn set-items [c items]
   (assert (instance? Vector items))
 
@@ -1244,3 +1219,1850 @@
 
                (RecurseWith c)))
        c))
+
+(defn format-path* [path desired-len]
+  (assert (instance? List path))
+  (assert (instance? Integer desired-len))
+
+  (either (map (first path)
+               (fn [[header]]
+                 (let [path (-> (rest path)
+                                (remove (fn [[file line]]
+                                          (either (and (instance? Symbol file)
+                                                       (maybe nothing))
+                                                  (or (empty? file)
+                                                      (= 0 line)))))
+                                (map (fn [[file line]]
+                                       (let [file (str file)]
+                                         (str (either (-> file
+                                                          str
+                                                          (split-string (partial = "/"))
+                                                          last
+                                                          (map (fn [file]
+                                                                 (either (and (flat-map (first file)
+                                                                                        (partial = "/"))
+                                                                              (maybe file))
+                                                                         file))))
+                                                      file)
+                                              ": " line)))))
+                       max-width (reduce path (count header)
+                                         (fn [max s]
+                                           (let [n (count s)]
+                                             (either (> max n)
+                                                     n))))
+                       path (either (and (< (count path) desired-len)
+                                         (maybe (comp path (repeat (- desired-len (count path))
+                                                                   (spaces max-width)))))
+                                    path)]
+                   (map (cons header path)
+                        (fn [x]
+                          (str x (spaces (- max-width (count x)))))))))
+          path))
+
+(defn replace-path [c new-path]
+  (apo (fn [c]
+         (set-path c new-path))
+       c))
+
+(defn update-path
+  ([c loc]
+   (assert (instance? Location loc))
+   (update-path c (.file loc) (.line loc)))
+
+  ([c file-name line-number]
+   (cata (fn [c]
+           (add-to-path c file-name line-number))
+         c)))
+
+(defn trim [c]
+  (cata trim-const c))
+
+(defn derive [op c]
+  ((cata derive-const op) c))
+
+(defn some-constraint [pred c]
+  (elgot (fn [c]
+           (let [found (pred c)]
+             (either (instance? RecurseNext found)
+                     (cond found
+                           (RecurseFinal found)
+
+                           (RecurseWith c)))))
+         found-constraint
+         c))
+
+;; (defn some-constraint [pred c]
+;;   (or (pred c)
+;;       (find-constraint c (partial some-constraint pred))))
+
+(defn is-bottom [c]
+  (either (some-constraint (partial = bottom-type) c)
+          c))
+
+(defn reify-type-constraint [arity arity-id arg-cs loc]
+  (assert (instance? Vector arg-cs))
+
+  ;; (or ;; (= (.file loc) 'core)
+  ;;     ;; (= (.line loc) 0)
+  ;;     (and (= arity-id 'extract)
+  ;;          (do
+  ;;            (print-err 'reifying _LINE_ loc arity-id "\n"
+  ;;                       arity "\n\n"
+  ;;                       'args arg-cs)
+  ;;            nothing)))
+  (let [r (ana (fn [c]
+                 (reify-const c arity-id arg-cs))
+                arity)]
+    (-> r
+        trim
+        (update-path loc))))
+
+(defn sum-type [const-cs]
+  (assert (instance? Vector const-cs))
+
+  (let [alts (map const-cs is-bottom)]
+    (either (or (flat-map (every alts (partial = bottom-type))
+                          (fn [_]
+                            (first alts)))
+                (let [alts (-> alts
+                               (remove (partial = bottom-type))
+                               (reduce []
+                                       (fn [cs c]
+                                         (cond (some cs (partial = c))
+                                               cs
+
+                                               (conj cs c)))))]
+                  (or (and (= 1 (count alts))
+                           (first alts))
+                      (and (empty? alts)
+                           (maybe top-type))
+                      (some alts (partial = top-type))
+                      (apply = alts)
+                      (and (every alts (partial instance? CollectionOf))
+                           (-> alts
+                               (map .contents)
+                               sum-type
+                               (CollectionOf empty-list no-symbol "")
+                               maybe))
+                      (and (< 1 (count alts))
+                           (maybe (SumConstraint alts empty-list no-symbol ""))))))
+            top-type)))
+
+(extend-type ValueConstraint
+  Constraint
+  (add-to-path [c file line]
+    (cond (or (= file "")
+              (some (.path c) (partial = [file line])))
+          c
+          (.path c (cons [file line] (.path c))))))
+
+(extend-type SymbolConstraints
+  Constraint
+  (set-path [c new-path]
+    (RecurseFinal (.path c new-path)))
+
+  (extract-sym [c]
+    (.sym c))
+
+  (update-sym [c new-sym]
+    (.sym c new-sym)))
+
+(extend-type NoTail
+  Constraint
+  (assertion-path [_] empty-list)
+
+  (format-path [_ n]
+    (list "No Tail for sequence"))
+
+  (show-full [c]
+    (list "c/no-tail")))
+
+(extend-type AllValues
+  Constraint
+  (format-path [x desired-len]
+    (list "<Unknown Type>"))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (contents-constraint [c]
+    c)
+
+  (get-items [c items-count]
+    (repeat items-count c))
+
+  (intersect [x y]
+    y))
+
+(extend-type NoValues
+  Constraint
+  (format-path [c n]
+    (let [max-len (-> (trim c)
+                      .constraints
+                      (map (fn [c] (count (assertion-path c))))
+                      (reduce n (fn [max-len path-len]
+                                  (either (> max-len path-len)
+                                          path-len)))
+                      inc)]
+      (-> (.constraints c)
+          (map (fn [c]
+                 (format-path c max-len)))
+          (list-zipper empty-list)
+          (map (fn [strs]
+                 (str (to-str (interpose strs "    "))
+                      "\n"))))))
+
+  (show-full [c]
+    (comp (list "Conflicting types")
+          (map (.constraints c) (partial str "  "))))
+
+  (contents-constraint [c]
+    c)
+
+  (trim-const [c]
+    (.constraints c (comp (remove (.constraints c) (partial instance? NoValues))
+                          (-> (.constraints c)
+                              (filter (partial instance? NoValues))
+                              (flat-map .constraints)))))
+
+  (intersect [x _] x))
+
+(defn str-inner [sc]
+  (either (map (get-in sc [.fields 'static-value])
+               (fn [sv]
+                 (cond (= sv no-string)
+                       substr-constraint
+
+                       (-> sv
+                           vec
+                           (map (fn [c]
+                                  (SubStrConstraint c empty-list no-symbol "")))
+                           sum-type))))
+          string-constraint))
+
+(defn intersect-seqs [l1 l2]
+  (assert (instance? SeqConstraint l1))
+  (assert (instance? SeqConstraint l2))
+
+  (let [l1 (trim l1)
+        l1-tail (.tail-c l1)
+        l2 (trim l2)
+        l2-tail (.tail-c l2)
+        cnt-ic (count (.items l2))
+        cnt-c (count (.items l1))
+        max-cnt (either (> cnt-ic cnt-c)
+                        cnt-c)
+        items (map (zip-lists (get-items l1 max-cnt)
+                              (get-items l2 max-cnt))
+                   (fn [[c1 c2]]
+                     (intersect c1 c2)))
+        new-tail (either (or (= no-tail l1-tail)
+                             (= no-tail l2-tail))
+                         (intersect l1-tail l2-tail))
+        new-ic (-> l2
+                   (.tail-c new-tail)
+                   (.items (vec items)))]
+    (either (map (or (some items (partial = bottom-type))
+                     (= bottom-type new-tail))
+                 (fn [failure]
+                   (cond (empty? (.constraints failure))
+                         (NoValues [l1 l2])
+
+                         failure)))
+            (cond (< (count items) max-cnt)
+                  (NoValues [l1 l2])
+
+                  new-ic))))
+
+(extend-type ListConstraint
+  Constraint
+  (type-num [c] ListType)
+
+  (type-sym [_] 'List)
+
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["List from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (cond (= (show-full bottom-type) (.tail-c c))
+                []
+                (comp ["--tail--"]
+                      (map (.tail-c c) (partial str "  "))))
+          ["===="]))
+
+  (set-to [x fld-path fld-c]
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
+
+                           (either (for [idx (first fld-path)
+                                         :when (and (instance? ReifiedConstraint idx)
+                                                    (= IntegerType (.type-number idx)))
+                                         idx (get-in idx [.fields 'static-value])
+                                         :when-not (= idx no-int)
+                                         :let [items-count (inc idx)
+                                               old-items (cond (<= items-count (count (.items x)))
+                                                               (.items x)
+
+                                                               (get-items x items-count))]
+                                         old-item (nth old-items idx)
+                                         new-items (store old-items idx
+                                                          (set-to old-item (rest fld-path) fld-c))]
+                                     (.items x new-items))
+                                   (cant-set-contents x fld-path)))))
+
+  (get-from [x idx]
+    (either (for [_ (and (instance? ReifiedConstraint idx)
+                         (= IntegerType (.type-number idx)))
+                  idx (get-in idx [.fields 'static-value])
+                  :when-not (= idx no-int)
+                  item (nth (get-items x (inc idx)) idx)]
+              item)
+            (NoValues [x (missing-field idx)])))
+
+  (contents-constraint [c]
+    (cond (and (empty? (.items c))
+               (= no-tail (.tail-c c)))
+          top-type
+
+          (-> (.items c)
+              (conj (either (map (= no-tail (.tail-c c)) (fn [_]
+                                                           top-type))
+                            (contents-constraint (.tail-c c))))
+              (remove (partial = top-type))
+              sum-type)))
+
+  (derive-const [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (or (some (.items c) pred)
+        (pred (.tail-c c))))
+
+  (found-constraint [c]
+    (or (some (.items c) identity)
+        (.tail-c c)))
+
+  (get-items [l]
+    (.items l))
+
+  (get-items [c items-count]
+    (let [fixed (take (.items c) items-count)
+          fixed-count (count fixed)]
+      (cond (= fixed-count items-count)
+            fixed
+
+            (= no-tail (.tail-c c))
+            []
+
+            (comp fixed
+                  (get-items (.tail-c c) (- items-count fixed-count))))))
+
+  (get-tail [l]
+    (.tail-c l))
+
+  (trim-const [lc]
+    (either (map (instance? SeqConstraint (.tail-c lc))
+                 (fn [tail-c]
+                   (-> lc
+                       (.items (comp (.items lc) (.items tail-c)))
+                       (.tail-c (.tail-c tail-c)))))
+            lc))
+
+  (intersect [x y]
+    (cond (or (instance? ParamConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y)
+              (instance? SumConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y)))
+              (instance? TypeOp y))
+          (intersect y x)
+
+          (instance? ListConstraint y)
+          (intersect-seqs x y)
+
+          (instance? CollectionOf y)
+          (intersect-seqs x (.tail-c empty-list-constraint y))
+
+          (NoValues [x y]))))
+
+(extend-type VectorConstraint
+  Constraint
+  (type-num [c] VectorType)
+
+  (type-sym [_] 'Vector)
+
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Vector from:" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["--items--"]
+          (-> (.items c)
+              (interpose ["----"])
+              (flat-map (fn [item-strs]
+                          (map item-strs (partial str "  ")))))
+          (cond (= (show-full bottom-type) (.tail-c c))
+                []
+                (comp ["--tail--"]
+                      (map (.tail-c c) (partial str "  "))))
+          ["===="]))
+
+  (set-to [x fld-path fld-c]
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
+
+                           (either (for [idx (first fld-path)
+                                         :when (and (instance? ReifiedConstraint idx)
+                                                    (= IntegerType (.type-number idx)))
+                                         idx (get-in idx [.fields 'static-value])
+                                         :when-not (= idx no-int)
+                                         :let [items-count (inc idx)
+                                               old-items (cond (<= items-count (count (.items x)))
+                                                               (.items x)
+
+                                                               (get-items x items-count))]
+                                         old-item (nth old-items idx)
+                                         new-items (store old-items idx
+                                                          (set-to old-item (rest fld-path) fld-c))]
+                                     (.items x new-items))
+                                   (cant-set-contents x fld-path)))))
+
+  (get-from [x idx]
+    (either (for [_ (and (instance? ReifiedConstraint idx)
+                         (= IntegerType (.type-number idx)))
+                  idx (get-in idx [.fields 'static-value])
+                  :when-not (= idx no-int)
+                  item (nth (get-items x (inc idx)) idx)]
+              item)
+            (NoValues [x (missing-field idx)])))
+
+  (contents-constraint [c]
+    (cond (and (empty? (.items c))
+               (= no-tail (.tail-c c)))
+          top-type
+
+          (-> (.items c)
+              (conj (either (map (= no-tail (.tail-c c)) (fn [_]
+                                                           top-type))
+                            (contents-constraint (.tail-c c))))
+              (remove (partial = top-type))
+              sum-type)))
+
+  (derive-const [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (or (some (.items c) pred)
+        (pred (.tail-c c))))
+
+  (found-constraint [c]
+    (or (some (.items c) identity)
+        (.tail-c c)))
+
+  (get-items [l]
+    (.items l))
+
+  (get-items [c items-count]
+    (let [fixed (take (.items c) items-count)
+          fixed-count (count fixed)]
+      (cond (= fixed-count items-count)
+            fixed
+
+            (= no-tail (.tail-c c))
+            []
+
+            (comp fixed
+                  (get-items (.tail-c c) (- items-count fixed-count))))))
+
+  (get-tail [l]
+    (.tail-c l))
+
+  (trim-const [vc]
+    (either (map (instance? SeqConstraint (.tail-c vc))
+                 (fn [tail-c]
+                   (-> vc
+                       (.items (comp (.items vc) (.items tail-c)))
+                       (.tail-c (.tail-c tail-c)))))
+            vc))
+
+  (intersect [x y]
+    (cond (or (instance? ParamConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y)
+              (instance? SumConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y)))
+              (instance? TypeOp y))
+          (intersect y x)
+
+          (instance? VectorConstraint y)
+          (intersect-seqs x y)
+
+          (instance? CollectionOf y)
+          (intersect-seqs x (.tail-c empty-vect-constraint y))
+
+          (NoValues [x y]))))
+
+(extend-type SumConstraint
+  Constraint
+  (type-num [c]
+    (either (apply = (map (.alts c) type-num))
+            UnknownType))
+
+  (assertion-path [c] (.path c))
+
+  (format-path [c n]
+    (let [sum-sym (either (apply = (map (.alts c) type-sym))
+                          "Sum Type")]
+      (format-path* (cons [(str sum-sym " from") ""] (.path c))
+                    n)))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (-> (.alts c)
+              (interpose ["----"])
+              (flat-map (fn [alt-strs]
+                          (map alt-strs (partial str "  ")))))))
+
+  (contents-constraint [c]
+    (-> (.alts c)
+        (map contents-constraint)
+        sum-type))
+
+  (derive-const [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (some (.alts c) pred))
+
+  (get-items [c]
+    (let [alts-items (-> (.alts c)
+                         (map (fn [alt]
+                                (get-items alt))))]
+      (either (empty? alts-items)
+              (-> (list-zipper alts-items empty-list)
+                  (map (fn [alts]
+                         (sum-type (vec alts))))
+                  vec))))
+
+  (get-tail [l]
+    (-> (.alts l)
+        (map get-tail)
+        sum-type))
+
+  (get-items [c items-count]
+    (let [alts-items (-> (.alts c)
+                         (map (fn [alt]
+                                (get-items alt items-count)))
+                         (filter (fn [alt]
+                                   (= items-count (count alt)))))]
+      (either (empty? alts-items)
+              (-> (apply zip-lists alts-items)
+                  (map (fn [alts]
+                         (sum-type (vec alts))))
+                  vec))))
+
+  (trim-const [c]
+    (let [all-alts (flat-map (.alts c) (fn [c]
+                                         (either (map (instance? SumConstraint c) .alts)
+                                                 [c])))
+          new-c (sum-type all-alts)]
+      (cond (instance? SymbolConstraints new-c)
+            (-> new-c
+                (.path (.path c))
+                (.sym (.sym c)))
+            new-c)))
+
+  (reify-const [c arity args]
+    (trim c))
+
+  (intersect [x y]
+    (cond (= x y)
+          x
+
+          (instance? SumConstraint y)
+          (let [new-alts (for [a1 (.alts x)
+                               a2 (.alts y)
+                               :let [new-alt (intersect a1 a2)]
+                               :when-not (= bottom-type new-alt)]
+                           new-alt)
+                new-alts (reduce new-alts [] (fn [new-alts alt]
+                                               (either (and (some new-alts (partial =* alt))
+                                                            (maybe new-alts))
+                                                       (conj new-alts alt))))]
+            (either (or (and (empty? new-alts)
+                             (maybe (NoValues [x y])))
+                        (and (= 1 (count new-alts))
+                             (first new-alts)))
+                    (.alts x new-alts)))
+
+          (instance? ParamConstraint y)
+          (MultiConstraint [x y] empty-list (.sym x))
+
+          (instance? MultiConstraint y)
+          (intersect y x)
+
+          (let [inters (map (.alts x) (fn [alt]
+                                        (intersect alt y)))
+                goods (-> inters
+                          (remove (partial instance? NoValues))
+                          (reduce [] (fn [goods y]
+                                       (either (and (some goods (partial = y))
+                                                    (maybe goods))
+                                               (conj goods y)))))]
+            (either (or (and (empty? goods)
+                             (or (apply = inters)
+                                 (maybe (NoValues [x y]))))
+                        (and (= (count goods) 1)
+                             (first goods)))
+                    (.alts x goods))))))
+
+(extend-type CollectionOf
+  Constraint
+  (get-tail [c] c)
+
+  (assertion-path [c] (.path c))
+
+  (format-path [c desired-len]
+    (format-path* (cons ["Contents from" ""] (.path c))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (map (.contents c) (partial str "  "))))
+
+  (contents-constraint [c]
+    (.contents c))
+
+  (derive-const [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (pred (.contents c)))
+
+  (found-constraint [c]
+    (.contents c))
+
+  (get-items [c items-count]
+    (repeat items-count (.contents c)))
+
+  (intersect [x y]
+    (cond (instance? CollectionOf y)
+          (let [new-cs (intersect (.contents x) (.contents y))]
+            (either (or (= new-cs bottom-type)
+                        (= x y))
+                    (.contents x new-cs)))
+
+          (intersect y x))))
+
+(extend-type MultiConstraint
+  Constraint
+  (assertion-path [c] empty-list)
+
+  (format-path [c desired-len]
+    (format-path* (list ["Multi Constraints" ""])
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          (-> (.constraints c)
+              (interpose (list "---"))
+              (flat-map (fn [c-strs]
+                          (map c-strs (partial str "  ")))))))
+
+  (contents-constraint [c]
+    (reduce (.constraints c) top-type
+            (fn [contents inner]
+              (intersect contents (contents-constraint inner)))))
+
+  (reify-const [c arity args]
+    (trim c))
+
+  (type-num [c]
+    (either (-> (.constraints c)
+                (map type-num)
+                (reduce (maybe UnknownType) (fn [x y]
+                                              (flat-map x (fn [inner]
+                                                            (cond (= inner UnknownType)
+                                                                  (maybe y)
+
+                                                                  (= y UnknownType)
+                                                                  x
+
+                                                                  (= inner y)))))))
+            UnknownType))
+
+  (derive-const [op]
+    (fn [c]
+      (-> (.constraints op)
+          (map (fn [op-fn]
+                 (op-fn c)))
+          (reduce top-type intersect))))
+
+  (find-constraint [c pred]
+    (some (.constraints c) pred))
+  (found-constraint [c]
+    (some (.constraints c) identity))
+
+  (get-items [c items-count]
+    (get-items (trim (derive c top-type)) items-count))
+
+  (get-items [c]
+    (get-items (trim (derive c top-type))))
+
+  (trim-const [c]
+    (let [[params others] (reduce (.constraints c) [[] []]
+                                  (fn [[params others] inner]
+                                    (cond (instance? ParamConstraint inner)
+                                          [(conj params inner) others]
+
+                                          [params (conj others inner)])))]
+      (reduce params
+              (reduce others top-type intersect)
+              intersect)))
+
+  (intersect [x y] 
+    (cond (or (=* x y)
+              (some (.constraints x) (partial = y)))
+          x
+
+          (or (instance? AllValues y)
+              (instance? NoValues y))
+          (intersect y x)
+
+          (instance? MultiConstraint y)
+          (reduce (.constraints y) x intersect)
+
+          (let [[new-cs final-y] (reduce (.constraints x) [[] y]
+                                         (fn [[cs y] c]
+                                           (let [new-y (intersect c y)]
+                                             (cond (= bottom-type new-y)
+                                                   [[] new-y]
+
+                                                   (or (= new-y y)
+                                                       (= new-y c))
+                                                   [cs new-y]
+
+                                                   [(conj cs c) y]))))]
+            (either (= bottom-type final-y)
+                    (.constraints x (conj new-cs final-y)))))))
+
+(extend-type ParamConstraint
+  Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [c desired-len]
+    (format-path* (cons [(str "Parameter " (.param-index c) " from") ""] (.path c))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (contents-constraint [c]
+    (.base inner-type-of c))
+
+  (reify-const [c arity-id args]
+    (cond (= (.arity c) arity-id)
+          (either (for [arg (get args (.param-index c))
+                        new-args (store args (.param-index c) top-type)]
+                    (ana (fn [c]
+                           (reify-const c arity-id new-args))
+                         arg))
+                  top-type)
+
+          c))
+
+  (derive-const [op]
+    (fn [c]
+      c))
+
+  (find-param [c]
+    (RecurseFinal (maybe c)))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
+          x
+
+          (or (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
+          (intersect y x)
+
+          (MultiConstraint [y x] empty-list (.sym x)))))
+
+(extend-type fn-arity
+  Eq
+  (=* [x y]
+    (flat-map (instance? fn-arity y)
+              (fn [_]
+                (let [old-id (.arity-id y)
+                      y (cata (fn [c]
+                                (cond (and (instance? ParamConstraint c)
+                                           (= old-id (.arity c)))
+                                      (.arity c (.arity-id x))
+
+                                      c))
+                              y)]
+                  (and (= (.param-consts x) (.param-consts y))
+                       (= (.result-const x) (.result-const y))
+                       (maybe x))))))
+
+  Constraint
+  (show-full [c]
+    (comp (list (str "arity: " (.arity-id c))
+                "--parameters--")
+          (->  (.param-consts c)
+               (.items)
+               (interpose ["----"])
+               (flat-map (fn [item-strs]
+                           (map item-strs (partial str "  ")))))
+          (let [tail-c (.tail-c (.param-consts c))]
+            (cond (first tail-c)
+                  (comp ["--variadic params--"]
+                        (map tail-c (partial str "  ")))
+                  []))
+          ["--result--"]
+          (map (.result-const c) (partial str "  "))))
+
+  (derive-const [op]
+    (fn [c]
+      (map op (fn [contents]
+                (contents top-type)))))
+
+  (find-constraint [c pred]
+    (or (-> (.param-consts c)
+            .items
+            (some pred))
+        (-> (.param-consts c)
+            .tail-c
+            pred)
+        (pred (.result-const c))))
+
+  (found-constraint [c]
+    (or (-> (.param-consts c)
+            .items
+            (some identity))
+        (.tail-c (.param-consts c))
+        (.result-const c)))
+
+  (intersect [ar1 ar2]
+    (assert (instance? fn-arity ar2))
+
+    (let [param-cs (intersect (.param-consts ar1) (.param-consts ar2))
+          result-c (intersect (.result-const ar1) (.result-const ar2))
+          arity-id (cond (= no-symbol (.arity-id ar1))
+                         (.arity-id ar2)
+
+                         (.arity-id ar1))]
+      (either (or (some-constraint (partial = bottom-type) param-cs)
+                  (some-constraint (partial = bottom-type) result-c))
+
+              (-> ar1
+                  (.arity-id arity-id)
+                  (.param-consts param-cs)
+                  (.result-const result-c))))))
+
+(defn intersect-fns [y x]
+  (either (or (=* x y)
+              (and (or (empty? (.arities x))
+                       (empty? (.arities y)))
+                   (maybe (NoValues [x y]))))
+          (let [new-required (reduce (.required-arities x) (.required-arities y)
+                                     (fn [new-reqd arity-rank]
+                                       (cond (some new-reqd (partial = arity-rank))
+                                             new-reqd
+
+                                             (conj new-reqd arity-rank))))
+                new-arities (reduce (for [[x-idx x-arity] (vec (.arities x))
+                                          [y-idx y-arity] (vec (.arities y))
+                                          :when (= x-idx y-idx)
+                                          :let [new-arity (intersect x-arity y-arity)]
+                                          :when-not (some-constraint (partial = bottom-type)
+                                                                     new-arity)]
+                                      [x-idx new-arity])
+                                    {} (fn [arities [idx arity]]
+                                         (assoc arities idx arity)))
+                min-variadic-arity (map (get new-arities variadic)
+                                        (fn [var-arity]
+                                          (-> var-arity .param-consts .items count)))]
+            (cond (empty? new-arities)
+                  (NoValues [x y])
+
+                  (every new-required (fn [required]
+                                        (or (get new-arities required)
+                                            (flat-map min-variadic-arity (fn [min-var]
+                                                                           (<= min-var required))))))
+                  (-> x
+                      (.required-arities new-required)
+                      (.arities new-arities))
+
+                  (NoValues [x y])))))
+
+(extend-type FnConstraint
+  Stringable
+  (string-list [c]
+    (let [long-form (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
+                          "\n" (str (.arities c)) ")")]
+      (cond (= c fn-constraint)
+            (list "c/fn-constraint")
+
+            (= (.arities c) (.arities fn-constraint))
+            (list "(.required-arities c/fn-constraint " (str (.required-arities c) ")"))
+
+            (and (every (vals (.arities c)) (partial instance? fn-arity))
+                 (= (count (.arities c)) (count (.arities fn-constraint))))
+            (let [fn-str (cond (empty? (.required-arities c))
+                               "c/fn-constraint"
+                               (str "(.required-arities c/fn-constraint " (.required-arities c) ")"))
+                  results (-> (.arities c)
+                              vals
+                              (map .result-const))]
+              (either (flat-map (first results)
+                                (fn [result]
+                                  (or (and (= result top-type)
+                                           (maybe (list fn-str)))
+
+                                      (and (every results (partial = result))
+                                           (maybe (list "(c/intersect " fn-str "\n(c/coll-of-c "
+                                                        (str result) "))"))))))
+                      long-form))
+
+            long-form)))
+
+  Constraint
+  (type-num [c] FunctionType)
+
+  (type-sym [_] 'Fn)
+
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* (cons ["Function from" ""] (.path x))
+                  desired-len))
+
+  (show-full [c]
+    (comp (format-path c 0)
+          ["---------"]
+          (-> (.arities c)
+              vals
+              (interpose ["----"])
+              flatten
+              (map (partial str "  ")))))
+
+  (derive-const [op]
+    (fn [c]
+      (let [derived (map op (fn [contents]
+                              (contents top-type)))]
+        (intersect derived c))))
+
+  (find-constraint [c pred]
+    (some (vals (.arities c)) pred))
+
+  (found-constraint [c]
+    (some (vals (.arities c)) identity))
+
+  (find-param [c]
+    (RecurseFinal nothing))
+
+  (intersect [x y]
+    (cond (=* x y)
+          x
+
+          (or (instance? ParamConstraint y)
+              (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y)
+              (instance? SumConstraint y)
+              (instance? ReifiedConstraint y)
+              (instance? TypeOp y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
+          (intersect y x)
+
+          (instance? CollectionOf y)
+          (let [new-result (.contents y)]
+            (is-bottom (map x (fn [arity]
+                                (.result-const arity
+                                               (intersect (.result-const arity)
+                                                          new-result))))))
+
+          (instance? FnConstraint y)
+          (intersect-fns x y)
+
+          (NoValues [x y]))))
+
+(defn intersect-simple-container [x y]
+  (either (for [_ (= (type-num x) (type-num y))
+                cnts-x (get-in x [.fields 'contents])
+                cnts-y (get-in y [.fields 'contents])]
+            (let [new-cnts (either (or (= cnts-x no-contents)
+                                       (= cnts-y no-contents))
+                                   (intersect cnts-x cnts-y))]
+              (either (= bottom-type new-cnts)
+                      (assoc-in x [.fields 'contents] new-cnts))))
+
+          (NoValues [x y])))
+
+(defn intersect-int [x y]
+  (either (for [min-x (get-in x [.fields 'min])
+                max-x (get-in x [.fields 'max])
+                static-x (get-in x [.fields 'static-value])
+                min-y (get-in y [.fields 'min])
+                max-y (get-in y [.fields 'max])
+                static-y (get-in y [.fields 'static-value])
+                :let [new-min (either (> min-x min-y)
+                                      min-y)
+                      new-max (either (< max-x max-y)
+                                      max-y)]
+                new-static (or (= static-x static-y)
+                               (flat-map (or (= static-x static-y)
+                                             (and (= static-x no-int)
+                                                  (maybe static-y))
+                                             (and (= static-y no-int)
+                                                  (maybe static-x)))
+                                         (fn [new-static]
+                                           (and (<= new-min new-static new-max)
+                                                (maybe new-static)))))]
+            ;; TODO: use the path from the most restrictive constraint
+            ;; determined by satisfied-by
+            (.fields x {'min new-min 'max new-max 'static-value new-static}))
+          (NoValues [x y])))
+
+(defn intersect-static [x y]
+  (either (for [sv-x (get-in x [.fields 'static-value])
+                sv-y (get-in y [.fields 'static-value])
+                new-sv (or (= sv-x sv-y)
+                           (and (instance? NoStatic sv-x)
+                                (maybe sv-y))
+                           (and (instance? NoStatic sv-y)
+                                (maybe sv-x)))]
+            (assoc-in x [.fields 'static-value] new-sv))
+          (NoValues [x y])))
+
+(def intersectors {IntegerType intersect-int
+                   SymbolType intersect-static
+                   SubStringType intersect-static
+                   StringBufferType intersect-static
+                   OpaqueType (fn [x y] (NoValues [x y]))
+                   FutureType (fn [x y] (NoValues [x y]))
+                   MaybeType intersect-simple-container
+                   PromiseType (fn [x _] x)
+                   AgentType (fn [x _] x)})
+
+(defn intersect-reified [x y]
+  (either (map (get intersectors (type-num x))
+               (fn [f]
+                 (f x y)))
+
+          (is-bottom (.fields x (merge-with intersect (.fields x) (.fields y))))))
+
+(defn format-static-value [c]
+  (assert (instance? ReifiedConstraint c))
+
+  (either (map (get (.fields c) 'static-value)
+               (fn [sv]
+                 (cond (or (= no-symbol sv)
+                           (= no-int sv)
+                           (= IntegerType (type-num c)))
+                       (str sv " ")
+
+                       (= SymbolType (type-num c))
+                       (str "'" sv " ")
+
+                       "")))
+          ""))
+
+(extend-type ReifiedConstraint
+  Constraint
+  (contents-constraint [c]
+    (let [type-number (type-num c)]
+      (either (or (map (or (= StringBufferType type-number)
+                           (= SubStringType type-number))
+                       (fn [_]
+                         (str-inner c)))
+                  (map (or (= AgentType type-number)
+                           (= PromiseType type-number)
+                           (= FutureType type-number))
+                       (fn [_]
+                         top-type))
+                  (get-in c [.fields 'contents]))
+              (NoValues [c not-container]))))
+
+  (type-sym [c]
+    (.type-symbol c))
+
+  (type-num [c]
+    (.type-number c))
+
+  (assertion-path [c] (.path c))
+
+  (format-path [c desired-len]
+    (format-path* (cons [(str (type-sym c) " " (format-static-value c) "from:") ""]
+                        (.path c))
+                  desired-len))
+
+  (show-full [c]
+    (cons (str "Type: " (type-sym c))
+          (show-full (.invoke-fn c))))
+
+  (set-to [x fld-path fld-c]
+    (some-constraint (partial = bottom-type)
+                     (cond (empty? fld-path)
+                           fld-c
+
+                           (either (for [fld (first fld-path)
+                                         field-check (get (.field-consts x) fld)
+                                         curr-field (get (.fields x) fld)
+                                         :let [new-field (set-to curr-field (rest fld-path) fld-c)
+                                               final-field (intersect field-check new-field)]
+                                         final-field (or (= bottom-type final-field)
+                                                         (= final-field new-field))]
+                                     (.fields x (assoc (.fields x) fld final-field)))
+                                   (cant-set-contents x fld-path)))))
+
+  (get-from [c fld-c]
+    (either (or (get (.fields c) fld-c)
+                (get (.field-consts c) fld-c))
+            (NoValues [c (missing-field fld-c)])))
+
+  (derive-const [op]
+    (fn [c]
+      (intersect (map op (fn [contents]
+                           (contents top-type)))
+                 c)))
+
+  (find-constraint [c pred]
+    (or (some (seq (.fields c)) (fn [[fld-c val-c]]
+                                  (or (pred fld-c)
+                                      (pred val-c))))
+        (pred (.invoke-fn c))))
+
+  (found-constraint [c]
+    (or (some (seq (.fields c)) (fn [[fld-c val-c]]
+                                  (or (either (instance? Maybe fld-c)
+                                              nothing)
+                                      (either (instance? Maybe val-c)
+                                              nothing))))
+        (.invoke-fn c)))
+
+  (intersect [x y]
+    (let [type-number (type-num x)]
+      (cond (=* x y)
+            x
+
+            (or (instance? ParamConstraint y)
+                (instance? AllValues y)
+                (instance? NoValues y)
+                (instance? MultiConstraint y)
+                (instance? SumConstraint y)
+                (instance? TypeOp y))
+            (intersect y x)
+
+            (instance? CollectionOf y)
+            (either (or (map (or (= StringBufferType type-number)
+                                 (= SubStringType type-number))
+                             (fn [_]
+                               (let [intersected (intersect (str-inner x) (.contents y))]
+                                 (cond (= intersected bottom-type)
+                                       (NoValues [x y])
+
+                                       (multi [x (.contents y intersected)])))))
+                        (and (or (= AgentType type-number)
+                                 (= PromiseType type-number)
+                                 (= FutureType type-number))
+                             (maybe x))
+                        (map (= UnknownType type-number)
+                             (fn [_]
+                               (assoc-in x [.fields 'contents]
+                                         (intersect (get y .contents)
+                                                    (either (get-in x [.fields 'contents])
+                                                            top-type)))))
+                        (for [cnts-x (or (get-in x [.fields 'contents])
+                                         (maybe (NoValues [x not-container])))
+                              cnts-y (get y .contents)]
+                          (let [new-cnts (intersect cnts-x cnts-y)]
+                            (either (= bottom-type new-cnts)
+                                    (assoc-in x [.fields 'contents] new-cnts)))))
+
+                    (NoValues [x y]))
+
+            (instance? FnConstraint y)
+            (let [new-invoke (intersect-fns (.invoke-fn x) y)]
+              (either (= bottom-type new-invoke)
+                      (.invoke-fn x new-invoke)))
+
+            (instance? ReifiedConstraint y)
+            (cond (= type-number (type-num y))
+                  (intersect-reified x y)
+
+                  (or (= UnknownType (type-num y))
+                      (= UnknownType type-number))
+                  (multi [x y])
+
+                  (NoValues [x y]))
+
+            (either (and (= UnknownType type-number)
+                         (or (map (get-in x [.fields 'contents])
+                                  (fn [cnts]
+                                    (intersect (coll-of-c cnts)
+                                               y)))
+                             (maybe y)))
+                    (NoValues [x y]))))))
+
+(defn do-concat [base args loc-path]
+  (let [new-base (trim (intersect base (coll-of-c (sum-c [string-constraint
+                                                          seq-constraint]))))]
+    (either (some-constraint (partial = bottom-type)
+                             new-base)
+            (cond (some-constraint find-param base)
+                  (TypeOp concat-op base no-args no-symbol loc-path)
+
+                  (let [tail-seq (cond (= no-tail (get-tail new-base))
+                                       empty-list-constraint
+
+                                       (coll-of-c (-> (get-tail new-base)
+                                                      contents-constraint
+                                                      contents-constraint)))]
+                    (-> (reverse (get-items new-base))
+                        (reduce tail-seq
+                                (fn [tail arg]
+                                  (cond (= (get-tail arg) no-tail)
+                                        (set-tail arg tail)
+
+                                        (set-tail arg (sum-type [(coll-of-c (contents-constraint tail))
+                                                                 (get-tail arg)])))))
+                        trim))))))
+
+(defn do-call-value [base args loc-path]
+  (assert (instance? Constraints base))
+  (assert-result r (instance? Vector r))
+
+  (cond (instance? FnConstraint base)
+        (either (or (map (= no-args args)
+                         (fn [_]
+                           (-> (.arities base)
+                               vals
+                               (reduce [] (fn [arities arity]
+                                            (assert (instance? fn-arity arity))
+                                            (conj arities (derive (.result-const arity) top-type))))
+                               sum-type
+                               (vector args))))
+                    ;; get the arity
+                    (map (or (get-in base [.arities (count args)])
+                             (get-in base [.arities variadic]))
+                         (fn [arity]
+                           (assert (instance? fn-arity arity))
+                           (let [new-args (intersect (.items empty-list-constraint args)
+                                                     (.param-consts arity))
+                                 reified (cond (= bottom-type new-args)
+                                               new-args
+
+                                               (let [fixed-count (-> arity .param-consts .items count)
+                                                     [reqd var] (split (get-items new-args (count args))
+                                                                       fixed-count)
+                                                     new-args (conj reqd (.items empty-list-constraint var))
+                                                     new-args (cata (fn [c]
+                                                                      (reify-const c (.arity-id arity)
+                                                                                   (repeat (count new-args)
+                                                                                           top-type)))
+                                                                    new-args)]
+                                                 (cata (fn [c]
+                                                         (reify-const c (.arity-id arity)
+                                                                      new-args))
+                                                       arity)))]
+                             (either (map (some-constraint (partial = bottom-type) reified)
+                                          (fn [err-c]
+                                            [err-c args]))
+                                     [(.result-const reified)
+                                      (get-items (.param-consts reified) (count args))])))))
+
+                [(NoValues [(type-op call-value-op top-type args)
+                            base])
+                 args])
+
+        (instance? ReifiedConstraint base)
+        (do-call-value (.invoke-fn base)
+                       (cond (instance? NoArgs args)
+                             [base]
+                             (comp [base] args))
+                       loc-path)
+
+        (instance? ProtoImpls base)
+        (either (or (and (= args no-args)
+                         (maybe (do-call-value (.default-impl base) args loc-path)))
+                    (map (first args)
+                         (fn [disp-arg]
+                           ;; TODO: possible alternative
+                           (either (or (and (some args (partial some-constraint find-param))
+                                            (or (map (get-in base [.default-impl .arities (count args)])
+                                                     (fn [default-arity]
+                                                       [(TypeOp call-value-op (.impl-fns base {}) args
+                                                                no-symbol loc-path)
+                                                        (-> default-arity
+                                                            (reify-type-constraint (.arity-id default-arity)
+                                                                                   args (Location "" 0))
+                                                            .param-consts
+                                                            .items)]))
+                                                (maybe [(NoValues [base (-> empty-reified
+                                                                             (replace-path loc-path)
+                                                                             (.type-symbol (symbol "No arity found")))])
+                                                        args])))
+                                       (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                                             :when (get-in impl-fn [.arities (count args)])]
+                                         (do-call-value impl-fn args loc-path)))
+                                   (do-call-value (.default-impl base) args loc-path))
+                           ;; (either (or (and (instance? ParamConstraint disp-arg)
+                           ;;                  (maybe (TypeOp call-value-op base args no-symbol loc-path)))
+                           ;;             (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
+                           ;;                   :when (get-in impl-fn [.arities (count args)])]
+                           ;;               (do-call-value impl-fn args loc-path)))
+                           ;;         (do-call-value (.default-impl base) args loc-path))
+                           )))
+                [(NoValues [base (-> empty-reified
+                                      (replace-path loc-path)
+                                      (.type-symbol (symbol "Insufficient number of arguments.")))])
+                 args])
+
+        (cond (or (some-constraint find-param base)
+                  (and (= nothing (= args no-args))
+                       (some args (partial some-constraint find-param))))
+              [(TypeOp call-value-op base args no-symbol loc-path)
+               args]
+
+              [(NoValues [(type-op call-value-op top-type args) base])
+               args])))
+
+(defn do-apply-value [base args loc-path]
+  (assert-result r (instance? Vector r))
+
+  (cond (some-constraint find-param args)
+        [(TypeOp apply-op base args no-symbol loc-path) args]
+
+        (or (instance? FnConstraint base)
+            (instance? ReifiedConstraint base))
+        (do-call-value base (get-items args) loc-path)
+
+        (cond (some-constraint find-param base)
+              [(TypeOp apply-op base args no-symbol loc-path) args]
+
+              (do-call-value base (get-items args) loc-path))))
+
+(defn do-set-to [base [path v] loc-path]
+  ;; TODO: check for ParamConstraints
+  (cond (empty? path)
+        base
+
+        (or (instance? ListConstraint base)
+            (instance? VectorConstraint base)
+            (instance? ReifiedConstraint base))
+        (set-to base path v)
+
+        (or (instance? SumConstraint base)
+            (instance? MultiConstraint base))
+        (do
+          (print-err 'time-to-fix _LINE_
+                     "\n" 'base base
+                     "\n\n" 'path path
+                     "\n\n" 'v v)
+          (abort))
+
+        (NoValues [(type-op set-to-op top-type [path v] loc-path) base])))
+
+(defn do-get-from [base path loc-path]
+  ;; TODO: check for ParamConstraints
+  (cond (empty? path)
+        base
+
+        (or (instance? ListConstraint base)
+            (instance? VectorConstraint base)
+            (instance? ReifiedConstraint base))
+        (either (map (first path)
+                     (fn [fld]
+                       (do-get-from (get-from base fld)
+                                    (rest path)
+                                    loc-path)))
+
+                base)
+
+        (or (instance? SumConstraint base)
+            (instance? MultiConstraint base))
+        (do
+          (print-err 'time-to-fix _LINE_
+                     "\n" 'base base
+                     "\n\n" 'path path)
+          (abort))
+
+        (NoValues [(type-op get-from-op top-type path) base])))
+
+(defn do-arg-of [base arg-pos loc-path]
+  (cond (instance? FnConstraint base)
+        (let [num-args (inc arg-pos)
+              arity-args (-> (.arities base)
+                             vals
+                             (reduce [] (fn [arities arity]
+                                          (assert (instance? fn-arity arity))
+
+                                          (let [arity (reify-type-constraint arity (.arity-id arity)
+                                                                             (repeat num-args top-type)
+                                                                             (Location "" 0))]
+                                            (either (map (-> (.param-consts arity)
+                                                             (get-items num-args)
+                                                             (nth arg-pos))
+                                                         (partial conj arities))
+                                                    arities)))))]
+          (cond (empty? arity-args)
+                (NoValues [(type-op arg-of-op top-type arg-pos) base])
+
+                (sum-type arity-args)))
+
+        (instance? ReifiedConstraint base)
+        (do-arg-of (.invoke-fn base)
+                   (inc arg-pos)
+                   loc-path)
+
+        (instance? ProtoImpls base)
+        (do-arg-of (.default-impl base) arg-pos loc-path)
+
+        (cond (some-constraint find-param base)
+              (TypeOp arg-of-op base arg-pos no-symbol loc-path)
+
+              (NoValues [(type-op arg-of-op top-type arg-pos) base]))))
+
+(defn seq-from-str [c seq-c]
+  (either (map (get-in c [.fields 'static-value])
+               (fn [static]
+                 (cond (= static no-string)
+                       (.tail-c seq-c (coll-of-c substr-constraint))
+                       (.items seq-c
+                               (map (vec static)
+                                    (fn [s]
+                                      (assoc-in substr-constraint [.fields 'static-value]
+                                                s)))))))
+          (.tail-c seq-c (coll-of-c substr-constraint))))
+
+(def type-op-fn {inner-type-of-op (fn [base _ loc-path]
+                                    (contents-constraint base))
+                 first-of-op (fn [base params loc-path]
+                               (cond (instance? SeqConstraint base)
+                                     (either (map (first (get-items base 1))
+                                                  MaybeConstraint)
+                                             nothing-constraint)
+
+                                     (and (instance? ReifiedConstraint base)
+                                          (or (= (.type-number base) StringBufferType)
+                                              (= (.type-number base) SubStringType)))
+                                     (either (map (get-in base [.fields 'static-value])
+                                                  (fn [sv]
+                                                    (cond (= sv "")
+                                                          nothing-constraint
+                                                          (MaybeConstraint substr-constraint))))
+                                             (MaybeConstraint substr-constraint))
+
+                                     (and (instance? ReifiedConstraint base)
+                                          (= (.type-number base) UnknownType))
+                                     maybe-constraint
+
+                                     (instance? CollectionOf base)
+                                     (MaybeConstraint (.contents base))
+
+                                     (cond (some-constraint find-param base)
+                                           (TypeOp first-of-op base params no-symbol loc-path)
+
+                                           (NoValues [(type-op first-of-op top-type params) base]))))
+                 last-of-op (fn [base params loc-path]
+                              (cond (instance? SeqConstraint base)
+                                    (let [base (trim base)]
+                                      (either (or (and (= no-tail (.tail-c base))
+                                                       (or (map (last (.items base))
+                                                                MaybeConstraint)
+                                                           (maybe nothing-constraint)))
+                                                  (first (get-items (.tail-c base) 1)))
+                                              maybe-constraint))
+
+                                    (and (instance? ReifiedConstraint base)
+                                         (or (= (.type-number base) StringBufferType)
+                                             (= (.type-number base) SubStringType)))
+                                    (either (map (get-in base [.fields 'static-value])
+                                                 (fn [sv]
+                                                   (cond (= sv "")
+                                                         nothing-constraint
+                                                         (MaybeConstraint substr-constraint))))
+                                            (MaybeConstraint substr-constraint))
+
+                                    (and (instance? ReifiedConstraint base)
+                                         (= (.type-number base) UnknownType))
+                                    maybe-constraint
+
+                                     (instance? CollectionOf base)
+                                     (MaybeConstraint (.contents base))
+
+                                    (cond (some-constraint find-param base)
+                                          (TypeOp last-of-op base params no-symbol loc-path)
+
+                                          (NoValues [(type-op last-of-op top-type params) base]))))
+                 rest-of-op (fn [base params loc-path]
+                              (cond (instance? SeqConstraint base)
+                                    (let [base (trim base)]
+                                      (.items base (rest (.items base))))
+
+                                    (and (instance? ReifiedConstraint base)
+                                         (or (= (.type-number base) StringBufferType)
+                                             (= (.type-number base) SubStringType)))
+                                    substr-constraint
+
+                                    (and (instance? ReifiedConstraint base)
+                                         (= (.type-number base) UnknownType))
+                                    (type-op rest-of-op top-type params)
+
+                                    (instance? CollectionOf base)
+                                    base
+
+                                    (cond (some-constraint find-param base)
+                                          (TypeOp rest-of-op base params no-symbol loc-path)
+
+                                          (NoValues [(type-op rest-of-op top-type params) base]))))
+                 butlast-of-op (fn [base params loc-path]
+                                 (cond (instance? SeqConstraint base)
+                                       (let [base (trim base)]
+                                         (cond (= (.tail-c base) no-tail)
+                                               (.items base (butlast (.items base)))
+
+                                               base))
+
+                                       (and (instance? ReifiedConstraint base)
+                                            (or (= (.type-number base) StringBufferType)
+                                                (= (.type-number base) SubStringType)))
+                                       substr-constraint
+
+                                       (and (instance? ReifiedConstraint base)
+                                            (= (.type-number base) UnknownType))
+                                       (type-op butlast-of-op top-type params)
+
+                                       (instance? CollectionOf base)
+                                       base
+
+                                       (cond (some-constraint find-param base)
+                                             (TypeOp butlast-of-op base params no-symbol loc-path)
+
+                                             (NoValues [(type-op butlast-of-op top-type params) base]))))
+                 list-from-op (fn [base params loc-path]
+                                (cond (instance? ListConstraint base)
+                                      base
+
+                                      (instance? VectorConstraint base)
+                                      (let [base (trim base)]
+                                        (-> empty-list-constraint
+                                            (.items (.items base))
+                                            (.tail-c (.tail-c base))
+                                            (.path (.path base))))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (or (= (.type-number base) StringBufferType)
+                                               (= (.type-number base) SubStringType)))
+                                      (-> (seq-from-str base empty-list-constraint)
+                                          (.path (.path base)))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (= (.type-number base) UnknownType))
+                                      (type-op list-from-op top-type params)
+
+                                      (instance? CollectionOf base)
+                                      (.tail-c empty-list-constraint base)
+
+                                      (cond (some-constraint find-param
+                                                             base)
+                                            (TypeOp list-from-op base params no-symbol loc-path)
+
+                                            (NoValues [(type-op list-from-op top-type params) base]))))
+                 vect-from-op (fn [base params loc-path]
+                                (cond (instance? VectorConstraint base)
+                                      base
+
+                                      (instance? ListConstraint base)
+                                      (let [base (trim base)]
+                                        (-> empty-vect-constraint
+                                            (.items (.items base))
+                                            (.tail-c (.tail-c base))
+                                            (.path (.path base))))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (or (= (.type-number base) StringBufferType)
+                                               (= (.type-number base) SubStringType)))
+                                      (-> (seq-from-str base empty-vect-constraint)
+                                          (.path (.path base)))
+
+                                      (and (instance? ReifiedConstraint base)
+                                           (= (.type-number base) UnknownType))
+                                      (type-op vect-from-op top-type params)
+
+                                      (instance? CollectionOf base)
+                                      (.tail-c empty-vect-constraint base)
+
+                                      (cond (some-constraint find-param
+                                                             base)
+                                            (TypeOp vect-from-op base params no-symbol loc-path)
+
+                                            (NoValues [(type-op vect-from-op top-type params)
+                                                       base]))))
+                 arg-of-op do-arg-of
+                 get-from-op do-get-from
+                 set-to-op do-set-to
+                 call-value-op (fn [base args loc-path]
+                                 (let [[result-type] (do-call-value base args loc-path)]
+                                   result-type))
+                 concat-op do-concat
+                 apply-op (fn [base args loc-path]
+                                 (let [[result-type] (do-apply-value base args loc-path)]
+                                   result-type))})
+
+(def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
+                  first-of-op (constantly ["First value of seq" ""])
+                  last-of-op (constantly ["Last value of seq" ""])
+                  rest-of-op (constantly ["Rest of seq" ""])
+                  butlast-of-op (constantly ["All but the last value of seq" ""])
+                  list-from-op (constantly ["List from value" ""])
+                  vect-from-op (constantly ["Vector from value" ""])
+                  ;; TODO: make these fns that take a parameter
+                  arg-of-op (constantly [(str "Argument ?? of") ""])
+                  call-value-op (fn [c] ["Called at " ""])})
+
+(extend-type TypeOp
+  Container
+  (map [tc f]
+    (cond (= (.op-code tc) set-to-op)
+          (let [[path v] (.params tc)]
+            (-> tc
+                (.base (f (.base tc)))
+                (.params [(map path f) (f v)])))
+
+          (or (instance? Constraints (.params tc))
+              (instance? Vector (.params tc)))
+          (-> tc
+              (.base (f (.base tc)))
+              (.params (map (.params tc)
+                            (fn [param]
+                              (cond (instance? Integer param)
+                                    param
+
+                                    (f param))))))
+
+          (.base tc (f (.base tc)))))
+
+  (map [tc f embed]
+    (cond (= (.op-code tc) set-to-op)
+          (let [[path v] (.params tc)]
+            (for [new-base (f (.base tc))
+                  new-path (map path f embed)
+                  new-v (f v)]
+              (-> tc
+                  (.base new-base)
+                  (.params [new-path new-v]))))
+
+          (or (instance? Constraints (.params tc))
+              (instance? Vector (.params tc)))
+          (for [new-base (f (.base tc))
+                new-params (cond (instance? Constraints (.params tc))
+                                 (f (.params tc))
+
+                                 (map (.params tc)
+                                      (fn [param]
+                                        (cond (instance? Integer param)
+                                              (embed param)
+
+                                              (f param)))
+                                      embed))]
+            (-> tc
+                (.base new-base)
+                (.params new-params)))
+
+          (map (f (.base tc))
+               (partial .base tc))))
+
+  Constraint
+  (type-num [c]
+    (type-num (trim (derive c top-type))))
+
+  (trim-const [c]
+    (reify-const c no-symbol []))
+
+  (contents-constraint [c]
+    (.base inner-type-of c))
+
+  (find-constraint [c pred]
+    (or (pred (.base c))
+        (and (instance? Vector (.params c))
+             (some (.params c) pred))
+        (flat-map (instance? Constraints (.params c))
+                  pred)))
+
+  (found-constraint [c]
+    (or (.base c)
+        (and (instance? Vector (.params c))
+             (some (.params c) identity))
+        (either (instance? Maybe (.params c))
+                nothing)))
+
+  (derive-const [op]
+    (fn [c]
+      (let [op (map op (fn [f]
+                         (f top-type)))]
+        (intersect c op))))
+
+  (reify-const [c arity-id arg-cs]
+    (let [base (.base c)
+          op-code (.op-code c)]
+      (cond (or (instance? AllValues base)
+                (instance? NoValues base))
+            base
+
+            (either (map (get type-op-fn op-code)
+                         (fn [f]
+                           (cond (instance? MultiConstraint base)
+                                 (reduce (.constraints base) top-type
+                                         (fn [old-c inner]
+                                           (intersect old-c (reify-const (.base c inner)
+                                                                         arity-id arg-cs))))
+
+                                 (instance? SumConstraint base)
+                                 (-> (.alts base)
+                                     (map (fn [alt]
+                                            (reify-const (.base c alt) arity-id arg-cs)))
+                                     sum-type)
+
+                                 (f base (.params c) (.path c)))))
+                    top-type))))
+
+  (assertion-path [c] (.path c))
+
+  (format-path [c desired-len]
+    (format-path* (cons (either (map (get type-op-msg (.op-code c))
+                                     (fn [msg-f]
+                                       (msg-f c)))
+                                [(str "Type operation" (.op-code c)) ""])
+                        (.path c))
+                  desired-len))
+
+  (show-full [c]
+    (format-path c 0))
+
+  (intersect [x y]
+    (cond (or (=* x y)
+              (and (instance? ReifiedConstraint y)
+                   (= UnknownType (.type-number y))))
+          x
+
+          (or (instance? AllValues y)
+              (instance? NoValues y)
+              (instance? MultiConstraint y))
+          (intersect y x)
+
+          (multi [x y]))))
+
+(extend-type Field
+  Constraint
+  (show-full [c]
+    (list "Field " (str (.sym c)))))
+
+(extend-type TypeOfConstraint
+  Constraint
+  (assertion-path [c] (.path c))
+
+  (format-path [c desired-len]
+    (format-path* (cons ["Type of value from" ""] (.path c))
+                  desired-len))
+
+  (show-full [c]
+    (string-list c)))
+
+(extend-type ProtoImpls
+  Constraint
+  (find-param [c]
+    (RecurseFinal nothing))
+
+  (descend? [c]
+    (RecurseFinal c))
+
+  (derive-const [op]
+    (fn [c]
+      (let [derived (map (.default-impl op) (fn [f]
+                                              (f top-type)))]
+        (intersect c derived))))
+
+  (show-full [c]
+    (comp (list (str "prototype " (.fn-sym c)))
+          (show-full (.default-impl c))
+          (list (str (map-vals (.impl-fns c) (fn [x]
+                                               (to-str (interpose x "\n"))))))))
+
+  (format-path [x n]
+    (format-path (.default-impl x) n))
+
+  (assertion-path [x]
+    (assertion-path (.default-impl x)))
+
+  (intersect [x y]
+    (cond (= x y)
+          x
+
+          (either (some-constraint (partial = bottom-type)
+                                   (intersect (.default-impl x) y))
+
+                  (multi [x y])))))
+
+;; misc
+;; Going to try and do without these
+;; DebugConstraint
+
+(def core-type-constraints {'Integer int-constraint
+                            'StringBuffer strbuff-constraint
+                            'SubString substr-constraint
+                            'FnArity arity-constraint
+                            'BitmapIndexedNode bitmap-constraint
+                            'ArrayNode array-constraint
+                            'HashCollisionNode hash-coll-constraint
+                            'Fn fn-constraint
+                            'List list-constraint
+                            'Maybe maybe-constraint
+                            'Vector vect-constraint
+                            'Symbol sym-constraint
+                            'HashMap hashmap-constraint
+                            'Promise promise-constraint
+                            'Future future-constraint
+                            'Agent agent-constraint
+                            'Opaque opaque-constraint})
+
+;; combine two constraints to produce a new constraint
+;; that is the same or more restrictive than either constraint
