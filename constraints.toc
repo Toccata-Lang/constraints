@@ -1221,44 +1221,41 @@
                (RecurseWith c)))
        c))
 
-(defn format-path* [path desired-len]
-  (assert (instance? List path))
+(defn format-path* [header path desired-len]
+  (assert (instance? String header))
+  (assert (instance? (list-of Location) path))
   (assert (instance? Integer desired-len))
 
-  (either (map (first path)
-               (fn [[header]]
-                 (let [path (-> (rest path)
-                                (remove (fn [[file line]]
-                                          (either (and (instance? Symbol file)
-                                                       (maybe nothing))
-                                                  (or (empty? file)
-                                                      (= 0 line)))))
-                                (map (fn [[file line]]
-                                       (let [file (str file)]
-                                         (str (either (-> file
-                                                          str
-                                                          (split-string (partial = "/"))
-                                                          last
-                                                          (map (fn [file]
-                                                                 (either (and (flat-map (first file)
-                                                                                        (partial = "/"))
-                                                                              (maybe file))
-                                                                         file))))
-                                                      file)
-                                              ": " line)))))
-                       max-width (reduce path (count header)
-                                         (fn [max s]
-                                           (let [n (count s)]
-                                             (either (> max n)
-                                                     n))))
-                       path (either (and (< (count path) desired-len)
-                                         (maybe (comp path (repeat (- desired-len (count path))
-                                                                   (spaces max-width)))))
-                                    path)]
-                   (map (cons header path)
-                        (fn [x]
-                          (str x (spaces (- max-width (count x)))))))))
-          path))
+  (let [path (-> (rest path)
+                 (remove (fn [loc]
+                           (either (and (instance? Symbol (.file loc))
+                                        (maybe nothing))
+                                   (= loc no-loc))))
+                 (map (fn [loc]
+                        (let [file (str (.file loc))]
+                          (str (either (-> file
+                                           str
+                                           (split-string (partial = "/"))
+                                           last
+                                           (map (fn [file]
+                                                  (either (and (flat-map (first file)
+                                                                         (partial = "/"))
+                                                               (maybe file))
+                                                          file))))
+                                       file)
+                               ": " (.line loc))))))
+        max-width (reduce path (count header)
+                          (fn [max s]
+                            (let [n (count s)]
+                              (either (> max n)
+                                      n))))
+        path (either (and (< (count path) desired-len)
+                          (maybe (comp path (repeat (- desired-len (count path))
+                                                    (spaces max-width)))))
+                     path)]
+    (map (cons header path)
+         (fn [x]
+           (str x (spaces (- max-width (count x))))))))
 
 (defn replace-path [c new-path]
   (apo (fn [c]
@@ -1479,7 +1476,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [x desired-len]
-    (format-path* (cons ["List from:" ""] (.path x))
+    (format-path* "List from:" (.path x)
                   desired-len))
 
   (show-full [c]
@@ -1605,7 +1602,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [x desired-len]
-    (format-path* (cons ["Vector from:" ""] (.path x))
+    (format-path* "Vector from:" (.path x)
                   desired-len))
 
   (show-full [c]
@@ -1733,8 +1730,7 @@
   (format-path [c n]
     (let [sum-sym (either (apply = (map (.alts c) type-sym))
                           "Sum Type")]
-      (format-path* (cons [(str sum-sym " from") ""] (.path c))
-                    n)))
+      (format-path* (str sum-sym " from") (.path c) n)))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1846,8 +1842,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons ["Contents from" ""] (.path c))
-                  desired-len))
+    (format-path* "Contents from" (.path c) desired-len))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1885,8 +1880,7 @@
   (assertion-path [c] empty-list)
 
   (format-path [c desired-len]
-    (format-path* (list ["Multi Constraints" ""])
-                  desired-len))
+    (format-path* "Multi Constraints" empty-list desired-len))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -1977,7 +1971,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons [(str "Parameter " (.param-index c) " from") ""] (.path c))
+    (format-path* (str "Parameter " (.param-index c) " from") (.path c)
                   desired-len))
 
   (show-full [c]
@@ -2166,8 +2160,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [x desired-len]
-    (format-path* (cons ["Function from" ""] (.path x))
-                  desired-len))
+    (format-path* "Function from" (.path x) desired-len))
 
   (show-full [c]
     (comp (format-path c 0)
@@ -2326,9 +2319,8 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons [(str (type-sym c) " " (format-static-value c) "from:") ""]
-                        (.path c))
-                  desired-len))
+    (format-path* (str (type-sym c) " " (format-static-value c) "from:")
+                  (.path c) desired-len))
 
   (show-full [c]
     (cons (str "Type: " (type-sym c))
@@ -2844,16 +2836,16 @@
                                  (let [[result-type] (do-apply-value base args loc-path)]
                                    result-type))})
 
-(def type-op-msg {inner-type-of-op (constantly ["Inner type of value from" ""])
-                  first-of-op (constantly ["First value of seq" ""])
-                  last-of-op (constantly ["Last value of seq" ""])
-                  rest-of-op (constantly ["Rest of seq" ""])
-                  butlast-of-op (constantly ["All but the last value of seq" ""])
-                  list-from-op (constantly ["List from value" ""])
-                  vect-from-op (constantly ["Vector from value" ""])
+(def type-op-msg {inner-type-of-op (constantly "Inner type of value from")
+                  first-of-op (constantly "First value of seq")
+                  last-of-op (constantly "Last value of seq")
+                  rest-of-op (constantly "Rest of seq")
+                  butlast-of-op (constantly "All but the last value of seq")
+                  list-from-op (constantly "List from value")
+                  vect-from-op (constantly "Vector from value")
                   ;; TODO: make these fns that take a parameter
-                  arg-of-op (constantly [(str "Argument ?? of") ""])
-                  call-value-op (fn [c] ["Called at " ""])})
+                  arg-of-op (constantly (str "Argument ?? of"))
+                  call-value-op (fn [c] "Called at ")})
 
 (extend-type TypeOp
   Container
@@ -2964,12 +2956,11 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons (either (map (get type-op-msg (.op-code c))
-                                     (fn [msg-f]
-                                       (msg-f c)))
-                                [(str "Type operation" (.op-code c)) ""])
-                        (.path c))
-                  desired-len))
+    (format-path* (either (map (get type-op-msg (.op-code c))
+                               (fn [msg-f]
+                                 (msg-f c)))
+                          (str "Type operation" (.op-code c)))
+                  (.path c) desired-len))
 
   (show-full [c]
     (format-path c 0))
@@ -2997,8 +2988,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (cons ["Type of value from" ""] (.path c))
-                  desired-len))
+    (format-path* "Type of value from" (.path c) desired-len))
 
   (show-full [c]
     (string-list c)))
