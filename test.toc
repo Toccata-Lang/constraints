@@ -843,6 +843,16 @@
              c/int-constraint
              _FILE_ _LINE_))
 
+(def _ (test (c/trim (c/type-op c/apply-op
+                                (c/TypeOfConstraint 'f empty-list c/no-symbol "")
+                                (c/TypeOfConstraint 'args empty-list c/no-symbol "")
+                                (symbol "#result")))
+             (c/type-op c/apply-op
+                        (c/TypeOfConstraint 'f empty-list c/no-symbol "")
+                        (c/TypeOfConstraint 'args empty-list c/no-symbol "")
+                        (symbol "#result"))
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]

@@ -690,7 +690,8 @@
 (deftype MultiConstraint [constraints path sym]
   Stringable
   (string-list [_]
-    (list "(c/multi [" (to-str (interpose constraints "\n")) "])"))
+    (list "(c/multi [" (to-str (interpose constraints "\n")) "] "
+          "empty-list" (sym-str sym) ")"))
 
   Eq
   (=* [x y]
@@ -2996,6 +2997,9 @@
 (extend-type TypeOfConstraint
   Constraint
   (assertion-path [c] (.path c))
+
+  (find-param [c]
+    (RecurseFinal (maybe c)))
 
   (format-path [c desired-len]
     (format-path* "Type of value from" (.path c) desired-len))
