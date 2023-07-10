@@ -1335,7 +1335,8 @@
 
 (defn is-param [c]
   (let [r (ip2 c)
-        s (some-constraint find-param c)]
+        s (some-constraint find-param c)
+        ]
     (either (and (= nothing s)
                  (= nothing r))
             (or (and s r)
@@ -1343,7 +1344,8 @@
                   (print-err 'find-boom _LINE_ c
                              lflf r
                              lflf s)
-                  (abort))))))
+                  (abort))))
+    r))
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
@@ -2548,28 +2550,29 @@
                            (assert (instance? fn-arity arity))
                            (let [new-args (intersect (.items empty-list-constraint args)
                                                      (.param-consts arity))
-                                 reified (either (= bottom-type new-args)
-                                                 (let [fixed-count (-> arity .param-consts .items count)
-                                                       [reqd var] (split (get-items new-args (count args))
-                                                                         fixed-count)
-                                                       new-args (conj reqd (.items empty-list-constraint var))
-                                                       new-args (cata (fn [c]
-                                                                        (reify-const c (.arity-id arity)
-                                                                                     (repeat (count new-args)
-                                                                                             top-type)))
-                                                                      new-args)]
-                                                   (cata (fn [c]
-                                                           (reify-const c (.arity-id arity)
-                                                                        new-args))
-                                                         arity)))]
-                             (let [r (is-bottom reified)]
-                               (or (= r (ib2 reified))
+                                 reified (either
+                                          (= bottom-type new-args)
+                                          (let [fixed-count (-> arity .param-consts .items count)
+                                                [reqd var] (split (get-items new-args (count args))
+                                                                  fixed-count)
+                                                new-args (conj reqd (.items empty-list-constraint var))
+                                                new-args (cata (fn [c]
+                                                                 (reify-const c (.arity-id arity)
+                                                                              (repeat (count new-args)
+                                                                                      top-type)))
+                                                               new-args)]
+                                            (cata (fn [c]
+                                                    (reify-const c (.arity-id arity)
+                                                                 new-args))
+                                                  arity)))]
+                             (let [r (ib2 reified)]
+                               (or (= r (is-bottom reified))
                                    (do
                                      (print-err 'reified _LINE_ reified
                                                 lflf r
-                                                lflf (ib2 reified))
+                                                lflf (is-bottom reified))
                                      (abort))))
-                             (either (map (ib2 reified)
+                             (either (map (ib2 (trim reified))
                                           (fn [err-c]
                                             [err-c args]))
                                      [(.result-const reified)
