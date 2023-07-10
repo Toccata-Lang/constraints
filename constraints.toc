@@ -690,8 +690,9 @@
 (deftype MultiConstraint [constraints path sym]
   Stringable
   (string-list [_]
-    (list "(c/multi [" (to-str (interpose constraints "\n")) "] "
-          ;; "empty-list" (sym-str sym) ")"
+    (list "(c/multi [" (to-str (interpose constraints "\n")) "]"
+          ;; " empty-list" (sym-str sym)
+          ")"
           ))
 
   Eq
@@ -1304,9 +1305,6 @@
       (cond (instance? ProtoImpls c)
             nothing
 
-            (instance? Vector c)
-            (some c ib2)
-
             (instance? HashMap c)
             (some (vals c) ib2)
 
@@ -1314,22 +1312,38 @@
                 (instance? SymbolConstraints c))
             (ib2 (type-args c))
 
-            nothing)))
+            (and (instance? Vector c)
+                 (some c ib2)))))
 
 (defn is-bottom [c]
   (some-constraint (partial = bottom-type) c))
 
-(defn is-param [c]
+(defn ip2 [c]
   (or (instance? ParamConstraint c)
       (cond (or (instance? ProtoImpls c)
                 (instance? FnConstraint c))
             nothing
 
+            (instance? HashMap c)
+            (some (vals c) ip2)
+
             (instance? SymbolConstraints c)
-            (some (type-args c) is-param)
+            (some (type-args c) ip2)
 
             (and (instance? Vector c)
-                 (some c is-param)))))
+                 (some c ip2)))))
+
+(defn is-param [c]
+  (let [r (ip2 c)
+        s (some-constraint find-param c)]
+    (either (and (= nothing s)
+                 (= nothing r))
+            (or (and s r)
+                (do
+                  (print-err 'find-boom _LINE_ c
+                             lflf r
+                             lflf s)
+                  (abort))))))
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
