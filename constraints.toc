@@ -691,7 +691,8 @@
   Stringable
   (string-list [_]
     (list "(c/multi [" (to-str (interpose constraints "\n")) "] "
-          "empty-list" (sym-str sym) ")"))
+          ;; "empty-list" (sym-str sym) ")"
+          ))
 
   Eq
   (=* [x y]
@@ -1271,7 +1272,13 @@
         c))
 
 (defn trim [c]
-  (cata trim-const c))
+  (cata trim-const c)
+  ;; TODO: this might be faster
+  ;; (cond (instance? ProtoImpls c)
+  ;;       c
+
+  ;;       (trim-const (map c trim)))
+  )
 
 (defn derive [op c]
   ((cata derive-const op) c))
@@ -1291,9 +1298,38 @@
 ;;   (or (pred c)
 ;;       (find-constraint c (partial some-constraint pred))))
 
+;; TODO: this is slower than is-bottom, but I suspect it checks more
+(defn ib2 [c]
+  (or (= bottom-type c)
+      (cond (instance? ProtoImpls c)
+            nothing
+
+            (instance? Vector c)
+            (some c ib2)
+
+            (instance? HashMap c)
+            (some (vals c) ib2)
+
+            (or (instance? fn-arity c)
+                (instance? SymbolConstraints c))
+            (ib2 (type-args c))
+
+            nothing)))
+
 (defn is-bottom [c]
-  (either (some-constraint (partial = bottom-type) c)
-          c))
+  (some-constraint (partial = bottom-type) c))
+
+(defn is-param [c]
+  (or (instance? ParamConstraint c)
+      (cond (or (instance? ProtoImpls c)
+                (instance? FnConstraint c))
+            nothing
+
+            (instance? SymbolConstraints c)
+            (some (type-args c) is-param)
+
+            (and (instance? Vector c)
+                 (some c is-param)))))
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
@@ -1317,12 +1353,20 @@
   (assert (instance? Vector const-cs))
 
   ;; TODO: calling 'is-bottom' for each alt is bad. Only do when needed
-  (let [alts (map const-cs is-bottom)]
-    (either (or (flat-map (every alts (partial = bottom-type))
-                          (fn [_]
-                            (first alts)))
+  (let [alts (remove const-cs (fn [c]
+                                (let [r (ib2 c)]
+                                  (or (= r (is-bottom c))
+                                      (do
+                                        (print-err 'is-bottom-c _LINE_ c
+                                                   lflf r
+                                                   lflf (is-bottom c))
+                                        (abort)))
+                                  r)))]
+    (either (or (for [_ (empty? alts)
+                      first-c (first const-cs)
+                      bot-c (ib2 first-c)]
+                  bot-c)
                 (let [alts (-> alts
-                               (remove (partial = bottom-type))
                                (reduce []
                                        (fn [cs c]
                                          (cond (some cs (partial = c))
@@ -1757,6 +1801,8 @@
 
   (find-constraint [c pred]
     (some (.alts c) pred))
+  (found-constraint [c]
+    (some (.alts c) identity))
 
   (get-items [c]
     (let [alts-items (-> (.alts c)
@@ -2200,6 +2246,7 @@
               (instance? MultiConstraint y)
               (instance? SumConstraint y)
               (instance? ReifiedConstraint y)
+              (instance? ProtoImpls y)
               (instance? TypeOp y)
               (and (instance? ReifiedConstraint y)
                    (= UnknownType (.type-number y))))
@@ -2447,7 +2494,7 @@
   (let [new-base (intersect base (coll-of-c (sum-c [string-constraint
                                                     seq-constraint])))]
     (either (= bottom-type new-base)
-            (cond (some-constraint find-param base)
+            (cond (is-param base)
                   (TypeOp concat-op base no-args no-symbol loc-path)
 
                   (let [tail-seq (cond (= no-tail (get-tail new-base))
@@ -2501,7 +2548,14 @@
                                                            (reify-const c (.arity-id arity)
                                                                         new-args))
                                                          arity)))]
-                             (either (map (some-constraint (partial = bottom-type) reified)
+                             (let [r (is-bottom reified)]
+                               (or (= r (ib2 reified))
+                                   (do
+                                     (print-err 'reified _LINE_ reified
+                                                lflf r
+                                                lflf (ib2 reified))
+                                     (abort))))
+                             (either (map (ib2 reified)
                                           (fn [err-c]
                                             [err-c args]))
                                      [(.result-const reified)
@@ -2524,16 +2578,13 @@
                     (map (first args)
                          (fn [disp-arg]
                            ;; TODO: possible alternative
-                           (either (or (and (some args (partial some-constraint find-param))
+                           ;; (do-call-value (.default-impl base) args loc-path)
+                           (either (or (and (some args is-param)
                                             (or (map (get-in base [.default-impl .arities (count args)])
                                                      (fn [default-arity]
                                                        [(TypeOp call-value-op (.impl-fns base {}) args
                                                                 no-symbol loc-path)
-                                                        (-> default-arity
-                                                            (reify-type-constraint (.arity-id default-arity)
-                                                                                   args (Location "" 0))
-                                                            .param-consts
-                                                            .items)]))
+                                                        args]))
                                                 (maybe [(NoValues [base (-> empty-reified
                                                                              (replace-path loc-path)
                                                                              (.type-symbol (symbol "No arity found")))])
@@ -2542,6 +2593,7 @@
                                              :when (get-in impl-fn [.arities (count args)])]
                                          (do-call-value impl-fn args loc-path)))
                                    (do-call-value (.default-impl base) args loc-path))
+
                            ;; (either (or (and (instance? ParamConstraint disp-arg)
                            ;;                  (maybe (TypeOp call-value-op base args no-symbol loc-path)))
                            ;;             (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
@@ -2554,11 +2606,14 @@
                                       (.type-symbol (symbol "Insufficient number of arguments.")))])
                  args])
 
-        (cond (or (some-constraint find-param base)
+        (cond (or (is-param base)
                   (and (= nothing (= args no-args))
-                       (some args (partial some-constraint find-param))))
+                       (some args is-param)))
               [(TypeOp call-value-op base args no-symbol loc-path)
                args]
+
+              (instance? MultiConstraint base)
+              (do-call-value (trim base) args loc-path)
 
               [(NoValues [(type-op call-value-op top-type args) base])
                args])))
@@ -2566,14 +2621,14 @@
 (defn do-apply-value [base args loc-path]
   (assert-result r (instance? Vector r))
 
-  (cond (some-constraint find-param args)
+  (cond (is-param args)
         [(TypeOp apply-op base args no-symbol loc-path) args]
 
         (or (instance? FnConstraint base)
             (instance? ReifiedConstraint base))
         (do-call-value base (get-items args) loc-path)
 
-        (cond (some-constraint find-param base)
+        (cond (is-param base)
               [(TypeOp apply-op base args no-symbol loc-path) args]
 
               (do-call-value base (get-items args) loc-path))))
@@ -2657,7 +2712,7 @@
         (instance? ProtoImpls base)
         (do-arg-of (.default-impl base) arg-pos loc-path)
 
-        (cond (some-constraint find-param base)
+        (cond (is-param base)
               (TypeOp arg-of-op base arg-pos no-symbol loc-path)
 
               (NoValues [(type-op arg-of-op top-type arg-pos) base]))))
@@ -2699,7 +2754,7 @@
                                      (instance? CollectionOf base)
                                      (MaybeConstraint (.contents base))
 
-                                     (cond (some-constraint find-param base)
+                                     (cond (is-param base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
 
                                            (NoValues [(type-op first-of-op top-type params) base]))))
@@ -2730,7 +2785,7 @@
                                      (instance? CollectionOf base)
                                      (MaybeConstraint (.contents base))
 
-                                    (cond (some-constraint find-param base)
+                                    (cond (is-param base)
                                           (TypeOp last-of-op base params no-symbol loc-path)
 
                                           (NoValues [(type-op last-of-op top-type params) base]))))
@@ -2751,7 +2806,7 @@
                                     (instance? CollectionOf base)
                                     base
 
-                                    (cond (some-constraint find-param base)
+                                    (cond (is-param base)
                                           (TypeOp rest-of-op base params no-symbol loc-path)
 
                                           (NoValues [(type-op rest-of-op top-type params) base]))))
@@ -2775,7 +2830,7 @@
                                        (instance? CollectionOf base)
                                        base
 
-                                       (cond (some-constraint find-param base)
+                                       (cond (is-param base)
                                              (TypeOp butlast-of-op base params no-symbol loc-path)
 
                                              (NoValues [(type-op butlast-of-op top-type params) base]))))
@@ -2803,7 +2858,7 @@
                                       (instance? CollectionOf base)
                                       (.tail-c empty-list-constraint base)
 
-                                      (cond (some-constraint find-param base)
+                                      (cond (is-param base)
                                             (TypeOp list-from-op base params no-symbol loc-path)
 
                                             (NoValues [(type-op list-from-op top-type params) base]))))
@@ -2831,7 +2886,7 @@
                                       (instance? CollectionOf base)
                                       (.tail-c empty-vect-constraint base)
 
-                                      (cond (some-constraint find-param base)
+                                      (cond (is-param base)
                                             (TypeOp vect-from-op base params no-symbol loc-path)
 
                                             (NoValues [(type-op vect-from-op top-type params)

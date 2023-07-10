@@ -137,7 +137,15 @@
                        reified-11
                        reified-12
                        c/empty-reified
+                       (c/ProtoImpls 'reverse
+                                     (c/fn-c []
+                                             {1 (c/fn-arity
+                                                 'reverse
+                                                 (c/list-c [(c/param 'reverse 0)])
+                                                 ;; returns
+                                                 c/top-type)})
 
+                                     {})
                        param])
 
 (defprotocol MatchConstraint
@@ -196,6 +204,42 @@
    (c/is-bottom (c/reify-type-constraint c (.arity-id c) args (c/Location _FILE_ _LINE_))))
   ([c arity-id args]
    (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
+
+(def _ (test (c/ib2 (c/multi [c/top-type
+                              (c/NoValues [c/int-constraint
+                                           (c/SymbolConstraint 'a)])]))
+             (c/is-bottom (c/multi [c/top-type
+                                    (c/NoValues [c/int-constraint
+                                                 (c/SymbolConstraint 'a)])]))
+             _FILE_ _LINE_))
+
+(def _ (let [c (c/sum-c [(c/param 'fn-arity143 1)
+                         (c/param 'fn-arity143 1)])]
+         (test (c/is-param c)
+               (c/some-constraint c/find-param c)
+               _FILE_ _LINE_)))
+
+(def _ (test (c/intersect (.required-arities c/fn-constraint [1])
+                          (c/ProtoImpls
+                           'reverse
+                           (c/fn-c []
+                                   {1 (c/fn-arity 'reverse (c/list-c [(c/param 'reverse 0)])
+                                       ;; returns
+                                       c/top-type)})
+
+                           {}))
+             (c/multi [(c/ProtoImpls
+                        'reverse
+                        (c/fn-c []
+                                {1 (c/fn-arity
+                                    'reverse
+                                    (c/list-c [(c/param 'reverse 0)])
+                                    ;; returns
+                                    c/top-type)})
+
+                        {})
+                       (.required-arities c/fn-constraint [1])])
+             _FILE_ _LINE_))
 
 ;; (def _ (test
 ;;         (reify-c
