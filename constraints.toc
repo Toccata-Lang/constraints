@@ -508,7 +508,13 @@
                           " empty-list" (either (map (= no-symbol) (partial str " "))
                                                 (sym-str sym))
                           " \"" (str var) "\")" )]
-      (cond (= type-number MaybeType)
+      (cond (and (= type-number UnknownType)
+                 (empty? field-consts)
+                 (empty? fields)
+                 (= invoke-fn (fn-c [] {})))
+            (list "c/empty-reified")
+
+            (= type-number MaybeType)
             (either (map (get fields 'contents)
                          (fn [contents]
                            (cond (instance? AllValues contents)
@@ -1104,9 +1110,6 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
-  (descend? [c]
-    (RecurseWith c))
-
   (set-path [c new-path]
     (assert (instance? (list-of Location) new-path))
     (assert-result r (instance? RecurseNext r))
@@ -1316,7 +1319,16 @@
                  (some c ib2)))))
 
 (defn is-bottom [c]
-  (some-constraint (partial = bottom-type) c))
+  (let [;; r (ib2 c)
+        s (some-constraint (partial = bottom-type) c)
+        ]
+    ;; (or (= r s)
+    ;;     (do
+    ;;       (print-err 'boomerity _LINE_ r
+    ;;                  lflf s)
+    ;;       (abort)))
+    s
+    ))
 
 (defn ip2 [c]
   (or (instance? ParamConstraint c)
@@ -1335,16 +1347,16 @@
 
 (defn is-param [c]
   (let [r (ip2 c)
-        s (some-constraint find-param c)
+        ;; s (some-constraint find-param c)
         ]
-    (either (and (= nothing s)
-                 (= nothing r))
-            (or (and s r)
-                (do
-                  (print-err 'find-boom _LINE_ c
-                             lflf r
-                             lflf s)
-                  (abort))))
+    ;; (either (and (= nothing s)
+    ;;              (= nothing r))
+    ;;         (or (and s r)
+    ;;             (do
+    ;;               (print-err 'find-boom _LINE_ c
+    ;;                          lflf r
+    ;;                          lflf s)
+    ;;               (abort))))
     r))
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
@@ -1369,18 +1381,10 @@
   (assert (instance? Vector const-cs))
 
   ;; TODO: calling 'is-bottom' for each alt is bad. Only do when needed
-  (let [alts (remove const-cs (fn [c]
-                                (let [r (ib2 c)]
-                                  (or (= r (is-bottom c))
-                                      (do
-                                        (print-err 'is-bottom-c _LINE_ c
-                                                   lflf r
-                                                   lflf (is-bottom c))
-                                        (abort)))
-                                  r)))]
+  (let [alts (remove const-cs is-bottom)]
     (either (or (for [_ (empty? alts)
                       first-c (first const-cs)
-                      bot-c (ib2 first-c)]
+                      bot-c (is-bottom first-c)]
                   bot-c)
                 (let [alts (-> alts
                                (reduce []
@@ -1859,7 +1863,11 @@
             new-c)))
 
   (reify-const [c arity args]
-    c)
+    (let [new-cs (remove (.alts c) (partial = empty-reified))]
+      (cond (empty? new-cs)
+            empty-reified
+
+            (.alts c new-cs))))
 
   (intersect [x y]
     (cond (= x y)
@@ -1962,7 +1970,11 @@
               (intersect contents (contents-constraint inner)))))
 
   (reify-const [c arity args]
-    c)
+    (let [new-cs (remove (.constraints c) (partial = empty-reified))]
+      (cond (empty? new-cs)
+            empty-reified
+
+            (.constraints c new-cs))))
 
   (type-num [c]
     (either (-> (.constraints c)
@@ -2561,18 +2573,11 @@
                                                                               (repeat (count new-args)
                                                                                       top-type)))
                                                                new-args)]
-                                            (cata (fn [c]
-                                                    (reify-const c (.arity-id arity)
-                                                                 new-args))
-                                                  arity)))]
-                             (let [r (ib2 reified)]
-                               (or (= r (is-bottom reified))
-                                   (do
-                                     (print-err 'reified _LINE_ reified
-                                                lflf r
-                                                lflf (is-bottom reified))
-                                     (abort))))
-                             (either (map (ib2 (trim reified))
+                                            (trim (cata (fn [c]
+                                                          (reify-const c (.arity-id arity)
+                                                                       new-args))
+                                                        arity))))]
+                             (either (map (is-bottom reified)
                                           (fn [err-c]
                                             [err-c args]))
                                      [(.result-const reified)
@@ -3083,9 +3088,6 @@
   Constraint
   (find-param [c]
     (RecurseFinal nothing))
-
-  (descend? [c]
-    (RecurseFinal c))
 
   (derive-const [op]
     (fn [c]
