@@ -2764,9 +2764,11 @@
                                               (= (.type-number base) SubStringType)))
                                      (either (map (get-in base [.fields 'static-value])
                                                   (fn [sv]
-                                                    (cond (= sv "")
-                                                          nothing-constraint
-                                                          (MaybeConstraint substr-constraint))))
+                                                    (either (map (first sv)
+                                                                 (fn [first-char]
+                                                                   (MaybeConstraint
+                                                                    (SubStrConstraint first-char))))
+                                                            nothing-constraint)))
                                              (MaybeConstraint substr-constraint))
 
                                      (and (instance? ReifiedConstraint base)
@@ -2795,9 +2797,11 @@
                                              (= (.type-number base) SubStringType)))
                                     (either (map (get-in base [.fields 'static-value])
                                                  (fn [sv]
-                                                   (cond (= sv "")
-                                                         nothing-constraint
-                                                         (MaybeConstraint substr-constraint))))
+                                                   (either (map (last sv)
+                                                                (fn [first-char]
+                                                                  (MaybeConstraint
+                                                                   (SubStrConstraint first-char))))
+                                                            nothing-constraint)))
                                             (MaybeConstraint substr-constraint))
 
                                     (and (instance? ReifiedConstraint base)
