@@ -509,6 +509,7 @@
                                                 (sym-str sym))
                           " \"" (str var) "\")" )]
       (cond (and (= type-number UnknownType)
+                 (= type-symbol no-symbol)
                  (empty? field-consts)
                  (empty? fields)
                  (= invoke-fn (fn-c [] {})))
@@ -2515,7 +2516,8 @@
                                   (fn [cnts]
                                     (intersect (coll-of-c cnts)
                                                y)))
-                             (maybe y)))
+                             (and (= (.type-symbol x) no-symbol)
+                                  (maybe y))))
                     (NoValues [x y]))))))
 
 (defn do-concat [base args loc-path]
@@ -2823,7 +2825,10 @@
                                     (and (instance? ReifiedConstraint base)
                                          (or (= (.type-number base) StringBufferType)
                                              (= (.type-number base) SubStringType)))
-                                    substr-constraint
+                                    (either (map (get-in base [.fields 'static-value])
+                                                 (fn [sv]
+                                                   (SubStrConstraint (rest sv))))
+                                            substr-constraint)
 
                                     (and (instance? ReifiedConstraint base)
                                          (= (.type-number base) UnknownType))
@@ -2847,7 +2852,10 @@
                                        (and (instance? ReifiedConstraint base)
                                             (or (= (.type-number base) StringBufferType)
                                                 (= (.type-number base) SubStringType)))
-                                       substr-constraint
+                                       (either (map (get-in base [.fields 'static-value])
+                                                    (fn [sv]
+                                                      (SubStrConstraint (butlast sv))))
+                                               substr-constraint)
 
                                        (and (instance? ReifiedConstraint base)
                                             (= (.type-number base) UnknownType))
@@ -3115,9 +3123,14 @@
     (cond (= x y)
           x
 
+          (instance? MultiConstraint y)
+          (intersect y x)
+
           (either (= bottom-type (intersect (.default-impl x) y))
 
-                  (multi [x y])))))
+                  (cond (= top-type y)
+                        x
+                        (multi [x y]))))))
 
 ;; misc
 ;; Going to try and do without these

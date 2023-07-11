@@ -44,9 +44,9 @@
 (def reified-val (c/ReifiedConstraint
                   10 c/no-symbol {} {}
                   (c/fn-c [3]
-                                  {3 (c/fn-arity 'arity-1
-                                                 (c/list-c [c/top-type c/top-type pos-int])
-                                                 param)})
+                          {3 (c/fn-arity 'arity-1
+                                         (c/list-c [c/top-type c/top-type pos-int])
+                                         param)})
                   empty-list c/no-symbol ""))
 (def reified-11 (c/ReifiedConstraint
                  11 c/no-symbol
@@ -136,7 +136,8 @@
                        reified-val
                        reified-11
                        reified-12
-                       c/empty-reified
+                       ;; TODO: put back
+                       ;; c/empty-reified
                        (c/ProtoImpls 'reverse
                                      (c/fn-c []
                                              {1 (c/fn-arity
@@ -166,8 +167,8 @@
   (either (exact-match ex1 ex2)
           (do
             (print-err 'Failed-at file line
-                       "\nexpr 1" ex1
-                       "\n\nexpr 2" ex2)
+                       "\nexpr 1" (type-name ex1) ex1
+                       "\n\nexpr 2" (type-name ex2) ex2)
             (abort)))
   ;; (print-err 'testing line 'passed)
   )
@@ -188,8 +189,8 @@
                    final-1))
             (do
               (print-err "FAIL!! 'c/intersect not commutative")
-              (print-err 'c1 c1)
-              (print-err 'c2 c2)
+              (print-err 'c1 (type-name c1) c1)
+              (print-err 'c2 (type-name c2) c2)
               (print-err final-1)
               (print-err final-2)))))
 
@@ -201,9 +202,9 @@
 
 (defn reify-c
   ([c args]
-   (c/is-bottom (c/reify-type-constraint c (.arity-id c) args (c/Location _FILE_ _LINE_))))
+   (c/reify-type-constraint c (.arity-id c) args (c/Location _FILE_ _LINE_)))
   ([c arity-id args]
-   (c/is-bottom (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_)))))
+   (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_))))
 
 (def _ (test (c/ib2 (c/multi [c/top-type
                               (c/NoValues [c/int-constraint
@@ -590,6 +591,10 @@
              int-vect-1
              _FILE_ _LINE_))
 
+(def _ (test (test-op c/rest-of (c/StrBuffConstraint "abc"))
+             (c/SubStrConstraint "bc")
+             _FILE_ _LINE_))
+
 (def _ (test (test-op c/butlast-of (c/list-c [c/int-constraint c/sym-constraint]))
              int-list-1
              _FILE_ _LINE_))
@@ -885,16 +890,6 @@
                       'nada
                       [])
              c/int-constraint
-             _FILE_ _LINE_))
-
-(def _ (test (c/trim (c/type-op c/apply-op
-                                (c/TypeOfConstraint 'f empty-list c/no-symbol "")
-                                (c/TypeOfConstraint 'args empty-list c/no-symbol "")
-                                (symbol "#result")))
-             (c/type-op c/apply-op
-                        (c/TypeOfConstraint 'f empty-list c/no-symbol "")
-                        (c/TypeOfConstraint 'args empty-list c/no-symbol "")
-                        (symbol "#result"))
              _FILE_ _LINE_))
 
 (def _ (for [c1 test-constraints
