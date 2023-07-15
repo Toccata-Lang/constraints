@@ -2472,6 +2472,7 @@
   (intersect [x y]
     (let [type-number (type-num x)]
       (cond (=* x y)
+            ;; TODO: the field values could fail to intersect
             x
 
             (or (instance? ParamConstraint y)
@@ -2511,7 +2512,24 @@
                     (NoValues [x y]))
 
             (instance? FnConstraint y)
-            (let [new-invoke (intersect-fns (.invoke-fn x) y)]
+            (let [new-arities (-> (.arities y)
+                                  seq
+                                  (reduce {}
+                                          (fn [arities [rank arity]]
+                                            (assoc arities (cond (= variadic rank)
+                                                                 rank
+                                                                 (inc rank))
+                                                   (either (update-in arity [.param-consts .items]
+                                                                      (partial comp [top-type]))
+                                                           ;; should never happen
+                                                           (do
+                                                             (print-err "Invalid c/fn-arity" _LINE_
+                                                                        lflf arity)
+                                                             (abort)))))))
+                  new-invoke (intersect-fns (.invoke-fn x)
+                                            (-> y
+                                                (.arities new-arities)
+                                                (.required-arities (map (.required-arities y) inc))))]
               (either (= bottom-type new-invoke)
                       (.invoke-fn x new-invoke)))
 
@@ -2604,11 +2622,12 @@
                  args])
 
         (instance? ReifiedConstraint base)
-        (do-call-value (.invoke-fn base)
-                       (cond (instance? NoArgs args)
-                             [base]
-                             (comp [base] args))
-                       loc-path)
+        (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
+                                               (cond (instance? NoArgs args)
+                                                     [base]
+                                                     (comp [base] args))
+                                               loc-path)]
+          [result-c (rest arg-cs)])
 
         (instance? ProtoImpls base)
         (either (or (and (= args no-args)
