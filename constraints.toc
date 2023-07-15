@@ -159,6 +159,20 @@
 
 (def no-tail (NoTail))
 
+(deftype Contents []
+  Stringable
+  (string-list [_]
+    (list "c/contents"))
+
+  Container
+  (map [x f]
+    x)
+
+  (map [x f embed]
+    (embed x)))
+
+(def contents (Contents))
+
 (deftype NoContents []
   Stringable
   (string-list [_]
@@ -274,35 +288,35 @@
              (maybe x)))))
 
 ;; container types
-(deftype CollectionOf [contents path sym var]
+(deftype CollectionOf [ctnts-c path sym var]
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
   (assert (instance? String var))
 
   Stringable
   (string-list [_]
-    (list "(c/coll-of-c " (str contents) ")"))
+    (list "(c/coll-of-c " (str ctnts-c) ")"))
 
   Eq
   (=* [x y]
     (and (instance? CollectionOf y)
-         (= contents (.contents y))
+         (= ctnts-c (.ctnts-c y))
          (maybe x)))
 
   Container
   (map [x f]
-    (.contents x (f (.contents x))))
+    (.ctnts-c x (f (.ctnts-c x))))
 
   (map [x f embed]
-    (-> (.contents x)
+    (-> (.ctnts-c x)
         f
-        (map (partial .contents x)))))
+        (map (partial .ctnts-c x)))))
 
 (defn coll-of-c
-  ([contents]
-   (CollectionOf contents empty-list no-symbol ""))
-  ([contents path sym var]
-   (CollectionOf contents path sym var)))
+  ([ctnts-c]
+   (CollectionOf ctnts-c empty-list no-symbol ""))
+  ([ctnts-c path sym var]
+   (CollectionOf ctnts-c path sym var)))
 
 (deftype ListConstraint [items tail-c path sym var]
   (assert (instance? Vector items))
@@ -516,15 +530,15 @@
             (list "c/empty-reified")
 
             (= type-number MaybeType)
-            (either (map (get fields 'contents)
-                         (fn [contents]
-                           (cond (instance? AllValues contents)
+            (either (map (get fields contents)
+                         (fn [ctnts-c]
+                           (cond (instance? AllValues ctnts-c)
                                  (list "c/maybe-constraint")
 
-                                 (= no-contents contents)
+                                 (= no-contents ctnts-c)
                                  (list "c/nothing-constraint")
 
-                                 (list "(c/MaybeConstraint " (str contents) ")"))))
+                                 (list "(c/MaybeConstraint " (str ctnts-c) ")"))))
                     long-form)
 
             (= type-number IntegerType)
@@ -985,10 +999,10 @@
    (ReifiedConstraint FutureType 'Future {} {} empty-fn-constraint path sym var)))
 
 (defn MaybeConstraint
-  ([contents]
-   (MaybeConstraint contents empty-list no-symbol ""))
-  ([contents path sym var]
-   (ReifiedConstraint MaybeType 'Maybe {} {'contents contents} empty-fn-constraint path sym var)))
+  ([ctnts-c]
+   (MaybeConstraint ctnts-c empty-list no-symbol ""))
+  ([ctnts-c path sym var]
+   (ReifiedConstraint MaybeType 'Maybe {} {contents ctnts-c} empty-fn-constraint path sym var)))
 
 (defn PromiseConstraint
   ([]
@@ -1106,7 +1120,7 @@
   (either (map (first fld-path)
                (fn [fld]
                  (NoValues [x (missing-field fld)])))
-          (NoValues [x (ReifiedConstraint UnknownType (symbol "Unable to set contents")
+          (NoValues [x (ReifiedConstraint UnknownType (symbol "Unable to set ctnts-c")
                                           {} {} empty-fn-constraint
                                           empty-list no-symbol "")])))
 
@@ -1402,7 +1416,7 @@
                       (apply = alts)
                       (and (every alts (partial instance? CollectionOf))
                            (-> alts
-                               (map .contents)
+                               (map .ctnts-c)
                                sum-type
                                (CollectionOf empty-list no-symbol "")
                                maybe))
@@ -1606,8 +1620,8 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
+      (intersect (map op (fn [ctnts-c]
+                           (ctnts-c top-type)))
                  c)))
 
   (find-constraint [c pred]
@@ -1732,8 +1746,8 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
+      (intersect (map op (fn [ctnts-c]
+                           (ctnts-c top-type)))
                  c)))
 
   (find-constraint [c pred]
@@ -1816,8 +1830,8 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
+      (intersect (map op (fn [ctnts-c]
+                           (ctnts-c top-type)))
                  c)))
 
   (find-constraint [c pred]
@@ -1922,32 +1936,32 @@
 
   (show-full [c]
     (comp (format-path c 0)
-          (map (.contents c) (partial str "  "))))
+          (map (.ctnts-c c) (partial str "  "))))
 
   (contents-constraint [c]
-    (.contents c))
+    (.ctnts-c c))
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
+      (intersect (map op (fn [ctnts-c]
+                           (ctnts-c top-type)))
                  c)))
 
   (find-constraint [c pred]
-    (pred (.contents c)))
+    (pred (.ctnts-c c)))
 
   (found-constraint [c]
-    (.contents c))
+    (.ctnts-c c))
 
   (get-items [c items-count]
-    (repeat items-count (.contents c)))
+    (repeat items-count (.ctnts-c c)))
 
   (intersect [x y]
     (cond (instance? CollectionOf y)
-          (let [new-cs (intersect (.contents x) (.contents y))]
+          (let [new-cs (intersect (.ctnts-c x) (.ctnts-c y))]
             (either (or (= new-cs bottom-type)
                         (= x y))
-                    (.contents x new-cs)))
+                    (.ctnts-c x new-cs)))
 
           (intersect y x))))
 
@@ -1967,8 +1981,8 @@
 
   (contents-constraint [c]
     (reduce (.constraints c) top-type
-            (fn [contents inner]
-              (intersect contents (contents-constraint inner)))))
+            (fn [ctnts-c inner]
+              (intersect ctnts-c (contents-constraint inner)))))
 
   (reify-const [c arity args]
     (let [new-cs (remove (.constraints c) (partial = empty-reified))]
@@ -2129,8 +2143,8 @@
 
   (derive-const [op]
     (fn [c]
-      (map op (fn [contents]
-                (contents top-type)))))
+      (map op (fn [ctnts-c]
+                (ctnts-c top-type)))))
 
   (find-constraint [c pred]
     (or (-> (.param-consts c)
@@ -2252,8 +2266,8 @@
 
   (derive-const [op]
     (fn [c]
-      (let [derived (map op (fn [contents]
-                              (contents top-type)))]
+      (let [derived (map op (fn [ctnts-c]
+                              (ctnts-c top-type)))]
         (intersect derived c))))
 
   (find-constraint [c pred]
@@ -2282,7 +2296,7 @@
           (intersect y x)
 
           (instance? CollectionOf y)
-          (let [new-result (.contents y)
+          (let [new-result (.ctnts-c y)
                 new-arities (-> (.arities x)
                                 vec
                                 (reduce {} (fn [arities [arity-idx arity]]
@@ -2302,13 +2316,13 @@
 
 (defn intersect-simple-container [x y]
   (either (for [_ (= (type-num x) (type-num y))
-                cnts-x (get-in x [.fields 'contents])
-                cnts-y (get-in y [.fields 'contents])]
+                cnts-x (get-in x [.fields contents])
+                cnts-y (get-in y [.fields contents])]
             (let [new-cnts (either (or (= cnts-x no-contents)
                                        (= cnts-y no-contents))
                                    (intersect cnts-x cnts-y))]
               (either (= bottom-type new-cnts)
-                      (assoc-in x [.fields 'contents] new-cnts))))
+                      (assoc-in x [.fields contents] new-cnts))))
 
           (NoValues [x y])))
 
@@ -2396,7 +2410,7 @@
                            (= FutureType type-number))
                        (fn [_]
                          top-type))
-                  (get-in c [.fields 'contents]))
+                  (get-in c [.fields contents]))
               (NoValues [c not-container]))))
 
   (type-sym [c]
@@ -2437,8 +2451,8 @@
 
   (derive-const [op]
     (fn [c]
-      (intersect (map op (fn [contents]
-                           (contents top-type)))
+      (intersect (map op (fn [ctnts-c]
+                           (ctnts-c top-type)))
                  c)))
 
   (find-constraint [c pred]
@@ -2472,27 +2486,27 @@
             (either (or (map (or (= StringBufferType type-number)
                                  (= SubStringType type-number))
                              (fn [_]
-                               (let [intersected (intersect (str-inner x) (.contents y))]
+                               (let [intersected (intersect (str-inner x) (.ctnts-c y))]
                                  (cond (= intersected bottom-type)
                                        (NoValues [x y])
 
-                                       (multi [x (.contents y intersected)])))))
+                                       (multi [x (.ctnts-c y intersected)])))))
                         (and (or (= AgentType type-number)
                                  (= PromiseType type-number)
                                  (= FutureType type-number))
                              (maybe x))
                         (map (= UnknownType type-number)
                              (fn [_]
-                               (assoc-in x [.fields 'contents]
-                                         (intersect (get y .contents)
-                                                    (either (get-in x [.fields 'contents])
+                               (assoc-in x [.fields contents]
+                                         (intersect (get y .ctnts-c)
+                                                    (either (get-in x [.fields contents])
                                                             top-type)))))
-                        (for [cnts-x (or (get-in x [.fields 'contents])
-                                         (maybe (NoValues [x not-container])))
-                              cnts-y (get y .contents)]
+                        (for [cnts-x (or (get-in x [.fields contents])
+                                         (maybe top-type))
+                              cnts-y (get y .ctnts-c)]
                           (let [new-cnts (intersect cnts-x cnts-y)]
                             (either (= bottom-type new-cnts)
-                                    (assoc-in x [.fields 'contents] new-cnts)))))
+                                    (assoc-in x [.fields contents] new-cnts)))))
 
                     (NoValues [x y]))
 
@@ -2512,7 +2526,7 @@
                   (NoValues [x y]))
 
             (either (and (= UnknownType type-number)
-                         (or (map (get-in x [.fields 'contents])
+                         (or (map (get-in x [.fields contents])
                                   (fn [cnts]
                                     (intersect (coll-of-c cnts)
                                                y)))
@@ -2601,30 +2615,23 @@
                          (maybe (do-call-value (.default-impl base) args loc-path)))
                     (map (first args)
                          (fn [disp-arg]
-                           ;; TODO: possible alternative
-                           ;; (do-call-value (.default-impl base) args loc-path)
                            (either (or (and (some args is-param)
-                                            (or (map (get-in base [.default-impl .arities (count args)])
+                                            (or (map (get-in base [.default-impl .arities
+                                                                   (count args)])
                                                      (fn [default-arity]
                                                        [(TypeOp call-value-op (.impl-fns base {}) args
                                                                 no-symbol loc-path)
                                                         args]))
-                                                (maybe [(NoValues [base (-> empty-reified
-                                                                             (replace-path loc-path)
-                                                                             (.type-symbol (symbol "No arity found")))])
+                                                (maybe [(NoValues
+                                                         [base (-> empty-reified
+                                                                   (replace-path loc-path)
+                                                                   (.type-symbol
+                                                                    (symbol "No arity found")))])
                                                         args])))
                                        (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
                                              :when (get-in impl-fn [.arities (count args)])]
                                          (do-call-value impl-fn args loc-path)))
-                                   (do-call-value (.default-impl base) args loc-path))
-
-                           ;; (either (or (and (instance? ParamConstraint disp-arg)
-                           ;;                  (maybe (TypeOp call-value-op base args no-symbol loc-path)))
-                           ;;             (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
-                           ;;                   :when (get-in impl-fn [.arities (count args)])]
-                           ;;               (do-call-value impl-fn args loc-path)))
-                           ;;         (do-call-value (.default-impl base) args loc-path))
-                           )))
+                                   (do-call-value (.default-impl base) args loc-path)))))
                 [(NoValues [base (-> empty-reified
                                       (replace-path loc-path)
                                       (.type-symbol (symbol "Insufficient number of arguments.")))])
@@ -2778,7 +2785,7 @@
                                      maybe-constraint
 
                                      (instance? CollectionOf base)
-                                     (MaybeConstraint (.contents base))
+                                     (MaybeConstraint (.ctnts-c base))
 
                                      (cond (is-param base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
@@ -2811,7 +2818,7 @@
                                     maybe-constraint
 
                                      (instance? CollectionOf base)
-                                     (MaybeConstraint (.contents base))
+                                     (MaybeConstraint (.ctnts-c base))
 
                                     (cond (is-param base)
                                           (TypeOp last-of-op base params no-symbol loc-path)
