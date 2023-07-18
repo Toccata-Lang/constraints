@@ -1910,8 +1910,17 @@
           (instance? MultiConstraint y)
           (intersect y x)
 
-          (let [inters (map (.alts x) (fn [alt]
-                                        (intersect alt y)))
+          (let [y-type (type-num y)
+                [inters fail] (reduce (.alts x) [[] top-type]
+                                      (fn [[inters fail] alt]
+                                        (let [inter (intersect alt y)]
+                                          [(conj inters inter)
+                                           (cond (= bottom-type inter)
+                                                 (cond (= y-type (type-num alt))
+                                                       inter
+
+                                                       fail)
+                                                 fail)])))
                 goods (-> inters
                           (remove (partial instance? NoValues))
                           (reduce [] (fn [goods y]
@@ -1919,7 +1928,8 @@
                                                     (maybe goods))
                                                (conj goods y)))))]
             (either (or (and (empty? goods)
-                             (or (apply = inters)
+                             (or (= bottom-type fail)
+                                 (apply = inters)
                                  (maybe (NoValues [x y]))))
                         (and (= (count goods) 1)
                              (first goods)))
@@ -2050,7 +2060,7 @@
                                          (fn [[cs y] c]
                                            (let [new-y (intersect c y)]
                                              (cond (= bottom-type new-y)
-                                                   [[] new-y]
+                                                   [(conj cs new-y) new-y]
 
                                                    (or (= new-y y)
                                                        (= new-y c))
