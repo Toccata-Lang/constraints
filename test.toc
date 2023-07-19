@@ -208,6 +208,40 @@
   ([c arity-id args]
    (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_))))
 
+(def _ (test (c/fn-c []
+                     {1 (c/fn-arity
+                         'fn-arity3
+                         (c/list-c [(c/param 'fn-arity3 0)])
+                         ;; returns
+                         (c/MaybeConstraint (c/param 'fn-arity3 0)))})
+             (c/fn-c [1]
+                     {1 (c/fn-arity
+                         'fn-arity3
+                         (c/list-c [(c/param 'fn-arity3 0)])
+                         ;; returns
+                         (c/MaybeConstraint (c/param 'fn-arity3 0)))})
+             _FILE_ _LINE_))
+
+(def _ (test (c/fn-c [1 3 5]
+                     {c/variadic (c/fn-arity
+                                  'fn-arity108
+                                  (c/list-c []
+                                            (c/multi [(c/param 'fn-arity108 0)
+                                                      c/list-constraint]))
+                                  ;; returns
+                                  (c/multi [c/list-constraint
+                                            (c/param 'fn-arity108 0)]))})
+             (c/fn-c []
+                     {c/variadic (c/fn-arity
+                                  'fn-arity93
+                                  (c/list-c []
+                                            (c/multi [(c/param 'fn-arity93 0)
+                                                      c/list-constraint]))
+                                  ;; returns
+                                  (c/multi [(c/param 'fn-arity93 0)
+                                            c/list-constraint]))})
+             _FILE_ _LINE_))
+
 (def _ (test (c/ib2 (c/multi [c/top-type
                               (c/NoValues [c/int-constraint
                                            (c/SymbolConstraint 'a)])]))
