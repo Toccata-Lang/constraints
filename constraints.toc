@@ -508,9 +508,10 @@
 
   Stringable
   (string-list [_]
-    (let [long-form (list "(c/ReifiedConstraint " (str type-number) " " (cond (= no-symbol type-symbol)
-                                                                              (str no-symbol)
-                                                                              (str "(symbol \"" type-symbol "\")"))
+    (let [long-form (list "(c/ReifiedConstraint " (str type-number) " "
+                          (cond (= no-symbol type-symbol)
+                                (str no-symbol)
+                                (str "(symbol \"" type-symbol "\")"))
                           "\n" (str field-consts)
                           "\n{" (to-str (map (vec fields) (fn [[k v]]
                                                             (cond (instance? Symbol k)
@@ -2551,9 +2552,34 @@
             (cond (= type-number (type-num y))
                   (intersect-reified x y)
 
-                  (or (= UnknownType (type-num y))
-                      (= UnknownType type-number))
-                  (multi [x y])
+                  (= UnknownType (type-num y))
+                  (intersect y x)
+
+                  (= UnknownType type-number)
+                  (let [new-invoke (cond (= empty-fn-constraint (.invoke-fn x))
+                                         (.invoke-fn y)
+
+                                         (intersect-fns (.invoke-fn x)
+                                                        (.invoke-fn y)))
+                        [new-fields fail]
+                        (-> (.fields x)
+                            vec
+                            (reduce [{} top-type]
+                                    (fn [[new-fields fail] [fld fld-c]]
+                                      (cond (= fail bottom-type)
+                                            [new-fields fail]
+
+                                            (either (map (get-in y [.fields fld])
+                                                         (fn [fld-y-c]
+                                                           (let [new-c (intersect fld-y-c fld-c)]
+                                                             [(assoc new-fields fld new-c)
+                                                              new-c])))
+                                                    [{} (NoValues [x y])])))))]
+                    (either (or (= bottom-type new-invoke)
+                                (= bottom-type fail))
+                            (-> y
+                                (.fields new-fields)
+                                (.invoke-fn new-invoke))))
 
                   (NoValues [x y]))
 

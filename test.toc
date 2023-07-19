@@ -894,6 +894,12 @@
              c/int-constraint
              _FILE_ _LINE_))
 
+(def _ (test (c/intersect (.fields c/empty-reified {(c/Field (symbol ".k")) c/top-type})
+                          reified-val)
+             (c/NoValues [(.fields c/empty-reified {(c/Field (symbol ".k")) c/top-type})
+                          reified-val])
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]
