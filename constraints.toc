@@ -2513,6 +2513,10 @@
                                                     (either (get-in x [.fields contents])
                                                             top-type)))))
                         (for [cnts-x (or (get-in x [.fields contents])
+                                         (and (= type-number HashSetType)
+                                              (maybe top-type))
+                                         (and (< type-number TypeCount)
+                                              (maybe (NoValues [x not-container])))
                                          (maybe top-type))
                               cnts-y (get y .ctnts-c)]
                           (let [new-cnts (intersect cnts-x cnts-y)]

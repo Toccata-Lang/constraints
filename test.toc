@@ -163,12 +163,14 @@
                        (and curr
                             (some (.constraints y) (partial = c)))))))))
 
+(def lflf "\n\n")
+
 (defn test [ex1 ex2 file line]
   (either (exact-match ex1 ex2)
           (do
             (print-err 'Failed-at file line
-                       "\nexpr 1" (type-name ex1) ex1
-                       "\n\nexpr 2" (type-name ex2) ex2)
+                       "\nexpr 1" ex1
+                       lflf"expr 2" ex2)
             (abort)))
   ;; (print-err 'testing line 'passed)
   )
@@ -188,11 +190,11 @@
                    ;;         (print-err 'final-c c))
                    final-1))
             (do
-              (print-err "FAIL!! 'c/intersect not commutative")
-              (print-err 'c1 (type-name c1) c1)
-              (print-err 'c2 (type-name c2) c2)
-              (print-err final-1)
-              (print-err final-2)))))
+              (print-err "FAIL!! 'c/intersect not commutative"
+                         lflf 'c1 (type-name c1) c1
+                         lflf 'c2 (type-name c2) c2
+                         lflf final-1
+                         lflf final-2)))))
 
 (defn drop-until [coll pred]
   (cond (flat-map (first coll) pred)
