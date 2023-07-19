@@ -474,20 +474,9 @@
   Eq
   (=* [x y]
     (and (instance? FnConstraint y)
-         ;; TODO: this might be the better way, but core-types needs something different
-         ;; (= (count required-arities) (count (.required-arities y)))
-         ;; (and (every required-arities (fn [arity-rank]
-         ;;                                (some (.required-arities y) (partial = arity-rank))))
-         ;;          (every (.required-arities y) (fn [arity-rank]
-         ;;                                         (some required-arities (partial = arity-rank)))))
-         (or (get-in y [.arities variadic])
-             (get arities variadic)
-             (and (every required-arities (fn [arity-rank]
-                                            (or (some (.required-arities y) (partial = arity-rank))
-                                                (get-in y [.arities arity-rank]))))
-                  (every (.required-arities y) (fn [arity-rank]
-                                                 (or (some required-arities (partial = arity-rank))
-                                                     (get arities arity-rank))))))
+         (= (count required-arities) (count (.required-arities y)))
+         (every (.required-arities y) (fn [arity-rank]
+                                        (some required-arities (partial = arity-rank))))
          (=* arities (.arities y))
          (maybe x)))
 
