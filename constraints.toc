@@ -2622,6 +2622,7 @@
   (cond (instance? FnConstraint base)
         (either (or (map (= no-args args)
                          (fn [_]
+                           ;; get the sum type of the results of all the arities
                            (-> (.arities base)
                                vals
                                (reduce [] (fn [arities arity]
@@ -2634,23 +2635,20 @@
                              (get-in base [.arities variadic]))
                          (fn [arity]
                            (assert (instance? fn-arity arity))
-                           (let [new-args (intersect (.items empty-list-constraint args)
-                                                     (.param-consts arity))
-                                 reified (either
-                                          (= bottom-type new-args)
-                                          (let [fixed-count (-> arity .param-consts .items count)
-                                                [reqd var] (split (get-items new-args (count args))
-                                                                  fixed-count)
-                                                new-args (conj reqd (.items empty-list-constraint var))
-                                                new-args (cata (fn [c]
-                                                                 (reify-const c (.arity-id arity)
-                                                                              (repeat (count new-args)
-                                                                                      top-type)))
-                                                               new-args)]
-                                            (trim (cata (fn [c]
-                                                          (reify-const c (.arity-id arity)
-                                                                       new-args))
-                                                        arity))))]
+
+                           (let [reified (let [fixed-count (-> arity .param-consts .items count)
+                                               [reqd var] (split args fixed-count)
+                                               new-args (conj reqd (.items empty-list-constraint var))
+                                               new-args (cata (fn [c]
+                                                                (reify-const c (.arity-id arity)
+                                                                             (repeat (count new-args)
+                                                                                     top-type)))
+                                                              new-args)
+                                               reified (cata (fn [c]
+                                                               (reify-const c (.arity-id arity)
+                                                                            new-args))
+                                                             arity)]
+                                           (trim reified))]
                              (either (map (is-bottom reified)
                                           (fn [err-c]
                                             [err-c args]))
