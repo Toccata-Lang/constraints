@@ -1042,10 +1042,24 @@
 
 (def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol ""))
 
-(defn tag [s]
-  (assert (instance? (any-of String Symbol) s))
-  (let [s (symbol (str s))]
-    (TaggedSymbol no-symbol s s no-loc top-type)))
+(defn tag
+  ([s]
+   (tag s no-loc))
+  ([s loc]
+   (assert (instance? (any-of String
+                              Symbol
+                              NoSymbol
+                              TaggedSymbol)
+                      s))
+
+   (cond (instance? TaggedSymbol s)
+         (.loc s loc)
+
+         (instance? NoSymbol s)
+         s
+
+         (let [s (symbol (str s))]
+           (TaggedSymbol no-symbol s s loc top-type)))))
 
 (def Integer-sym (tag 'Integer))
 (def StringBuffer-sym (tag 'StringBuffer))
