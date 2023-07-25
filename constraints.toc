@@ -512,7 +512,7 @@
   (cond (= no-symbol s)
         ""
 
-        (str "(c/TaggedSymbol \"" s "\"")))
+        (str "(c/tag \"" s "\")")))
 
 (deftype fn-arity [arity-id param-consts result-const]
   (assert (instance? OptionalSym arity-id))
@@ -879,7 +879,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/ProtoImpls\n'" (str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
+    (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
 
   Container
   (map [x f]
@@ -2703,7 +2703,7 @@
                     (either (or (= bottom-type new-invoke)
                                 (= bottom-type fail))
                             (-> y
-                                (.fields new-fields)
+                                (.fields (comp (.fields y) new-fields))
                                 (.invoke-fn new-invoke))))
 
                   (NoValues [x y]))
@@ -2800,23 +2800,27 @@
                          (maybe (do-call-value (.default-impl base) args loc-path)))
                     (map (first args)
                          (fn [disp-arg]
-                           (either (or (and (some args is-param)
-                                            (or (map (get-in base [.default-impl .arities
-                                                                   (count args)])
-                                                     (fn [default-arity]
-                                                       [(TypeOp call-value-op (.impl-fns base {}) args
-                                                                no-symbol loc-path)
-                                                        args]))
-                                                (maybe [(NoValues
-                                                         [base (-> empty-reified
-                                                                   (replace-path loc-path)
-                                                                   (.type-symbol
-                                                                    (tag "No arity found")))])
-                                                        args])))
-                                       (for [impl-fn (get-in (.impl-fns base) [(type-num disp-arg)])
-                                             :when (get-in impl-fn [.arities (count args)])]
-                                         (do-call-value impl-fn args loc-path)))
-                                   (do-call-value (.default-impl base) args loc-path)))))
+                           (let [arg-count (count args)
+                                 disp-type (type-num disp-arg)
+                                 f (either (get-in (.impl-fns base) [(type-num disp-arg)])
+                                           (.default-impl base))]
+                             (either (map (get-in f [.arities arg-count])
+                                          (fn [arity]
+                                            (cond (some args is-param)
+                                                  [(TypeOp call-value-op
+                                                           ;; TODO: not clearing the impl-fns
+                                                           ;; is a huge perf hit
+                                                           (.impl-fns base {})
+                                                           args no-symbol loc-path)
+                                                   args]
+                                                  (do-call-value f args loc-path))))
+
+                                   [(NoValues
+                                     [base (-> empty-reified
+                                               (replace-path loc-path)
+                                               (.type-symbol
+                                                (tag "No arity found")))])
+                                    args])))))
                 [(NoValues [base (-> empty-reified
                                       (replace-path loc-path)
                                       (.type-symbol (tag "Insufficient number of arguments.")))])
