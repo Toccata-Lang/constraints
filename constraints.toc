@@ -170,6 +170,10 @@
   (map [x f embed]
     (embed x))
 
+  Seqable
+  (first [_] nothing)
+  (rest [x] x)
+
   Eq
   (=* [x y]
     (instance? NoString y)))
@@ -881,6 +885,37 @@
   (string-list [_]
     (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n" (str default-impl) "\n\n" (str impl-fns) ")"))
 
+  ;; TODO: could probably gain perf by doing a custom =* and sha1 that don'w
+  ;; walk impl-fns
+  ;; Hashable
+  ;; (sha1-update [x ctxt]
+  ;;   (sha1-update-type x ctxt)
+  ;;   (sha1-update fn-sym ctxt)
+  ;;   (sha1-update default-impl ctxt))
+
+  ;; (sha1 [x]
+  ;;   (let [ctxt (sha1-init)]
+  ;;     (sha1-update x ctxt)
+  ;;     (sha1-finalize ctxt)))
+
+
+  ;; Eq
+  ;; (=* [x y]
+  ;;   (and (instance? ProtoImpls y)
+  ;;        (= fn-sym (.fn-sym y))
+  ;;        (= default-impl (.default-impl y))
+  ;;        (cond (or (= impl-fns (.impl-fns y))
+  ;;                  (and (empty? impl-fns)
+  ;;                       (empty? (.impl-fns y))))
+  ;;              (maybe x)
+
+  ;;              (do
+  ;;                (print-err 'wth _LINE_ impl-fns
+  ;;                           lflf (.impl-fns y))
+  ;;                (abort)
+  ;;                nothing))
+  ;;        (maybe x)))
+
   Container
   (map [x f]
     (ProtoImpls fn-sym
@@ -1301,10 +1336,6 @@
   (reify-const [c arity args]
     c)
 
-  (find-constraint [c pred]
-    (assert-result x (instance? (maybe-of Constraints) x))
-    nothing)
-
   (found-constraint [c]
     nothing)
 
@@ -1407,12 +1438,21 @@
        c))
 
 (defn update-path [c loc]
-  (cata (fn [c]
+  (elgot (fn [c]
+           (either (map (instance? ProtoImpls c)
+                        RecurseFinal)
+                   (RecurseWith c)))
+         (fn [c]
           (add-to-path c loc))
         c))
 
 (defn trim [c]
-  (cata trim-const c)
+  (elgot (fn [c]
+           (either (map (instance? ProtoImpls c)
+                        RecurseFinal)
+                   (RecurseWith c)))
+         trim-const
+         c)
   ;; TODO: this might be faster
   ;; (cond (instance? ProtoImpls c)
   ;;       c
@@ -1421,16 +1461,27 @@
   )
 
 (defn derive [op c]
-  ((cata derive-const op) c))
+  ((elgot (fn [c]
+            (either (map (instance? ProtoImpls c)
+                         (fn [c]
+                           (RecurseFinal (fn [op]
+                                           c))))
+                    (RecurseWith c)))
+          derive-const
+          op)
+   c))
 
 (defn some-constraint [pred c]
   (elgot (fn [c]
-           (let [found (pred c)]
-             (either (instance? RecurseNext found)
-                     (cond found
-                           (RecurseFinal found)
+           (cond (instance? ProtoImpls c)
+                 (RecurseFinal nothing)
 
-                           (RecurseWith c)))))
+                 (let [found (pred c)]
+                   (either (instance? RecurseNext found)
+                           (cond found
+                                 (RecurseFinal found)
+
+                                 (RecurseWith c))))))
          found-constraint
          c))
 
@@ -1506,8 +1557,10 @@
   ;;                       arity "\n\n"
   ;;                       'args arg-cs)
   ;;            nothing)))
-  (let [r (ana (fn [c]
-                 (reify-const c arity-id arg-cs))
+  (let [r (apo (fn [c]
+                 (either (map (instance? ProtoImpls c)
+                              RecurseFinal)
+                         (RecurseWith (reify-const c arity-id arg-cs))))
                 arity)]
     (-> r
         trim
@@ -1750,10 +1803,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (find-constraint [c pred]
-    (or (some (.items c) pred)
-        (pred (.tail-c c))))
-
   (found-constraint [c]
     (or (some (.items c) identity)
         (.tail-c c)))
@@ -1876,10 +1925,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (find-constraint [c pred]
-    (or (some (.items c) pred)
-        (pred (.tail-c c))))
-
   (found-constraint [c]
     (or (some (.items c) identity)
         (.tail-c c)))
@@ -1960,8 +2005,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (find-constraint [c pred]
-    (some (.alts c) pred))
   (found-constraint [c]
     (some (.alts c) identity))
 
@@ -2083,9 +2126,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (find-constraint [c pred]
-    (pred (.ctnts-c c)))
-
   (found-constraint [c]
     (.ctnts-c c))
 
@@ -2148,8 +2188,6 @@
                  (op-fn c)))
           (reduce top-type intersect))))
 
-  (find-constraint [c pred]
-    (some (.constraints c) pred))
   (found-constraint [c]
     (some (.constraints c) identity))
 
@@ -2214,8 +2252,12 @@
     (cond (= (.arity c) arity-id)
           (either (for [arg (get args (.param-index c))
                         new-args (store args (.param-index c) top-type)]
-                    (ana (fn [c]
-                           (reify-const c arity-id new-args))
+                    (apo (fn [c]
+                           (either (map (instance? ProtoImpls c)
+                                        RecurseFinal)
+                                   ;; TODO: this doesn't make sense to me
+                                   ;; why calling reify-const again on c
+                                   (RecurseWith (reify-const c arity-id new-args))))
                          arg))
                   top-type)
 
@@ -2249,12 +2291,16 @@
     (flat-map (instance? fn-arity y)
               (fn [_]
                 (let [old-id (.arity-id y)
-                      y (cata (fn [c]
-                                (cond (and (instance? ParamConstraint c)
-                                           (= old-id (.arity c)))
-                                      (.arity c (.arity-id x))
+                      y (elgot (fn [c]
+                                 (either (map (instance? ProtoImpls c)
+                                              RecurseFinal)
+                                         (RecurseWith c)))
+                               (fn [c]
+                                 (cond (and (instance? ParamConstraint c)
+                                            (= old-id (.arity c)))
+                                       (.arity c (.arity-id x))
 
-                                      c))
+                                       c))
                               y)]
                   (and (= (.param-consts x) (.param-consts y))
                        (= (.result-const x) (.result-const y))
@@ -2281,15 +2327,6 @@
     (fn [c]
       (map op (fn [ctnts-c]
                 (ctnts-c top-type)))))
-
-  (find-constraint [c pred]
-    (or (-> (.param-consts c)
-            .items
-            (some pred))
-        (-> (.param-consts c)
-            .tail-c
-            pred)
-        (pred (.result-const c))))
 
   (found-constraint [c]
     (or (-> (.param-consts c)
@@ -2405,9 +2442,6 @@
       (let [derived (map op (fn [ctnts-c]
                               (ctnts-c top-type)))]
         (intersect derived c))))
-
-  (find-constraint [c pred]
-    (some (vals (.arities c)) pred))
 
   (found-constraint [c]
     (some (vals (.arities c)) identity))
@@ -2591,12 +2625,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (find-constraint [c pred]
-    (or (some (seq (.fields c)) (fn [[fld-c val-c]]
-                                  (or (pred fld-c)
-                                      (pred val-c))))
-        (pred (.invoke-fn c))))
-
   (found-constraint [c]
     (or (some (seq (.fields c)) (fn [[fld-c val-c]]
                                   (or (either (instance? Maybe fld-c)
@@ -2768,15 +2796,23 @@
                                                 [reqd var] (split (get-items new-args (count args))
                                                                   fixed-count)
                                                 new-args (conj reqd (.items empty-list-constraint var))
-                                                new-args (cata (fn [c]
-                                                                 (reify-const c (.arity-id arity)
-                                                                              (repeat (count new-args)
-                                                                                      top-type)))
-                                                               new-args)]
-                                            (trim (cata (fn [c]
-                                                          (reify-const c (.arity-id arity)
-                                                                       new-args))
-                                                        arity))))]
+                                                new-args (elgot (fn [c]
+                                                                  (either (map (instance? ProtoImpls c)
+                                                                               RecurseFinal)
+                                                                          (RecurseWith c)))
+                                                                (fn [c]
+                                                                  (reify-const c (.arity-id arity)
+                                                                               (repeat (count new-args)
+                                                                                       top-type)))
+                                                                new-args)]
+                                            (trim (elgot (fn [c]
+                                                           (either (map (instance? ProtoImpls c)
+                                                                        RecurseFinal)
+                                                                   (RecurseWith c)))
+                                                         (fn [c]
+                                                           (reify-const c (.arity-id arity)
+                                                                        new-args))
+                                                         arity))))]
                              (either (map (is-bottom reified)
                                           (fn [err-c]
                                             [err-c args]))
@@ -2804,7 +2840,7 @@
                                  disp-type (type-num disp-arg)
                                  f (either (get-in (.impl-fns base) [(type-num disp-arg)])
                                            (.default-impl base))]
-                             (either (map (get-in f [.arities arg-count])
+                            (either (map (get-in f [.arities arg-count])
                                           (fn [arity]
                                             (cond (some args is-param)
                                                   [(TypeOp call-value-op
@@ -3222,13 +3258,6 @@
   (contents-constraint [c]
     (.base inner-type-of c))
 
-  (find-constraint [c pred]
-    (or (pred (.base c))
-        (and (instance? Vector (.params c))
-             (some (.params c) pred))
-        (flat-map (instance? Constraints (.params c))
-                  pred)))
-
   (found-constraint [c]
     (or (.base c)
         (and (instance? Vector (.params c))
@@ -3311,6 +3340,9 @@
 
 (extend-type ProtoImpls
   Constraint
+  (set-path [c new-path]
+    (RecurseFinal c))
+
   (find-param [c]
     (RecurseFinal nothing))
 
