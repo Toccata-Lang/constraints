@@ -1622,6 +1622,25 @@
   (update-sym [c new-sym]
     (.sym c new-sym)))
 
+(extend-type NoContents
+  Constraint
+  (assertion-path [_] empty-list)
+
+  (format-path [_ n]
+    (list "Contains nothing"))
+
+  (show-full [c]
+    (list "c/no-contents"))
+
+  (intersect [x y]
+    (cond (instance? CollectionOf y)
+          (NoValues [x y])
+
+          (instance? NoContents y)
+          x
+
+          (intersect y x))))
+
 (extend-type NoTail
   Constraint
   (assertion-path [_] empty-list)
@@ -2838,17 +2857,25 @@
                          (fn [disp-arg]
                            (let [arg-count (count args)
                                  disp-type (type-num disp-arg)
-                                 f (either (get-in (.impl-fns base) [(type-num disp-arg)])
+                                 found? (get-in (.impl-fns base) [(type-num disp-arg)])
+                                 f (either found?
                                            (.default-impl base))]
                             (either (map (get-in f [.arities arg-count])
                                           (fn [arity]
                                             (cond (some args is-param)
-                                                  [(TypeOp call-value-op
-                                                           ;; TODO: not clearing the impl-fns
-                                                           ;; is a huge perf hit
-                                                           (.impl-fns base {})
-                                                           args no-symbol loc-path)
-                                                   args]
+                                                  (let [new-args nothing
+                                                        ;; TODO: this is a huge perf hit
+                                                        ;; (intersect (.param-consts arity)
+                                                        ;;                     (.items list-constraint
+                                                        ;;                             args))
+                                                        ]
+                                                    [(either (= bottom-type new-args)
+                                                             (TypeOp call-value-op
+                                                                     ;; TODO: not clearing the impl-fns
+                                                                     ;; is a huge perf hit
+                                                                     (.impl-fns base {})
+                                                                     args no-symbol loc-path))
+                                                     args])
                                                   (do-call-value f args loc-path))))
 
                                    [(NoValues
@@ -2988,6 +3015,45 @@
 (defn seq-from-hashmap [c seq-c]
   (.tail-c seq-c (coll-of-c (.items seq-c [top-type top-type]))))
 
+(defn get-last [base params loc-path]
+  ;; (assert-result r (instance? (any-of MaybeConstraint
+  ;;                                     TypeOp
+  ;;                                     NoValues)
+  ;;                             r))
+  (cond (instance? SeqConstraint base)
+        (let [base (trim base)]
+          (either (or (and (= no-tail (.tail-c base))
+                           (or (map (last (.items base))
+                                    MaybeConstraint)
+                               (maybe nothing-constraint)))
+                      (map (first (get-items (.tail-c base) 1))
+                           MaybeConstraint))
+                  maybe-constraint))
+
+        (and (instance? ReifiedConstraint base)
+             (or (= (.type-number base) StringBufferType)
+                 (= (.type-number base) SubStringType)))
+        (either (map (get-in base [.fields static-value])
+                     (fn [sv]
+                       (either (map (last sv)
+                                    (fn [first-char]
+                                      (MaybeConstraint
+                                       (SubStrConstraint first-char))))
+                               nothing-constraint)))
+                (MaybeConstraint substr-constraint))
+
+        (and (instance? ReifiedConstraint base)
+             (= (.type-number base) UnknownType))
+        maybe-constraint
+
+        (instance? CollectionOf base)
+        (MaybeConstraint (.ctnts-c base))
+
+        (cond (is-param base)
+              (TypeOp last-of-op base params no-symbol loc-path)
+
+              (NoValues [(type-op last-of-op top-type params) base]))))
+
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
                  first-of-op (fn [base params loc-path]
@@ -3019,39 +3085,7 @@
                                            (TypeOp first-of-op base params no-symbol loc-path)
 
                                            (NoValues [(type-op first-of-op top-type params) base]))))
-                 last-of-op (fn [base params loc-path]
-                              (cond (instance? SeqConstraint base)
-                                    (let [base (trim base)]
-                                      (either (or (and (= no-tail (.tail-c base))
-                                                       (or (map (last (.items base))
-                                                                MaybeConstraint)
-                                                           (maybe nothing-constraint)))
-                                                  (first (get-items (.tail-c base) 1)))
-                                              maybe-constraint))
-
-                                    (and (instance? ReifiedConstraint base)
-                                         (or (= (.type-number base) StringBufferType)
-                                             (= (.type-number base) SubStringType)))
-                                    (either (map (get-in base [.fields static-value])
-                                                 (fn [sv]
-                                                   (either (map (last sv)
-                                                                (fn [first-char]
-                                                                  (MaybeConstraint
-                                                                   (SubStrConstraint first-char))))
-                                                            nothing-constraint)))
-                                            (MaybeConstraint substr-constraint))
-
-                                    (and (instance? ReifiedConstraint base)
-                                         (= (.type-number base) UnknownType))
-                                    maybe-constraint
-
-                                     (instance? CollectionOf base)
-                                     (MaybeConstraint (.ctnts-c base))
-
-                                    (cond (is-param base)
-                                          (TypeOp last-of-op base params no-symbol loc-path)
-
-                                          (NoValues [(type-op last-of-op top-type params) base]))))
+                 last-of-op get-last
                  rest-of-op (fn [base params loc-path]
                               (cond (instance? SeqConstraint base)
                                     (let [base (trim base)]

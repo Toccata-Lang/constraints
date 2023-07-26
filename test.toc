@@ -136,6 +136,7 @@
                        reified-val
                        reified-11
                        reified-12
+                       c/no-contents
                        ;; TODO: put back
                        ;; c/empty-reified
                        (c/ProtoImpls (c/tag 'reverse)
