@@ -1134,7 +1134,8 @@
 (defn hashmap-c [type-num]
   (ReifiedConstraint type-num (either (get hashmap-names type-num)
                                       HashMap-sym)
-                     {} {} empty-fn-constraint empty-list no-symbol ""))
+                     {} {contents top-type}
+                     empty-fn-constraint empty-list no-symbol ""))
 
 (defn SymbolConstraint
   ([static-val]
@@ -2815,14 +2816,14 @@
                                                 [reqd var] (split (get-items new-args (count args))
                                                                   fixed-count)
                                                 new-args (conj reqd (.items empty-list-constraint var))
+                                                dummy-args (repeat (count new-args) top-type)
                                                 new-args (elgot (fn [c]
                                                                   (either (map (instance? ProtoImpls c)
                                                                                RecurseFinal)
                                                                           (RecurseWith c)))
                                                                 (fn [c]
                                                                   (reify-const c (.arity-id arity)
-                                                                               (repeat (count new-args)
-                                                                                       top-type)))
+                                                                               dummy-args))
                                                                 new-args)]
                                             (trim (elgot (fn [c]
                                                            (either (map (instance? ProtoImpls c)
@@ -2863,11 +2864,11 @@
                             (either (map (get-in f [.arities arg-count])
                                           (fn [arity]
                                             (cond (some args is-param)
-                                                  (let [new-args nothing
+                                                  (let [new-args top-type
                                                         ;; TODO: this is a huge perf hit
                                                         ;; (intersect (.param-consts arity)
-                                                        ;;                     (.items list-constraint
-                                                        ;;                             args))
+                                                        ;;            (.items list-constraint
+                                                        ;;                    args))
                                                         ]
                                                     [(either (= bottom-type new-args)
                                                              (TypeOp call-value-op
@@ -2875,6 +2876,16 @@
                                                                      ;; is a huge perf hit
                                                                      (.impl-fns base {})
                                                                      args no-symbol loc-path))
+                                                     ;; (let [dummy-args (repeat arg-count top-type)
+                                                     ;;       new-args (elgot (fn [c]
+                                                     ;;                         (either (map (instance? ProtoImpls c)
+                                                     ;;                                      RecurseFinal)
+                                                     ;;                                 (RecurseWith c)))
+                                                     ;;                       (fn [c]
+                                                     ;;                         (reify-const c
+                                                     ;;                                      (.arity-id arity)
+                                                     ;;                                      dummy-args))
+                                                     ;;                       (.param-consts arity))])
                                                      args])
                                                   (do-call-value f args loc-path))))
 
@@ -3054,6 +3065,30 @@
 
               (NoValues [(type-op last-of-op top-type params) base]))))
 
+(defn get-rest [base params loc-path]
+  (cond (instance? SeqConstraint base)
+        (let [base (trim base)]
+          (.items base (rest (.items base))))
+
+        (and (instance? ReifiedConstraint base)
+             (or (= (.type-number base) StringBufferType)
+                 (= (.type-number base) SubStringType)))
+        (either (map (get-in base [.fields static-value])
+                     (fn [sv]
+                       (SubStrConstraint (rest sv))))
+                substr-constraint)
+
+        (and (instance? ReifiedConstraint base)
+             (= (.type-number base) UnknownType))
+        (type-op rest-of-op top-type params)
+
+        (instance? CollectionOf base)
+        base
+
+        (cond (is-param base)
+              (TypeOp rest-of-op base params no-symbol loc-path)
+
+              (NoValues [(type-op rest-of-op top-type params) base]))))
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
                  first-of-op (fn [base params loc-path]
@@ -3086,30 +3121,7 @@
 
                                            (NoValues [(type-op first-of-op top-type params) base]))))
                  last-of-op get-last
-                 rest-of-op (fn [base params loc-path]
-                              (cond (instance? SeqConstraint base)
-                                    (let [base (trim base)]
-                                      (.items base (rest (.items base))))
-
-                                    (and (instance? ReifiedConstraint base)
-                                         (or (= (.type-number base) StringBufferType)
-                                             (= (.type-number base) SubStringType)))
-                                    (either (map (get-in base [.fields static-value])
-                                                 (fn [sv]
-                                                   (SubStrConstraint (rest sv))))
-                                            substr-constraint)
-
-                                    (and (instance? ReifiedConstraint base)
-                                         (= (.type-number base) UnknownType))
-                                    (type-op rest-of-op top-type params)
-
-                                    (instance? CollectionOf base)
-                                    base
-
-                                    (cond (is-param base)
-                                          (TypeOp rest-of-op base params no-symbol loc-path)
-
-                                          (NoValues [(type-op rest-of-op top-type params) base]))))
+                 rest-of-op get-rest
                  butlast-of-op (fn [base params loc-path]
                                  (cond (instance? SeqConstraint base)
                                        (let [base (trim base)]
