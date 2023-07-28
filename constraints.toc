@@ -2788,74 +2788,17 @@
   (assert (instance? Constraints base))
   (assert-result r (instance? Vector r))
 
-  (cond (instance? ReifiedConstraint base)
-        (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
-                                               (cond (instance? NoArgs args)
-                                                     [base]
-                                                     (comp [base] args))
-                                               loc-path)]
-          [result-c (rest arg-cs)])
+  (cond (or (is-param base)
+            (and (= nothing (= args no-args))
+                 (some args is-param)))
+        [(TypeOp call-value-op base args no-symbol loc-path)
+         args]
 
-        (instance? ProtoImpls base)
-        (either (or (and (= args no-args)
-                         (maybe (do-call-value (.default-impl base) args loc-path)))
-                    (map (first args)
-                         (fn [disp-arg]
-                           (let [arg-count (count args)
-                                 disp-type (type-num disp-arg)
-                                 found? (get-in (.impl-fns base) [(type-num disp-arg)])
-                                 f (either found?
-                                           (.default-impl base))]
-                            (either (map (get-in f [.arities arg-count])
-                                          (fn [arity]
-                                            (cond (some args is-param)
-                                                  (let [new-args top-type
-                                                        ;; TODO: this is a huge perf hit
-                                                        ;; (intersect (.param-consts arity)
-                                                        ;;            (.items list-constraint
-                                                        ;;                    args))
-                                                        ]
-                                                    [(either (= bottom-type new-args)
-                                                             (TypeOp call-value-op
-                                                                     ;; TODO: not clearing the impl-fns
-                                                                     ;; is a huge perf hit
-                                                                     (.impl-fns base {})
-                                                                     args no-symbol loc-path))
-                                                     ;; (let [dummy-args (repeat arg-count top-type)
-                                                     ;;       new-args (elgot (fn [c]
-                                                     ;;                         (either (map (instance? ProtoImpls c)
-                                                     ;;                                      RecurseFinal)
-                                                     ;;                                 (RecurseWith c)))
-                                                     ;;                       (fn [c]
-                                                     ;;                         (reify-const c
-                                                     ;;                                      (.arity-id arity)
-                                                     ;;                                      dummy-args))
-                                                     ;;                       (.param-consts arity))])
-                                                     args])
-                                                  (do-call-value f args loc-path))))
+        (instance? MultiConstraint base)
+        (do-call-value (trim base) args loc-path)
 
-                                   [(NoValues
-                                     [base (-> empty-reified
-                                               (replace-path loc-path)
-                                               (.type-symbol
-                                                (tag "No arity found")))])
-                                    args])))))
-                [(NoValues [base (-> empty-reified
-                                      (replace-path loc-path)
-                                      (.type-symbol (tag "Insufficient number of arguments.")))])
-                 args])
-
-        (cond (or (is-param base)
-                  (and (= nothing (= args no-args))
-                       (some args is-param)))
-              [(TypeOp call-value-op base args no-symbol loc-path)
-               args]
-
-              (instance? MultiConstraint base)
-              (do-call-value (trim base) args loc-path)
-
-              [(NoValues [(type-op call-value-op top-type args) base])
-               args])))
+        [(NoValues [(type-op call-value-op top-type args) base])
+         args]))
 
 (defn dcv2 [base args loc-path]
   (assert (instance? Constraints base))
@@ -2883,10 +2826,11 @@
                                  [reqd var] (split (get-items new-args (count args))
                                                    fixed-count)
                                  new-args (conj reqd (.items empty-list-constraint var))
+                                 dummies (repeat (count new-args) top-type)
                                  new-args (elgot skip-protoimpls
                                                  (fn [c]
                                                    (reify-const c (.arity-id arity)
-                                                                new-args))
+                                                                dummies))
                                                  new-args)
                                  reified (either (is-bottom new-args)
                                                  (elgot skip-protoimpls
@@ -2912,6 +2856,30 @@
                                                      (comp [base] args))
                                                loc-path)]
           [result-c (rest arg-cs)])
+
+        (instance? ProtoImpls base)
+        (either (or (and (= args no-args)
+                         (maybe (do-call-value (.default-impl base) args loc-path)))
+                    (map (first args)
+                         (fn [disp-arg]
+                           (let [arg-count (count args)
+                                 f (either (get-in base [.impl-fns (type-num disp-arg)])
+                                           (.default-impl base))]
+                             (either (and (some args is-param)
+                                          (map (get-in f [.arities arg-count])
+                                               (fn [arity]
+                                                 [(TypeOp call-value-op
+                                                          ;; TODO: not clearing the impl-fns
+                                                          ;; is a huge perf hit
+                                                          (.impl-fns base {})
+                                                          args no-symbol loc-path)
+                                                  args])))
+
+                                     (do-call-value f args loc-path))))))
+                [(NoValues [base (-> empty-reified
+                                     (replace-path loc-path)
+                                     (.type-symbol (tag "Insufficient number of arguments.")))])
+                 args])
 
         (dcv1 base args loc-path)))
 
