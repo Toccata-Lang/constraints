@@ -2886,12 +2886,14 @@
               (do-call-value base (get-items args) loc-path))))
 
 (defn do-set-to [base [path v] loc-path]
-  ;; TODO: check for ParamConstraints
   (cond (empty? path)
         base
 
         (= bottom-type v)
         v
+
+        (instance? ParamConstraint base)
+        (type-op set-to-op base [path v])
 
         (or (instance? ListConstraint base)
             (instance? VectorConstraint base)
@@ -2910,9 +2912,11 @@
         (NoValues [(type-op set-to-op top-type [path v] no-symbol loc-path) base])))
 
 (defn do-get-from [base path loc-path]
-  ;; TODO: check for ParamConstraints
   (cond (empty? path)
         base
+
+        (instance? ParamConstraint base)
+        (type-op get-from-op top-type path)
 
         (or (instance? ListConstraint base)
             (instance? VectorConstraint base)
@@ -3266,7 +3270,10 @@
   (found-constraint [c]
     (or (.base c)
         (and (instance? Vector (.params c))
-             (some (.params c) identity))
+             (some (.params c) (fn [param]
+                                 (cond (instance? Vector param)
+                                       (some param identity)
+                                       param))))
         (either (instance? Maybe (.params c))
                 nothing)))
 
