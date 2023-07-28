@@ -1547,22 +1547,12 @@
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
 
-  ;; (or ;; (= (.file loc) 'core)
-  ;;     ;; (= (.line loc) 0)
-  ;;     (and (= arity-id 'extract)
-  ;;          (do
-  ;;            (print-err 'reifying _LINE_ loc arity-id "\n"
-  ;;                       arity "\n\n"
-  ;;                       'args arg-cs)
-  ;;            nothing)))
-  (let [r (apo (fn [c]
-                 (either (map (instance? ProtoImpls c)
-                              RecurseFinal)
-                         (RecurseWith (reify-const c arity-id arg-cs))))
-                arity)]
-    (-> r
-        trim
-        (update-path loc))))
+  (update-path (elgot skip-protoimpls
+                      (fn [c]
+                        (reify-const c arity-id
+                                     arg-cs))
+                      arity)
+               loc))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -2782,25 +2772,7 @@
                                                                  (get-tail arg)])))))
                         trim))))))
 
-(def do-call-value)
-
-(defn dcv1 [base args loc-path]
-  (assert (instance? Constraints base))
-  (assert-result r (instance? Vector r))
-
-  (cond (or (is-param base)
-            (and (= nothing (= args no-args))
-                 (some args is-param)))
-        [(TypeOp call-value-op base args no-symbol loc-path)
-         args]
-
-        (instance? MultiConstraint base)
-        (do-call-value (trim base) args loc-path)
-
-        [(NoValues [(type-op call-value-op top-type args) base])
-         args]))
-
-(defn dcv2 [base args loc-path]
+(defn do-call-value [base args loc-path]
   (assert (instance? Constraints base))
   (assert-result r (instance? Vector r))
 
@@ -2826,12 +2798,6 @@
                                  [reqd var] (split (get-items new-args (count args))
                                                    fixed-count)
                                  new-args (conj reqd (.items empty-list-constraint var))
-                                 dummies (repeat (count new-args) top-type)
-                                 new-args (elgot skip-protoimpls
-                                                 (fn [c]
-                                                   (reify-const c (.arity-id arity)
-                                                                dummies))
-                                                 new-args)
                                  reified (either (is-bottom new-args)
                                                  (elgot skip-protoimpls
                                                         (fn [c]
@@ -2868,12 +2834,23 @@
                              (either (and (some args is-param)
                                           (map (get-in f [.arities arg-count])
                                                (fn [arity]
-                                                 [(TypeOp call-value-op
-                                                          ;; TODO: not clearing the impl-fns
-                                                          ;; is a huge perf hit
-                                                          (.impl-fns base {})
-                                                          args no-symbol loc-path)
-                                                  args])))
+                                                 (let [arity-id (.arity-id arity)
+                                                       result (elgot skip-protoimpls
+                                                                     (fn [c]
+                                                                       (reify-const c arity-id args))
+                                                                     arity)]
+                                                   [(either
+                                                     (is-bottom result)
+                                                     ;; TODO: trying to further restrict the result
+                                                     ;; of the TypeOp by adding the .result-const of
+                                                     ;; 'result' leads to seg faults
+                                                     (TypeOp call-value-op
+                                                             ;; TODO: not clearing the impl-fns
+                                                             ;; is a huge perf hit
+                                                             (.impl-fns base {})
+                                                             args no-symbol loc-path))
+                                                    (get-items (.param-consts result)
+                                                               (count args))]))))
 
                                      (do-call-value f args loc-path))))))
                 [(NoValues [base (-> empty-reified
@@ -2881,10 +2858,17 @@
                                      (.type-symbol (tag "Insufficient number of arguments.")))])
                  args])
 
-        (dcv1 base args loc-path)))
+        (cond (or (is-param base)
+                  (and (= nothing (= args no-args))
+                       (some args is-param)))
+              [(TypeOp call-value-op base args no-symbol loc-path)
+               args]
 
-(defn do-call-value [base args loc-path]
-  (dcv2 base args loc-path))
+              (instance? MultiConstraint base)
+              (do-call-value (trim base) args loc-path)
+
+              [(NoValues [(type-op call-value-op top-type args) base])
+               args])))
 
 (defn do-apply-value [base args loc-path]
   (assert-result r (instance? Vector r))
@@ -2961,7 +2945,7 @@
 
                                           (let [arity (reify-type-constraint arity (.arity-id arity)
                                                                              (repeat num-args top-type)
-                                                                             (Location "" 0))]
+                                                                             no-loc)]
                                             (either (map (-> (.param-consts arity)
                                                              (get-items num-args)
                                                              (nth arg-pos))
@@ -3063,6 +3047,7 @@
               (TypeOp rest-of-op base params no-symbol loc-path)
 
               (NoValues [(type-op rest-of-op top-type params) base]))))
+
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
                  first-of-op (fn [base params loc-path]
