@@ -1285,6 +1285,9 @@
                                           empty-list no-symbol "")])))
 
 (defprotocol Constraint
+  (skip-protoimpls [c]
+    (RecurseWith c))
+
   (set-path [c new-path]
     (assert (instance? (list-of Location) new-path))
     (assert-result r (instance? RecurseNext r))
@@ -1439,19 +1442,13 @@
        c))
 
 (defn update-path [c loc]
-  (elgot (fn [c]
-           (either (map (instance? ProtoImpls c)
-                        RecurseFinal)
-                   (RecurseWith c)))
+  (elgot skip-protoimpls
          (fn [c]
           (add-to-path c loc))
         c))
 
 (defn trim [c]
-  (elgot (fn [c]
-           (either (map (instance? ProtoImpls c)
-                        RecurseFinal)
-                   (RecurseWith c)))
+  (elgot skip-protoimpls
          trim-const
          c)
   ;; TODO: this might be faster
@@ -2311,10 +2308,7 @@
     (flat-map (instance? fn-arity y)
               (fn [_]
                 (let [old-id (.arity-id y)
-                      y (elgot (fn [c]
-                                 (either (map (instance? ProtoImpls c)
-                                              RecurseFinal)
-                                         (RecurseWith c)))
+                      y (elgot skip-protoimpls
                                (fn [c]
                                  (cond (and (instance? ParamConstraint c)
                                             (= old-id (.arity c)))
@@ -2788,62 +2782,13 @@
                                                                  (get-tail arg)])))))
                         trim))))))
 
-(defn do-call-value [base args loc-path]
+(def do-call-value)
+
+(defn dcv1 [base args loc-path]
   (assert (instance? Constraints base))
   (assert-result r (instance? Vector r))
 
-  (cond (instance? FnConstraint base)
-        (either (or (map (= no-args args)
-                         (fn [_]
-                           ;; get the sum type of the results of all the arities
-                           (-> (.arities base)
-                               vals
-                               (reduce [] (fn [arities arity]
-                                            (assert (instance? fn-arity arity))
-                                            (conj arities (derive (.result-const arity) top-type))))
-                               sum-type
-                               (vector args))))
-                    ;; get the arity
-                    (map (or (get-in base [.arities (count args)])
-                             (get-in base [.arities variadic]))
-                         (fn [arity]
-                           (assert (instance? fn-arity arity))
-                           (let [new-args (intersect (.items empty-list-constraint args)
-                                                     (.param-consts arity))
-                                 reified (either
-                                          (= bottom-type new-args)
-                                          (let [fixed-count (-> arity .param-consts .items count)
-                                                [reqd var] (split (get-items new-args (count args))
-                                                                  fixed-count)
-                                                new-args (conj reqd (.items empty-list-constraint var))
-                                                dummy-args (repeat (count new-args) top-type)
-                                                new-args (elgot (fn [c]
-                                                                  (either (map (instance? ProtoImpls c)
-                                                                               RecurseFinal)
-                                                                          (RecurseWith c)))
-                                                                (fn [c]
-                                                                  (reify-const c (.arity-id arity)
-                                                                               dummy-args))
-                                                                new-args)]
-                                            (trim (elgot (fn [c]
-                                                           (either (map (instance? ProtoImpls c)
-                                                                        RecurseFinal)
-                                                                   (RecurseWith c)))
-                                                         (fn [c]
-                                                           (reify-const c (.arity-id arity)
-                                                                        new-args))
-                                                         arity))))]
-                             (either (map (is-bottom reified)
-                                          (fn [err-c]
-                                            [err-c args]))
-                                     [(.result-const reified)
-                                      (get-items (.param-consts reified) (count args))])))))
-
-                [(NoValues [(type-op call-value-op top-type args)
-                            base])
-                 args])
-
-        (instance? ReifiedConstraint base)
+  (cond (instance? ReifiedConstraint base)
         (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
                                                (cond (instance? NoArgs args)
                                                      [base]
@@ -2911,6 +2856,67 @@
 
               [(NoValues [(type-op call-value-op top-type args) base])
                args])))
+
+(defn dcv2 [base args loc-path]
+  (assert (instance? Constraints base))
+  (assert-result r (instance? Vector r))
+
+  (cond (instance? FnConstraint base)
+        (either (or (map (= no-args args)
+                         (fn [_]
+                           ;; get the sum type of the results of all the arities
+                           (-> (.arities base)
+                               vals
+                               (reduce [] (fn [arities arity]
+                                            (assert (instance? fn-arity arity))
+                                            (conj arities (derive (.result-const arity) top-type))))
+                               sum-type
+                               (vector args))))
+                    ;; get the arity
+                    (map (or (get-in base [.arities (count args)])
+                             (get-in base [.arities variadic]))
+                         (fn [arity]
+                           (assert (instance? fn-arity arity))
+
+                           (let [new-args (.items empty-list-constraint args)
+                                 fixed-count (-> arity .param-consts .items count)
+                                 [reqd var] (split (get-items new-args (count args))
+                                                   fixed-count)
+                                 new-args (conj reqd (.items empty-list-constraint var))
+                                 new-args (elgot skip-protoimpls
+                                                 (fn [c]
+                                                   (reify-const c (.arity-id arity)
+                                                                new-args))
+                                                 new-args)
+                                 reified (either (is-bottom new-args)
+                                                 (elgot skip-protoimpls
+                                                        (fn [c]
+                                                          (trim-const
+                                                           (reify-const c (.arity-id arity)
+                                                                        new-args)))
+                                                        arity))]
+                             (either (map (is-bottom reified)
+                                          (fn [err-c]
+                                            [err-c args]))
+                                     [(.result-const reified)
+                                      (get-items (.param-consts reified) (count args))])))))
+                [(NoValues [base (-> empty-reified
+                                     (replace-path loc-path)
+                                     (.type-symbol (tag "No arity found")))])
+                 args])
+
+        (instance? ReifiedConstraint base)
+        (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
+                                               (cond (instance? NoArgs args)
+                                                     [base]
+                                                     (comp [base] args))
+                                               loc-path)]
+          [result-c (rest arg-cs)])
+
+        (dcv1 base args loc-path)))
+
+(defn do-call-value [base args loc-path]
+  (dcv2 base args loc-path))
 
 (defn do-apply-value [base args loc-path]
   (assert-result r (instance? Vector r))
@@ -3386,6 +3392,9 @@
 
 (extend-type ProtoImpls
   Constraint
+  (skip-protoimpls [c]
+    (RecurseFinal c))
+
   (set-path [c new-path]
     (RecurseFinal c))
 
