@@ -2828,31 +2828,47 @@
                          (maybe (do-call-value (.default-impl base) args loc-path)))
                     (map (first args)
                          (fn [disp-arg]
-                           (let [arg-count (count args)
-                                 f (either (get-in base [.impl-fns (type-num disp-arg)])
-                                           (.default-impl base))]
-                             (either (and (some args is-param)
-                                          (map (get-in f [.arities arg-count])
-                                               (fn [arity]
-                                                 (let [arity-id (.arity-id arity)
-                                                       result (elgot skip-protoimpls
-                                                                     (fn [c]
-                                                                       (reify-const c arity-id args))
-                                                                     arity)]
-                                                   [(either
-                                                     (is-bottom result)
-                                                     ;; TODO: trying to further restrict the result
-                                                     ;; of the TypeOp by adding the .result-const of
-                                                     ;; 'result' leads to seg faults
-                                                     (TypeOp call-value-op
-                                                             ;; TODO: not clearing the impl-fns
-                                                             ;; is a huge perf hit
-                                                             (.impl-fns base {})
-                                                             args no-symbol loc-path))
-                                                    (get-items (.param-consts result)
-                                                               (count args))]))))
+                           (let [arg-count (count args)]
+                             ;; TODO: very fast, but misses a lot of cases
+                             ;; (do-call-value (either (get-in base [.impl-fns (type-num disp-arg)])
+                             ;;                        (.default-impl base))
+                             ;;                args loc-path)
 
-                                     (do-call-value f args loc-path))))))
+                             (either (or (map (get-in base [.impl-fns (type-num disp-arg)])
+                                              (fn [f]
+                                                (do-call-value f args loc-path)))
+                                         (and (some args is-param)
+                                              (map (get-in base [.default-impl .arities arg-count])
+                                                   (fn [arity]
+                                                     [(TypeOp call-value-op
+                                                              ;; TODO: not clearing the impl-fns
+                                                              ;; is a small perf hit
+                                                              (.impl-fns base {})
+                                                              args no-symbol loc-path)
+                                                      args]
+                                                     ;; TODO: this version does catch some instances
+                                                     ;; of bad types. But is *much* slower
+                                                     
+                                                     ;; (let [arity-id (.arity-id arity)
+                                                     ;;       result (elgot skip-protoimpls
+                                                     ;;                     (fn [c]
+                                                     ;;                       (reify-const c arity-id args))
+                                                     ;;                     (.param-consts arity))]
+                                                     ;;   [(either
+                                                     ;;     (is-bottom result)
+                                                     ;;     ;; TODO: trying to further restrict the result
+                                                     ;;     ;; of the TypeOp by adding the .result-const of
+                                                     ;;     ;; 'result' leads to seg faults
+                                                     ;;     (TypeOp call-value-op
+                                                     ;;             ;; TODO: not clearing the impl-fns
+                                                     ;;             ;; is a huge perf hit
+                                                     ;;             (.impl-fns base {})
+                                                     ;;             args no-symbol loc-path))
+                                                     ;;    (get-items result
+                                                     ;;               (count args))])
+                                                     ))))
+
+                                     (do-call-value (.default-impl base) args loc-path))))))
                 [(NoValues [base (-> empty-reified
                                      (replace-path loc-path)
                                      (.type-symbol (tag "Insufficient number of arguments.")))])
