@@ -2278,16 +2278,12 @@
     (RecurseFinal (maybe c)))
 
   (intersect [x y]
-    (cond (or (=* x y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
+    (cond (=* x y)
           x
 
           (or (instance? AllValues y)
               (instance? NoValues y)
-              (instance? MultiConstraint y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
+              (instance? MultiConstraint y))
           (intersect y x)
 
           (MultiConstraint [y x] empty-list (.sym x)))))
@@ -2845,7 +2841,8 @@
                                                               ;; is a small perf hit
                                                               (.impl-fns base {})
                                                               args no-symbol loc-path)
-                                                      args]
+                                                      (.items (.param-consts arity))
+                                                      ]
                                                      ;; TODO: this version does catch some instances
                                                      ;; of bad types. But is *much* slower
                                                      
@@ -2868,7 +2865,8 @@
                                                      ;;               (count args))])
                                                      ))))
 
-                                     (do-call-value (.default-impl base) args loc-path))))))
+                                     (do-call-value (.default-impl base) args loc-path))
+                             ))))
                 [(NoValues [base (-> empty-reified
                                      (replace-path loc-path)
                                      (.type-symbol (tag "Insufficient number of arguments.")))])
