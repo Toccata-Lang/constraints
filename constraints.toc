@@ -1548,7 +1548,19 @@
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
+  ;; (update-path (elgot (fn [c]
+  ;;                       ;; (cond (instance? ParamConstraint c)
+  ;;                       ;;       (RecurseFinal (reify-const c arity-id arg-cs)))
 
+  ;;                       (skip-protoimpls c))
+  ;;                     (fn [c]
+  ;;                       (cond (instance? ParamConstraint c)
+  ;;                             c
+
+  ;;                             (reify-const c arity-id
+  ;;                                          arg-cs)))
+  ;;                     arity)
+  ;;              loc)
   (update-path (elgot skip-protoimpls
                       (fn [c]
                         (reify-const c arity-id
@@ -2841,7 +2853,8 @@
         (= bottom-type v)
         v
 
-        (instance? ParamConstraint base)
+        (or (instance? ParamConstraint base)
+            (instance? TypeOp base))
         (type-op set-to-op base [path v])
 
         (or (instance? ListConstraint base)
@@ -2864,8 +2877,9 @@
   (cond (empty? path)
         base
 
-        (instance? ParamConstraint base)
-        (type-op get-from-op top-type path)
+        (or (instance? ParamConstraint base)
+            (instance? TypeOp base))
+        (type-op get-from-op base path)
 
         (or (instance? ListConstraint base)
             (instance? VectorConstraint base)
