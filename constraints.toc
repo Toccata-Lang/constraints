@@ -596,11 +596,11 @@
                           (cond (= no-symbol type-symbol)
                                 (str no-symbol)
                                 (str "(c/tag \"" type-symbol "\")"))
-                          "\n" (str field-consts)
-                          "\n{" (to-str (map (vec fields) (fn [[k v]]
+                          "\n{" (to-str (map (vec field-consts) (fn [[k v]]
+                                                                 (str k " " v "\n"))))
+                          "}\n{" (to-str (map (vec fields) (fn [[k v]]
                                                             (str k " " v "\n"))))
-                          "}"
-                          "\n" (str invoke-fn)
+                          "}\n" (str invoke-fn) "\n"
                           ;; (str (interpose (cons 'list path) " "))
                           " empty-list" (either (map (= no-symbol) (partial str " "))
                                                 (sym-str sym))
@@ -2651,8 +2651,7 @@
                   (.path c) desired-len))
 
   (show-full [c]
-    (cons (str "Type: " (type-sym c))
-          (show-full (.invoke-fn c))))
+    (list (str "Type: " (type-sym c))))
 
   (set-to [x fld-path fld-c]
     (cond (empty? fld-path)
@@ -2690,11 +2689,11 @@
 
   (do-call-value [base args loc-path]
     (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
-                                           (cond (instance? NoArgs args)
-                                                 [base]
-                                                 (comp [base] args))
+                                           (either (instance? NoArgs args)
+                                                   (comp [base] args))
                                            loc-path)]
-      [result-c (rest arg-cs)]))
+      [result-c (either (instance? NoArgs args)
+                        (rest arg-cs))]))
 
   (intersect [x y]
     (let [type-number (type-num x)]
@@ -2834,6 +2833,7 @@
 (defn do-apply-value [base args loc-path]
   (assert-result r (instance? Vector r))
 
+  ;; TODO: can this be simplified
   (cond (is-param args)
         [(TypeOp apply-op base args no-symbol loc-path) args]
 
