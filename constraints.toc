@@ -524,7 +524,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/fn-arity\n" (str "(c/tag '" arity-id) ")\n"
+    (list "(c/fn-arity\n" (either (map (= arity-id no-symbol) str)
+                                  (str "(c/tag '" arity-id ")")) "\n"
           (str param-consts) "\n;; returns\n" (str result-const) ")"))
 
   Container
@@ -2387,7 +2388,30 @@
                                          (assoc arities idx arity)))
                 min-variadic-arity (map (get new-arities variadic)
                                         (fn [var-arity]
-                                          (-> var-arity .param-consts .items count)))]
+                                          (-> var-arity .param-consts .items count)))
+                new-arities (cond (empty? new-arities)
+                                  (either (or (map (get-in x [.arities variadic])
+                                                      (fn [x-var]
+                                                        (reduce (vec (.arities y)) {}
+                                                                (fn [arities [rank arity]]
+                                                                  (let [new-arity (intersect x-var
+                                                                                             arity)]
+                                                                    (cond (= bottom-type new-arity)
+                                                                          arities
+                                                                          (assoc arities
+                                                                            rank new-arity)))))))
+                                                 (map (get-in y [.arities variadic])
+                                                      (fn [y-var]
+                                                        (reduce (vec (.arities x)) {}
+                                                                (fn [arities [rank arity]]
+                                                                  (let [new-arity (intersect y-var
+                                                                                             arity)]
+                                                                    (cond (= bottom-type new-arity)
+                                                                          arities
+                                                                          (assoc arities
+                                                                            rank new-arity))))))))
+                                          {})
+                                  new-arities)]
             (cond (empty? new-arities)
                   (NoValues [x y])
 
