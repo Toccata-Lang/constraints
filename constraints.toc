@@ -1034,7 +1034,7 @@
                        (fn [_]
                          (str "\n[" (to-str (interpose params "\n")) "]")))
                   (cond (= no-args params) "" (str "\n" params)))
-           (sym-str sym) ")" ))
+           "\n" (sym-str sym) ")" ))
 
   Eq
   (=* [x y]
@@ -3283,12 +3283,7 @@
     (format-path c 0))
 
   (intersect [x y]
-    (cond (or (=* x y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
-          x
-
-          (or (instance? AllValues y)
+    (cond (or (instance? AllValues y)
               (instance? NoValues y)
               (instance? MultiConstraint y))
           (intersect y x)
