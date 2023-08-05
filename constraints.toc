@@ -1655,6 +1655,9 @@
 
 (extend-type AllValues
   Constraint
+  (do-call-value [base args loc]
+    [(type-op call-value-op fn-constraint args) args])
+
   (format-path [x desired-len]
     (list "<Unknown Type>"))
 
@@ -2164,6 +2167,9 @@
 
 (extend-type MultiConstraint
   Constraint
+  (get-tail [c]
+    (.constraints c (map (.constraints c) get-tail)))
+
   (assertion-path [c] empty-list)
 
   (format-path [c desired-len]
@@ -2257,6 +2263,9 @@
 
 (extend-type ParamConstraint
   Constraint
+  (get-tail [_]
+    top-type)
+
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
