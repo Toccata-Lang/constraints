@@ -824,20 +824,21 @@
 
   (MultiConstraint cs empty-list no-symbol))
 
-(deftype ParamConstraint [arity param-index path sym var]
+(deftype ParamConstraint [arity param-path path sym var]
+  (assert (instance? (vector-of Integer) param-path))
   (assert (instance? TaggedSymbol arity))
   (assert (instance? OptionalSym sym))
 
   Stringable
   (string-list [_]
-    (list "(c/param " (str "(c/tag '" arity) ") " (str param-index) ")"))
+    (list "(c/param " (str "(c/tag '" arity) ") " (str param-path) ")"))
 
   Eq
   (=* [x y]
     (and (instance? ParamConstraint y)
          (or (= arity (.arity y))
              (= (.arity y) arity))
-         (= param-index (.param-index y))
+         (= param-path (.param-path y))
          (maybe x)))
 
   Container
@@ -848,7 +849,7 @@
     (embed x)))
 
 (defn param [arity param-index]
-  (ParamConstraint arity param-index empty-list no-symbol ""))
+  (ParamConstraint arity [param-index] empty-list no-symbol ""))
 
 ;; Get's replaced with the constraint of the param-sym, so not many implementations for it
 (deftype TypeOfConstraint [param-sym path sym var]
@@ -2270,7 +2271,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (str "Parameter " (.param-index c) " from") (.path c)
+    (format-path* (str "Parameter " (.param-path c) " from") (.path c)
                   desired-len))
 
   (show-full [c]
@@ -2280,10 +2281,19 @@
     (.base inner-type-of c))
 
   (reify-const [c arity-id args]
-    (cond (= (.arity c) arity-id)
-          (either (get args (.param-index c))
-                  top-type)
-          c))
+    (let [param-path (.param-path c)]
+      (cond (= (.arity c) arity-id)
+            (either (for [arg-idx (first param-path)
+                          arg-c (get args arg-idx)]
+                      (let [rst (rest param-path)]
+                        (cond (empty? rst)
+                              arg-c
+
+                              (reify-const (.param-path c rst)
+                                           arity-id
+                                           (get-items arg-c)))))
+                    top-type)
+            c)))
 
   (derive-const [op]
     (fn [c]
