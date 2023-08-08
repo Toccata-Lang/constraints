@@ -1510,7 +1510,10 @@
                 (let [alts (-> alts
                                (reduce []
                                        (fn [cs c]
-                                         (cond (some cs (partial = c))
+                                         (cond (instance? SumConstraint c)
+                                               (comp (.alts c) cs)
+
+                                               (some cs (partial = c))
                                                cs
 
                                                (conj cs c)))))]
@@ -2772,8 +2775,7 @@
                                                         (coll-of-c
                                                          (sum-type [(contents-constraint arg-tail)
                                                                     (contents-constraint tail)])))))))
-                        (set-seq-type result-type)
-                        trim))))))
+                        (set-seq-type result-type)))))))
 
 (defn do-apply-value [base args loc-path]
   (assert-result r (instance? Vector r))
