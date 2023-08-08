@@ -4,13 +4,18 @@
 (add-ns c (module "constraints.toc"))
 
 (def coll-of-int (c/CollectionOf c/int-constraint empty-list c/no-symbol ""))
-(def int-list (c/ListConstraint [] coll-of-int empty-list c/no-symbol ""))
-(def int-list-1 (c/ListConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol ""))
-(def int-list-2 (c/ListConstraint [c/int-constraint c/int-constraint] c/no-tail empty-list c/no-symbol ""))
+(def int-list (c/list-c [] coll-of-int))
+(def int-list-1 (c/list-c [c/int-constraint]))
+(def int-fn (c/FnConstraint [1]
+                            {1 (c/fn-arity c/no-symbol
+                                           (c/list-c [c/int-constraint])
+                                           c/top-type)}
+                            empty-list c/no-symbol ""))
+(def int-list-2 (c/list-c [c/int-constraint c/int-constraint]))
 
-(def int-vect (c/VectorConstraint [] coll-of-int empty-list c/no-symbol ""))
-(def int-vect-1 (c/VectorConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol ""))
-(def int-vect-2 (c/VectorConstraint [c/int-constraint c/int-constraint] c/no-tail empty-list c/no-symbol ""))
+(def int-vect (c/vect-c [] coll-of-int))
+(def int-vect-1 (c/vect-c [c/int-constraint]))
+(def int-vect-2 (c/vect-c [c/int-constraint c/int-constraint]))
 
 (def sym-c (c/SymbolConstraint 'this-sym empty-list c/no-symbol ""))
 (def coll-of-sym (c/CollectionOf c/sym-constraint empty-list c/no-symbol ""))
@@ -37,9 +42,13 @@
 
 (def get-first (c/type-op c/get-from-op c/top-type [pos-1]))
 (def set-second (c/type-op c/set-to-op c/top-type [[pos-1] non-0]))
-(def param (c/ParamConstraint (c/tag 'arity-1) 0 empty-list c/no-symbol ""))
+(def param (c/param (c/tag 'arity-1) 0))
 (def arg-of (c/type-op c/arg-of-op c/top-type 1))
 (def maybe-param  (c/MaybeConstraint param empty-list c/no-symbol ""))
+(def empty-seq (c/seq-c []))
+
+(def lf "\n")
+(def lflf "\n\n")
 
 (def reified-val (c/ReifiedConstraint
                   10 c/no-symbol {} {}
@@ -102,8 +111,9 @@
                        ;; c/hashmap-constraint
                        c/set-constraint
 
-                       (c/ListConstraint [c/top-type pos-int] c/no-tail empty-list c/no-symbol "")
-                       (c/VectorConstraint [sym-c pos-int] c/no-tail empty-list c/no-symbol "")
+                       empty-seq
+                       (c/list-c [c/top-type pos-int])
+                       (c/vect-c [sym-c pos-int])
 
                        int-list
                        int-list-1
@@ -227,7 +237,8 @@
                           (c/ProtoImpls
                            (c/tag 'reverse)
                            (c/fn-c []
-                                   {1 (c/fn-arity (c/tag 'reverse) (c/list-c [(c/param (c/tag 'reverse) 0)])
+                                   {1 (c/fn-arity (c/tag 'reverse)
+                                                  (c/list-c [(c/param (c/tag 'reverse) 0)])
                                        ;; returns
                                        c/top-type)})
 
@@ -281,46 +292,34 @@
               empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
-(def _ (test (c/reify-const (c/type-op c/vect-from-op (c/StrBuffConstraint "ab" empty-list c/no-symbol "")
-                                      [])
+(def _ (test (c/reify-const (c/type-op c/vect-from-op (c/StrBuffConstraint "ab") c/no-args)
                             (c/tag '_) [])
 
-             (c/VectorConstraint [(c/SubStrConstraint "a" empty-list c/no-symbol "")
-                                  (c/SubStrConstraint "b" empty-list c/no-symbol "")]
-                                 c/no-tail empty-list c/no-symbol "")
+             (c/vect-c [(c/SubStrConstraint "a")
+                        (c/SubStrConstraint "b")])
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/VectorConstraint [] c/top-type empty-list c/no-symbol "")
+(def _ (test (c/intersect (c/vect-c [] c/coll-of-any)
                           (c/CollectionOf
-                           (c/type-op c/inner-type-of-op (c/ParamConstraint (c/tag 'fn-arity84) 0
-                                                                            empty-list c/no-symbol "")
-                                     [])
+                           (c/type-op c/inner-type-of-op (c/param (c/tag 'fn-arity84) 0))
                            empty-list (c/tag "#result") ""))
              (c/vect-c []
                        (c/coll-of-c (c/type-op c/inner-type-of-op
                                                (c/param (c/tag 'fn-arity84) 0))))
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/ListConstraint
-                        [c/sym-constraint]
-                        (c/ListConstraint [c/int-constraint] c/no-tail empty-list c/no-symbol "")
-                        empty-list c/no-symbol ""))
-             (c/ListConstraint [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
-                                c/int-constraint]
-                               c/no-tail empty-list c/no-symbol "")
+(def _ (test (c/list-c [c/sym-constraint]
+                       (c/list-c [c/int-constraint]))
+             (c/list-c [c/sym-constraint
+                        c/int-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/ListConstraint
-                        [c/int-constraint]
-                        (c/ListConstraint [c/sym-constraint]
-                                          (c/ListConstraint [c/int-constraint]
-                                                            c/no-tail empty-list c/no-symbol "")
-                                          empty-list c/no-symbol "")
-                        empty-list c/no-symbol ""))
-             (c/ListConstraint [c/int-constraint
-                                (c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
-                                c/int-constraint]
-                               c/no-tail empty-list c/no-symbol "")
+(def _ (test (c/list-c [c/int-constraint]
+                       (c/list-c [c/sym-constraint]
+                                 (c/list-c [c/int-constraint])))
+             (c/list-c [c/int-constraint
+                        c/sym-constraint
+                        c/int-constraint])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/maybe-constraint maybe-int)
@@ -377,9 +376,7 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/get-items (c/sum-type [coll-of-int
-                                       (c/ListConstraint []
-                                                         (c/CollectionOf pos-int empty-list c/no-symbol "")
-                                                         empty-list c/no-symbol "")
+                                       (c/list-c [] (c/coll-of-c pos-int))
                                        coll-of-sym])
                           2)
              [(c/SumConstraint
@@ -403,7 +400,7 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/get-items (c/sum-type [int-list-1
-                                       (c/ListConstraint [c/sym-constraint] c/no-tail empty-list c/no-symbol "")])
+                                       (c/list-c [c/sym-constraint])])
                           2)
              []
              _FILE_ _LINE_))
@@ -413,56 +410,44 @@
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect int-list-2
-                          (c/ListConstraint [c/int-constraint c/sym-constraint]
-                                            c/no-tail empty-list c/no-symbol ""))
+                          (c/list-c [c/int-constraint c/sym-constraint]))
              (c/NoValues [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
                           c/int-constraint])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect int-vect-2
-                          (c/VectorConstraint [c/int-constraint c/sym-constraint]
-                                              c/no-tail empty-list c/no-symbol ""))
+                          (c/vect-c [c/int-constraint c/sym-constraint]))
              (c/NoValues [(c/SymbolConstraint c/no-symbol empty-list c/no-symbol "")
                           c/int-constraint])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect c/fn-constraint
-                          (c/FnConstraint [1]
-                                          {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
-                                          empty-list c/no-symbol ""))
-             (c/FnConstraint [1]
-                             {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
-                             empty-list c/no-symbol "")
+                          int-fn)
+             int-fn
              _FILE_ _LINE_))
 
-(def _ (test (c/intersect (c/FnConstraint [1]
-                                          {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
-                                          empty-list c/no-symbol "")
+(def _ (test (c/intersect int-fn
                           (c/FnConstraint [1]
                                           {1 (c/fn-arity c/no-symbol
-                                                         (c/ListConstraint [c/string-constraint]
-                                                                           c/no-tail empty-list c/no-symbol "")
+                                                         (c/list-c [c/string-constraint])
                                                          c/top-type)}
                                           empty-list c/no-symbol ""))
              (c/NoValues
               [(c/FnConstraint
                 [1]
                 {1 (c/fn-arity c/no-symbol
-                               (c/ListConstraint
+                               (c/list-c
                                 [(c/SumConstraint
                                   [(c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
 
                                    (c/SubStrConstraint c/no-string empty-list c/no-symbol "")]
-                                  empty-list c/no-symbol "")]
-                                c/no-tail empty-list c/no-symbol "")
+                                  empty-list c/no-symbol "")])
                                c/top-type)}
                 empty-list c/no-symbol "")
                (c/FnConstraint
                 [1]
                 {1 (c/fn-arity c/no-symbol
-                               (c/ListConstraint
-                                [c/int-constraint]
-                                c/no-tail empty-list c/no-symbol "")
+                               (c/list-c [c/int-constraint])
                                c/top-type)}
                 empty-list c/no-symbol "")])
              _FILE_ _LINE_))
@@ -470,49 +455,41 @@
 (def _ (test (c/intersect (-> c/fn-constraint
                               (.required-arities [3])
                               (.arities (select-keys (.arities c/fn-constraint) [3])))
-                          (c/FnConstraint [1]
-                                          {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}
-                                          empty-list c/no-symbol ""))
+                          int-fn)
              (c/NoValues
               [(c/FnConstraint
                 [1]
                 {1 (c/fn-arity c/no-symbol
-                               (c/ListConstraint
-                                [c/int-constraint]
-                                c/no-tail empty-list c/no-symbol "")
+                               (c/list-c [c/int-constraint])
                                c/top-type)}
                 empty-list c/no-symbol "")
                (c/FnConstraint
                 [3]
                 {3 (c/fn-arity c/no-symbol
-                               (c/ListConstraint [c/top-type
-                                                  c/top-type
-                                                  c/top-type]
-                                                 c/no-tail empty-list c/no-symbol "")
+                               (c/list-c [c/top-type c/top-type c/top-type])
                                c/top-type)}
                 empty-list c/no-symbol "")])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (c/FnConstraint []
-                                          {1 (c/fn-arity c/no-symbol int-list-1 c/int-constraint)}
+                                          {1 (c/fn-arity c/no-symbol
+                                                         (c/list-c [c/int-constraint])
+                                                         c/int-constraint)}
                                           empty-list c/no-symbol "")
                           (c/FnConstraint []
-                                          {1 (c/fn-arity c/no-symbol int-list-1 c/sym-constraint)}
+                                          {1 (c/fn-arity c/no-symbol
+                                                         (c/list-c [c/int-constraint])
+                                                         c/sym-constraint)}
                                           empty-list c/no-symbol ""))
              (c/NoValues
               [(c/FnConstraint
-                [] {1 (c/fn-arity
-                       c/no-symbol
-                       (c/ListConstraint
-                        [c/int-constraint]
-                        c/no-tail empty-list c/no-symbol "")
+                [] {1 (c/fn-arity c/no-symbol
+                                  (c/list-c [c/int-constraint])
                        (c/SymbolConstraint c/no-symbol empty-list c/no-symbol ""))}
                 empty-list c/no-symbol "")
                (c/FnConstraint
                 [] {1 (c/fn-arity c/no-symbol
-                                  (c/ListConstraint
-                                   [c/int-constraint]
-                                   c/no-tail empty-list c/no-symbol "")
+                                  (c/list-c [c/int-constraint])
                                   c/int-constraint)}
                 empty-list c/no-symbol "")])
              _FILE_ _LINE_))
@@ -600,7 +577,7 @@
              _FILE_ _LINE_))
 
 (def _ (test (test-op c/butlast-of (c/list-c [c/int-constraint c/sym-constraint]))
-             int-list-1
+             (c/list-c [c/int-constraint])
              _FILE_ _LINE_))
 
 (def _ (test (test-op c/list-from int-vect-2)
@@ -779,21 +756,32 @@
 
 (def _ (test (c/intersect c/coll-of-any
                           (c/fn-c [1]
-                                  {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}))
+                                  {1 (c/fn-arity c/no-symbol
+                                                 (c/list-c [c/int-constraint])
+                                                 pos-1)}))
              (c/fn-c [1]
-                     {1 (c/fn-arity c/no-symbol int-list-1 pos-1)})
+                     {1 (c/fn-arity c/no-symbol
+                                    (c/list-c [c/int-constraint])
+                                    pos-1)})
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect coll-of-int
                           (c/fn-c [1]
-                                  {1 (c/fn-arity c/no-symbol int-list-1 c/top-type)}))
+                                  {1 (c/fn-arity c/no-symbol
+                                                 (c/list-c [c/int-constraint])
+                                                 pos-1)}
+                                  empty-list c/no-symbol ""))
              (c/fn-c [1]
-                     {1 (c/fn-arity c/no-symbol int-list-1 c/int-constraint)})
+                     {1 (c/fn-arity c/no-symbol
+                                    (c/list-c [c/int-constraint])
+                                    pos-1)})
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect coll-of-sym
                           (c/fn-c [1]
-                                  {1 (c/fn-arity c/no-symbol int-list-1 pos-1)}))
+                                  {1 (c/fn-arity c/no-symbol
+                                    (c/list-c [c/int-constraint])
+                                    pos-1)}))
              (c/NoValues [c/sym-constraint pos-1])
              _FILE_ _LINE_))
 
@@ -883,10 +871,11 @@
 (def _ (test (reify-c (c/type-op c/apply-op
                                  (c/fn-c []
                                          {2 (c/fn-arity (c/tag 'fn-arity13)
-                                                        (c/list-c [(c/multi [(c/param (c/tag 'fn-arity13) 0)
-                                                                             c/int-constraint])
-                                                                   (c/multi [(c/param (c/tag 'fn-arity13) 1)
-                                                                             c/int-constraint])])
+                                                        (c/list-c
+                                                         [(c/multi [(c/param (c/tag 'fn-arity13) 0)
+                                                                    c/int-constraint])
+                                                          (c/multi [(c/param (c/tag 'fn-arity13) 1)
+                                                                    c/int-constraint])])
                                                         c/int-constraint)})
                                  (c/multi [(c/list-c [(c/IntegerConstraint 9)
                                                       (c/IntegerConstraint 7)])
