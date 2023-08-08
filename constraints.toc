@@ -455,7 +455,7 @@
   ([items tail seq-type]
    (cond (empty? items)
          (SeqConstraint seq-type no-tail tail
-                   empty-list no-symbol "")
+                        empty-list no-symbol "")
 
          (reduce (reverse items) tail
                  (fn [tail item]
@@ -787,7 +787,8 @@
 
   Stringable
   (string-list [_]
-    (list "(c/param " (str "(c/tag '" arity) ") " (str param-path) ")"))
+    (list "(c/param " (str "(c/tag '" arity) ") " (either (map (first param-path) str)
+                                                          (str param-path)) ")"))
 
   Eq
   (=* [x y]
@@ -1013,6 +1014,7 @@
    (TypeOp op-code base params sym path)))
 
 (def SymbolConstraints (any-of ReifiedConstraint
+                               SeqConstraint
                                FnConstraint
                                CollectionOf
                                SumConstraint
@@ -1583,7 +1585,8 @@
           y
 
           (instance? SeqConstraint y)
-          (contents-constraint x)
+          (either (= (.item y) no-tail)
+                  (contents-constraint x))
 
           x))
 
@@ -1722,10 +1725,14 @@
 
   (format-path [c desired-len]
     (format-path* (cond (= (.type-num c) ListType)
-                        "List from:"
+                        (cond (empty-seq? c)
+                              "Empty list from:"
+                              "List from:")
 
                         (= (.type-num c) VectorType)
-                        "Vector from:"
+                        (cond (empty-seq? c)
+                              "Empty vector from:"
+                              "Vector from:")
 
                         "Sequence from:")
                   (.path c) desired-len))
@@ -1772,10 +1779,11 @@
                     (cant-set-contents x fld-path)))))
 
   (get-from [x idx]
-    (assert (instance? (any-of Integer ReifiedConstraint) idx))
     (cond (empty-seq? x)
           (NoValues [x (missing-field idx)])
 
+          (or (instance? Integer idx)
+              (instance? ReifiedConstraint idx))
           (either (map (or (instance? Integer idx)
                            (for [_ (and (instance? ReifiedConstraint idx)
                                         (= IntegerType (.type-number idx)))
@@ -1791,7 +1799,9 @@
                                (.ctnts-c (.tail x))
 
                                (get-from (.tail x) (dec idx)))))
-                  (NoValues [x (missing-field idx)]))))
+                  (NoValues [x (missing-field idx)]))
+
+          (NoValues [x (missing-field idx)])))
 
   (contents-constraint [c]
     (cond (empty-seq? c)
@@ -1851,40 +1861,36 @@
           (intersect y x)
 
           (instance? SeqConstraint y)
-          (cond (or (empty-seq? y)
-                    (empty-seq? x))
-                (NoValues [x y])
+          (either (map (or (= (.type-num x) (.type-num y))
+                           (and (= (.type-num x) UnknownType)
+                                (maybe (.type-num y)))
+                           (and (= (.type-num y) UnknownType)
+                                (maybe (.type-num x))))
+                       (fn [new-type]
+                         (let [item-x (.item x)
+                               item-y (.item y)
+                               new-item (either (and (= item-x no-tail)
+                                                     (= item-y no-tail))
 
-                (either (map (or (= (.type-num x) (.type-num y))
-                                 (and (= (.type-num x) UnknownType)
-                                      (maybe (.type-num y)))
-                                 (and (= (.type-num y) UnknownType)
-                                      (maybe (.type-num x))))
-                             (fn [new-type]
-                               (let [item-x (.item x)
-                                     item-y (.item y)
-                                     new-item (either (and (= item-x no-tail)
-                                                           (= item-y no-tail))
+                                                (cond (= item-x no-tail)
+                                                      (intersect (contents-constraint (.tail x))
+                                                                 item-y)
+
+                                                      (= item-y no-tail)
+                                                      (intersect (contents-constraint (.tail y))
+                                                                 item-x)
                                                       
-                                                      (cond (= item-x no-tail)
-                                                            (intersect (contents-constraint (.tail x))
-                                                                       item-y)
-
-                                                            (= item-y no-tail)
-                                                            (intersect (contents-constraint (.tail y))
-                                                                       item-x)
-                                                            
-                                                            (intersect item-x item-y)))
-                                     new-tail (intersect (.tail x) (.tail y))]
-                                 (either (or (= bottom-type new-item)
-                                             (= bottom-type new-tail))
-                                         ;; TODO: this does not properly handle
-                                         ;; location path.
-                                         (-> x
-                                             (.type-num new-type)
-                                             (.item new-item)
-                                             (.tail new-tail))))))
-                        (NoValues [x y])))
+                                                      (intersect item-x item-y)))
+                               new-tail (intersect (.tail x) (.tail y))]
+                           (either (or (= bottom-type new-item)
+                                       (= bottom-type new-tail))
+                                   ;; TODO: this does not properly handle
+                                   ;; location path.
+                                   (-> x
+                                       (.type-num new-type)
+                                       (.item new-item)
+                                       (.tail new-tail))))))
+                  (NoValues [x y]))
 
           (instance? CollectionOf y)
           (let [contents (.ctnts-c y)
@@ -2748,18 +2754,18 @@
                     (NoValues [x y]))))))
 
 (defn do-concat [base args loc-path]
-  (let [new-base (intersect base (coll-of-c (sum-c [string-constraint
-                                                    seq-constraint])))]
-    (either (= bottom-type new-base)
-            (cond (is-param base)
-                  (TypeOp concat-op base no-args no-symbol loc-path)
+  (cond (is-param base)
+        (TypeOp concat-op base no-args no-symbol loc-path)
 
+        (let [new-base (trim (intersect base (coll-of-c (sum-c [string-constraint
+                                                                seq-constraint]))))]
+          (either (= bottom-type new-base)
                   (let [tail-seq (either (= no-tail (get-tail new-base))
                                          (coll-of-c (-> (get-tail new-base)
                                                         contents-constraint
                                                         contents-constraint)))
                         seqs (get-items new-base)
-                        result-type (either (map (first seqs) .type-num)
+                        result-type (either (map (first seqs) type-num)
                                             UnknownType)]
                     (-> (reverse seqs)
                         (reduce tail-seq
@@ -2968,35 +2974,38 @@
               (NoValues [(type-op rest-of-op top-type params) base]))))
 
 (defn do-seq-from [seq-type base loc-path]
-  (cond (instance? SeqConstraint base)
-        (-> base
-            (.tail (either (= no-tail (.tail base))
-                           (do-seq-from seq-type (.tail base) loc-path)))
-            (set-seq-type seq-type))
+  (let [op-code (cond (= ListType seq-type)
+                      list-from-op
+                      vect-from-op)]
+    (cond (instance? SeqConstraint base)
+          (-> base
+              (.tail (either (= no-tail (.tail base))
+                             (do-seq-from seq-type (.tail base) loc-path)))
+              (set-seq-type seq-type))
 
-        (and (instance? ReifiedConstraint base)
-             (or (= (.type-number base) StringBufferType)
-                 (= (.type-number base) SubStringType)))
-        (seq-from-str base seq-type)
+          (and (instance? ReifiedConstraint base)
+               (or (= (.type-number base) StringBufferType)
+                   (= (.type-number base) SubStringType)))
+          (seq-from-str base seq-type)
 
-        (and (instance? ReifiedConstraint base)
-             (or (= (.type-number base) BitmapIndexedType)
-                 (= (.type-number base) ArrayNodeType)
-                 (= (.type-number base) HashCollisionNodeType)))
-        (-> (seq-from-hashmap base empty-list-constraint)
-            (.path (.path base)))
+          (and (instance? ReifiedConstraint base)
+               (or (= (.type-number base) BitmapIndexedType)
+                   (= (.type-number base) ArrayNodeType)
+                   (= (.type-number base) HashCollisionNodeType)))
+          (-> (seq-from-hashmap base empty-list-constraint)
+              (.path (.path base)))
 
-        (and (instance? ReifiedConstraint base)
-             (= (.type-number base) UnknownType))
-        (type-op list-from-op top-type no-args)
+          (and (instance? ReifiedConstraint base)
+               (= (.type-number base) UnknownType))
+          (type-op op-code top-type no-args)
 
-        (instance? CollectionOf base)
-        (.type-num (seq-c [] base) seq-type)
+          (instance? CollectionOf base)
+          (.type-num (seq-c [] base) seq-type)
 
-        (cond (is-param base)
-              (TypeOp list-from-op base no-args no-symbol loc-path)
+          (cond (is-param base)
+                (TypeOp op-code base no-args no-symbol loc-path)
 
-              (NoValues [(type-op list-from-op top-type no-args) base]))))
+                (NoValues [(type-op op-code top-type no-args) base])))))
 
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))

@@ -892,6 +892,37 @@
                           reified-val])
              _FILE_ _LINE_))
 
+(def _ (test (c/reify-type-constraint (c/fn-arity
+                                       (c/tag 'vec)
+                                       (c/list-c [(c/param (c/tag 'vec) 0)]
+                                                 c/no-tail)
+                                       ;; returns
+                                       (c/type-op c/vect-from-op
+                                                  (c/param (c/tag 'vec) 0)
+                                                  (c/tag "#result")))
+                                      (c/tag 'vec)
+
+                                      [(c/param (c/tag 'fn-arity80) 0)]
+                                      c/no-loc)
+             (c/fn-arity
+              (c/tag 'vec)
+              (c/list-c [(c/param (c/tag 'fn-arity80) 0)]
+                        c/no-tail)
+              ;; returns
+              (c/type-op c/vect-from-op
+                         (c/param (c/tag 'fn-arity80) 0)
+                         ))
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/no-tail c/vect-constraint)
+             c/no-tail
+             _FILE_ _LINE_))
+
+(def _ (test (c/intersect c/list-constraint
+                          c/empty-list-constraint)
+             c/empty-list-constraint
+             _FILE_ _LINE_))
+
 (def _ (for [c1 test-constraints
              c2 (drop-until test-constraints (partial identical c1))
              c3 (drop-until test-constraints (partial identical c2))]
