@@ -992,8 +992,10 @@
           (either (map (instance? Vector params)
                        (fn [_]
                          (str "\n[" (to-str (interpose params "\n")) "]")))
-                  (cond (= no-args params) "" (str "\n" params)))
-           "\n" (sym-str sym) ")" ))
+                  (cond (= no-args params) " c/no-args" (str "\n" params)))
+           "\n"
+           ;; (sym-str sym)
+           ")"))
 
   Eq
   (=* [x y]
@@ -2413,7 +2415,10 @@
                            (vector args))))
                 ;; get the arity
                 (map (or (get-in base [.arities (count args)])
-                         (get-in base [.arities variadic]))
+                         (for [arity (get-in base [.arities variadic])
+                               :when (<= (-> arity .param-consts seq-items count)
+                                         (count args))]
+                           arity))
                      (fn [arity]
                        (assert (instance? fn-arity arity))
 
