@@ -2609,6 +2609,13 @@
           fld-c
 
           (either (for [fld (first fld-path)
+                        fld (or (instance? Field fld)
+                                (map (instance? ProtoImpls fld)
+                                     (fn [proto]
+                                       (Field (.fn-sym proto)))))
+                        :let [_ (cond (instance? ProtoImpls fld)
+                                      (print-err 'proto-field _LINE_ fld)
+                                      '_)]
                         field-check (get (.field-consts x) fld)
                         curr-field (get (.fields x) fld)
                         :let [new-field (set-to curr-field (rest fld-path) fld-c)
@@ -2619,10 +2626,15 @@
                             (.fields x (assoc (.fields x) fld final-field))))
                   (cant-set-contents x fld-path))))
 
-  (get-from [c fld-c]
-    (either (or (get (.fields c) fld-c)
-                (get (.field-consts c) fld-c))
-            (NoValues [c (missing-field fld-c)])))
+  (get-from [c proto-impls]
+    (either (flat-map (or (instance? Field proto-impls)
+                          (map (instance? ProtoImpls proto-impls)
+                                  (fn [proto]
+                                    (Field (.fn-sym proto)))))
+                      (fn [fld-c]
+                        (or (get (.fields c) fld-c)
+                            (get (.field-consts c) fld-c))))
+            (NoValues [c (missing-field proto-impls)])))
 
   (derive-const [op]
     (fn [c]
