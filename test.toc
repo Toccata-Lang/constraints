@@ -112,6 +112,7 @@
                        c/set-constraint
 
                        empty-seq
+                       c/no-tail
                        (c/list-c [c/top-type pos-int])
                        (c/vect-c [sym-c pos-int])
 

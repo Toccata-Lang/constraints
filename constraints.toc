@@ -1586,6 +1586,14 @@
     (cond (= bottom-type y)
           y
 
+          (or (instance? MultiConstraint y)
+              (instance? FnConstraint y)
+              (instance? ReifiedConstraint y)
+              (instance? SumConstraint y)
+              (instance? ProtoImpls y)
+              (instance? ParamConstraint y))
+          (intersect y x)
+
           (instance? SeqConstraint y)
           (either (= (.item y) no-tail)
                   (contents-constraint x))
@@ -1859,6 +1867,7 @@
               (instance? SumConstraint y)
               (and (instance? ReifiedConstraint y)
                    (= UnknownType (.type-number y)))
+              (instance? NoTail y)
               (instance? TypeOp y))
           (intersect y x)
 
