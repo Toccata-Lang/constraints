@@ -3,6 +3,7 @@
 
 (add-ns c (module "constraints.toc"))
 
+(def type-of (c/TypeOfConstraint (c/tag 'arity-1) empty-list c/no-symbol ""))
 (def coll-of-int (c/CollectionOf c/int-constraint empty-list c/no-symbol ""))
 (def int-list (c/list-c [] coll-of-int))
 (def int-list-1 (c/list-c [c/int-constraint]))
@@ -40,10 +41,7 @@
 (def maybe-int  (c/MaybeConstraint c/int-constraint empty-list c/no-symbol ""))
 (def maybe-sym  (c/MaybeConstraint sym-c empty-list c/no-symbol ""))
 
-(def get-first (c/type-op c/get-from-op c/top-type [pos-1]))
-(def set-second (c/type-op c/set-to-op c/top-type [[pos-1] non-0]))
 (def param (c/param (c/tag 'arity-1) 0))
-(def arg-of (c/type-op c/arg-of-op c/top-type 1))
 (def maybe-param  (c/MaybeConstraint param empty-list c/no-symbol ""))
 (def empty-seq (c/seq-c []))
 
@@ -69,18 +67,6 @@
                  {(c/Field (c/tag 'other)) str-c}
                  (c/FnConstraint [] {} empty-list c/no-symbol "")
                  empty-list c/no-symbol ""))
-
-(def op-constraints [get-first
-                     set-second
-                     arg-of
-                     c/inner-type-of
-                     c/first-of
-                     c/last-of
-                     c/rest-of
-                     c/butlast-of
-                     c/list-from
-                     c/vect-from
-                     c/result-of])
 
 (def test-constraints [c/top-type
                        c/bottom-type
@@ -115,6 +101,8 @@
                        c/no-tail
                        (c/list-c [c/top-type pos-int])
                        (c/vect-c [sym-c pos-int])
+                       ;; TODO: check this out sometime
+                       ;; type-of
 
                        int-list
                        int-list-1
@@ -219,6 +207,15 @@
    (c/reify-type-constraint c (.arity-id c) args (c/Location _FILE_ _LINE_)))
   ([c arity-id args]
    (c/reify-type-constraint c arity-id args (c/Location _FILE_ _LINE_))))
+
+(def _ (test (c/is-param type-of)
+             (maybe type-of)
+             _FILE_ _LINE_))
+
+(def _ (test (c/do-call-value type-of c/no-args empty-list)
+             [(c/type-op c/call-value-op type-of c/no-args)
+              c/no-args]
+             _FILE_ _LINE_))
 
 (def _ (test (c/ib2 (c/multi [c/top-type
                               (c/NoValues [c/int-constraint
@@ -501,193 +498,212 @@
                           c/int-constraint])
         _FILE_ _LINE_))
 
-(defn test-op [op base]
-  (let [new-op (cata (fn [c]
-                       (cond (instance? c/TypeOp c)
-                             (.base c base)
+(defn test-op
+  ([op base]
+   ;; (let [new-op (cata (fn [c]
+   ;;                      (cond (instance? c/TypeOp c)
+   ;;                            (.base c base)
 
-                             c))
-                     op)]
-    (c/trim new-op)))
+   ;;                            c))
+   ;;                    op)]
+   ;;   (c/trim new-op))
+   (test-op op base c/no-args)
+   )
+  ([op-code base args]
+   (either (map (get c/type-op-fn op-code)
+                (fn [f]
+                  (cond (instance? c/MultiConstraint base)
+                        (reduce (.constraints base) c/top-type
+                                (fn [old-c inner]
+                                  (c/intersect old-c
+                                               (test-op op-code inner args))))
 
-(def _ (test (test-op arg-of reified-val)
+                        (instance? c/SumConstraint base)
+                        (-> (.alts base)
+                            (map (fn [alt]
+                                   (test-op op-code alt args)))
+                            c/sum-type)
+
+                        (f base args empty-list))))
+           c/top-type)))
+
+(def _ (test (c/type-op c/arg-of-op reified-val 1)
              pos-int
+             _FILE_ _LINE_))
 
-        _FILE_ _LINE_))
-
-(def _ (test (test-op arg-of (c/sum-type
-                              [reified-val
-                               (c/fn-c []
-                                       {2 (c/fn-arity c/no-symbol
-                                                      (c/list-c [c/top-type coll-of-sym])
-                                                      c/top-type)})]))
+(def _ (test (c/type-op c/arg-of-op
+                        (c/sum-type
+                         [reified-val
+                          (c/fn-c []
+                                  {2 (c/fn-arity c/no-symbol
+                                                 (c/list-c [c/top-type coll-of-sym])
+                                                 c/top-type)})])
+                        1)
              (c/sum-type [pos-int coll-of-sym])
         _FILE_ _LINE_))
 
-(def _ (test (test-op c/result-of (c/sum-type
-                                   [(.invoke-fn reified-val
-                                                (c/fn-c [1]
-                                                        {1 (c/fn-arity c/no-symbol
-                                                                       (c/list-c [c/top-type])
-                                                                       pos-int)}))
-                                    (c/fn-c []
-                                            {2 (c/fn-arity c/no-symbol
-                                                           (c/list-c [c/top-type coll-of-sym])
-                                                           c/sym-constraint)})]))
+(def _ (test (c/type-op c/arg-of-op type-of 1)
+             (c/TypeOp c/arg-of-op type-of 1 c/no-symbol empty-list)
+        _FILE_ _LINE_))
+
+(def _ (test (c/type-op c/arg-of-op
+                        (c/multi
+                         [reified-val
+                          (c/fn-c [3]
+                                  {3 (c/fn-arity (c/tag 'arity-1)
+                                                 (c/list-c [c/top-type c/top-type pos-int])
+                                                 param)})])
+                        1)
+             pos-int
+        _FILE_ _LINE_))
+
+(def _ (test (test-op c/call-value-op
+                      (c/sum-type
+                       [(.invoke-fn reified-val
+                                    (c/fn-c [1]
+                                            {1 (c/fn-arity c/no-symbol
+                                                           (c/list-c [c/top-type])
+                                                           pos-int)}))
+                        (c/fn-c []
+                                {2 (c/fn-arity c/no-symbol
+                                               (c/list-c [c/top-type coll-of-sym])
+                                               c/sym-constraint)})])
+                      c/no-args)
              (c/sum-type [pos-int c/sym-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/first-of c/empty-list-constraint)
+(def _ (test (test-op c/first-of-op c/empty-list-constraint)
              c/nothing-constraint
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/first-of int-list-1)
+(def _ (test (test-op c/first-of-op int-list-1)
              maybe-int
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/first-of int-vect-1)
+(def _ (test (test-op c/first-of-op int-vect-1)
              maybe-int
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/last-of c/empty-vect-constraint)
+(def _ (test (test-op c/last-of-op c/empty-vect-constraint)
              c/nothing-constraint
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/last-of int-list-1)
+(def _ (test (test-op c/last-of-op int-list-1)
              maybe-int
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/last-of int-vect-1)
+(def _ (test (test-op c/last-of-op int-vect-1)
              maybe-int
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/rest-of c/empty-vect-constraint)
+(def _ (test (test-op c/rest-of-op c/empty-vect-constraint)
              c/empty-vect-constraint
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/rest-of int-list-1)
+(def _ (test (test-op c/rest-of-op int-list-1)
              c/empty-list-constraint
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/rest-of int-vect-2)
+(def _ (test (test-op c/rest-of-op int-vect-2)
              int-vect-1
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/rest-of (c/StrBuffConstraint "abc"))
+(def _ (test (test-op c/rest-of-op (c/StrBuffConstraint "abc"))
              (c/SubStrConstraint "bc")
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/butlast-of (c/list-c [c/int-constraint c/sym-constraint]))
+(def _ (test (test-op c/butlast-of-op (c/list-c [c/int-constraint c/sym-constraint]))
              (c/list-c [c/int-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/list-from int-vect-2)
+(def _ (test (test-op c/list-from-op int-vect-2)
              int-list-2
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/vect-from int-list-2)
+(def _ (test (test-op c/vect-from-op int-list-2)
              int-vect-2
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/inner-type-of c/int-constraint)
+(def _ (test (test-op c/inner-type-of-op c/int-constraint)
              (c/NoValues [c/int-constraint c/empty-reified])
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/inner-type-of c/empty-list-constraint)
+(def _ (test (test-op c/inner-type-of-op c/empty-list-constraint)
              c/top-type
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/inner-type-of maybe-int)
+(def _ (test (test-op c/inner-type-of-op maybe-int)
              c/int-constraint
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/inner-type-of
+(def _ (test (test-op c/inner-type-of-op
                       (c/list-c [c/top-type pos-int] c/no-tail))
              pos-int
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/inner-type-of
+(def _ (test (test-op c/inner-type-of-op
                       (c/vect-c [sym-c pos-int] c/no-tail))
              (c/sum-type [sym-c pos-int])
              _FILE_ _LINE_))
 
-(def _ (test (test-op get-first c/list-constraint)
+(def _ (test (c/type-op c/get-from-op c/list-constraint [pos-1])
              c/top-type
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op (c/list-c [c/int-constraint pos-int])
-                                [pos-1]))
+(def _ (test (c/type-op c/get-from-op (c/list-c [c/int-constraint pos-int])
+                        [pos-1])
              pos-int
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op (c/vect-c [pos-int str-c]) [pos-1]))
+(def _ (test (c/type-op c/get-from-op (c/vect-c [pos-int str-c]) [pos-1])
              str-c
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op (assoc-in reified-11 [.fields (c/Field (c/tag 'field))] pos-int)
-                                [(c/Field (c/tag 'field))]))
+(def _ (test (c/type-op c/get-from-op (assoc-in reified-11 [.fields (c/Field (c/tag 'field))] pos-int)
+                        [(c/Field (c/tag 'field))])
              pos-int
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op reified-11 [(c/Field (c/tag 'field))]))
+(def _ (test (c/type-op c/get-from-op reified-11 [(c/Field (c/tag 'field))])
              c/int-constraint
              _FILE_ _LINE_))
 
 
-(def _ (test (c/trim (c/type-op c/get-from-op
-                                (assoc-in reified-11 [.fields (c/Field (c/tag 'field))]
-                                          (c/vect-c [pos-int str-c]))
-                                [(c/Field (c/tag 'field)) pos-1]))
+(def _ (test (c/type-op c/get-from-op
+                        (assoc-in reified-11 [.fields (c/Field (c/tag 'field))]
+                                  (c/vect-c [pos-int str-c]))
+                        [(c/Field (c/tag 'field)) pos-1])
              str-c
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op
-                                (c/vect-c [pos-int (assoc-in reified-12 [.fields (c/Field (c/tag 'other))] str-c)])
-                                [pos-1 (c/Field (c/tag 'other))]))
+(def _ (test (c/type-op c/get-from-op
+                        (c/vect-c [pos-int (assoc-in reified-12 [.fields (c/Field (c/tag 'other))] str-c)])
+                        [pos-1 (c/Field (c/tag 'other))])
              str-c
              _FILE_ _LINE_))
 
-(def _ (test (c/trim (c/type-op c/get-from-op
-                                (c/vect-c [pos-int
-                                           (assoc-in reified-12 [.fields (c/Field (c/tag 'other))] str-c)])
-                                [pos-1 (c/Field (c/tag 'missing-field))]))
+(def _ (test (c/type-op c/get-from-op
+                        (c/vect-c [pos-int
+                                   (assoc-in reified-12 [.fields (c/Field (c/tag 'other))] str-c)])
+                        [pos-1 (c/Field (c/tag 'missing-field))])
              (c/NoValues
               [(assoc-in reified-12 [.fields (c/Field (c/tag 'other))] str-c)
                c/empty-reified])
              _FILE_ _LINE_))
 
-;; (def _ (test (test-op set-second
-;;                       (c/ListConstraint [pos-int str-c]
-;;                                         c/no-tail empty-list c/no-symbol ""))
-;;              (test-op set-second
-;;                       (c/ListConstraint [pos-int non-0]
-;;                                         c/no-tail empty-list c/no-symbol ""))
-;;              _FILE_ _LINE_))
+(def _ (test (test-op c/set-to-op (c/list-c [pos-int] coll-of-int) [[pos-1] non-0])
+             (c/list-c [pos-int non-0] coll-of-int)
+             _FILE_ _LINE_))
 
-;; (def _ (test (test-op set-second (.items int-list [pos-int]))
-;;              (.items int-list [pos-int non-0])
-;;              _FILE_ _LINE_))
+(def _ (test (test-op c/set-to-op (c/list-c [pos-int str-c]) [[pos-1] non-0])
+             (c/list-c [pos-int non-0])
+             _FILE_ _LINE_))
 
-;; (def _ (test (test-op set-second (c/ListConstraint [pos-int] c/no-tail empty-list c/no-symbol ""))
-;;              (c/NoValues [(c/ListConstraint [pos-int] c/no-tail empty-list c/no-symbol "")
-;;                           c/empty-reified])
-;;              _FILE_ _LINE_))
+(def _ (test (test-op c/set-to-op (c/list-c [pos-int]) [[pos-1] non-0])
+             (c/NoValues [(c/list-c [pos-int])
+                          c/empty-reified])
+             _FILE_ _LINE_))
 
-;; (def _ (test (c/intersect (.items int-vect [pos-int])
-;;                           set-second)
-;;              (.items int-vect [pos-int non-0])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (c/intersect (c/vect-c [pos-int])
-;;                           set-second)
-;;              (c/NoValues [(c/vect-c [pos-int] c/no-tail empty-list c/no-symbol "")
-;;                           c/empty-reified])
-;;              _FILE_ _LINE_))
-
-;; (def _ (test (c/intersect (c/vect-c [(c/ListConstraint [pos-int] c/no-tail empty-list c/no-symbol "")])
-;;                           (c/type-op c/set-to-op [[int-0 int-0] non-0]))
-;;              (c/vect-c [(c/ListConstraint [non-0] c/no-tail empty-list c/no-symbol "")])
-;;              _FILE_ _LINE_))
 
 ;; (def _ (test (c/intersect (c/vect-c [(c/ListConstraint [pos-int] c/no-tail empty-list c/no-symbol "")])
 ;;                           (c/type-op c/set-to-op [[int-0 pos-2] non-0]))
@@ -800,51 +816,51 @@
              c/UnknownType
              _FILE_ _LINE_))
 
-;; (def _ (test (test-op c/concat (c/list-c [c/string-constraint] (c/coll-of-c str-c)))
+;; (def _ (test (test-op c/concat-op (c/list-c [c/string-constraint] (c/coll-of-c str-c)))
 ;;              '_
 ;;              _FILE_ _LINE_))
 
-;; (def _ (test (test-op c/concat (c/list-c [substr-c] (c/coll-of-c str-c)))
+;; (def _ (test (test-op c/concat-op (c/list-c [substr-c] (c/coll-of-c str-c)))
 ;;              '_
 ;;              _FILE_ _LINE_))
 
-;; (def _ (test (test-op c/concat (c/list-c [substr-c str-c]))
+;; (def _ (test (test-op c/concat-op (c/list-c [substr-c str-c]))
 ;;              '_
 ;;              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/list-c []
+(def _ (test (test-op c/concat-op (c/list-c [] (c/coll-of-c (c/list-c []
                                                                    (c/coll-of-c c/int-constraint)))))
              (c/coll-of-c c/int-constraint)
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [] (c/coll-of-c (c/coll-of-c c/int-constraint))))
+(def _ (test (test-op c/concat-op (c/list-c [] (c/coll-of-c (c/coll-of-c c/int-constraint))))
              (c/coll-of-c c/int-constraint)
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [(c/list-c [c/int-constraint])]))
+(def _ (test (test-op c/concat-op (c/list-c [(c/list-c [c/int-constraint])]))
              (c/list-c [c/int-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [(c/list-c [c/int-constraint])]
+(def _ (test (test-op c/concat-op (c/list-c [(c/list-c [c/int-constraint])]
                                          (c/coll-of-c (c/vect-c []
                                                                 (c/coll-of-c pos-int)))))
              (c/list-c [c/int-constraint]
                        (c/coll-of-c pos-int))
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [(c/vect-c [c/int-constraint])
+(def _ (test (test-op c/concat-op (c/list-c [(c/vect-c [c/int-constraint])
                                           (c/list-c [c/string-constraint])]))
              (c/vect-c [c/int-constraint c/string-constraint])
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [(c/list-c [pos-int] (c/coll-of-c c/int-constraint))
+(def _ (test (test-op c/concat-op (c/list-c [(c/list-c [pos-int] (c/coll-of-c c/int-constraint))
                                           (c/list-c [c/sym-constraint])]))
              (c/list-c [pos-int]
                        (c/coll-of-c (c/sum-c [c/sym-constraint
                                               c/int-constraint])))
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/list-c [(c/list-c [neg-10 pos-int] (c/coll-of-c c/int-constraint))
+(def _ (test (test-op c/concat-op (c/list-c [(c/list-c [neg-10 pos-int] (c/coll-of-c c/int-constraint))
                                           (c/list-c [c/sym-constraint])]
                                          (c/coll-of-c (c/list-c [neg-10]))))
              (c/list-c [neg-10 pos-int]
@@ -853,7 +869,7 @@
                                               c/int-constraint])))
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat (c/multi [param
+(def _ (test (test-op c/concat-op (c/multi [param
                                          (c/list-c []
                                                    (c/coll-of-c c/seq-constraint))]))
              (c/multi [(c/type-op c/concat-op
