@@ -1993,11 +1993,24 @@
             new-c)))
 
   (reify-const [c arity args]
-    (let [new-cs (remove (.alts c) (partial = empty-reified))]
+    (let [new-cs (reduce (.alts c) []
+                         (fn [new-alts alt]
+                           (cond (= empty-reified alt)
+                                 new-alts
+
+                                 (instance? SumConstraint alt)
+                                 (comp new-alts (.alts alt))
+
+                                 (conj new-alts alt))))]
       (cond (empty? new-cs)
             empty-reified
 
-            (.alts c new-cs))))
+            (let [new-c (sum-type new-cs)]
+              (cond (instance? SymbolConstraints new-c)
+                    (-> new-c
+                        (.path (.path c))
+                        (.sym (.sym c)))
+                    new-c)))))
 
   (intersect [x y]
     (cond (= x y)
@@ -2109,12 +2122,30 @@
             (fn [ctnts-c inner]
               (intersect ctnts-c (contents-constraint inner)))))
 
-  (reify-const [c arity args]
-    (let [new-cs (remove (.constraints c) (partial = empty-reified))]
-      (cond (empty? new-cs)
-            empty-reified
+  (trim-const [c]
+    (let [[params others] (reduce (.constraints c) [[] []]
+                                  (fn [[params others] inner]
+                                    (cond (instance? ParamConstraint inner)
+                                          [(conj params inner) others]
 
-            (.constraints c new-cs))))
+                                          [params (conj others inner)])))]
+      (reduce params
+              (reduce others top-type intersect)
+              intersect)))
+
+  (reify-const [c arity args]
+    (let [[params others] (reduce (.constraints c) [[] []]
+                                  (fn [[params others] inner]
+                                    (cond (= empty-reified inner)
+                                          [params others]
+
+                                          (instance? ParamConstraint inner)
+                                          [(conj params inner) others]
+
+                                          [params (conj others inner)])))]
+      (reduce params
+              (reduce others top-type intersect)
+              intersect)))
 
   (type-num [c]
     (either (-> (.constraints c)
@@ -2141,21 +2172,10 @@
     (some (.constraints c) identity))
 
   (get-items [c items-count]
-    (get-items (trim (derive c top-type)) items-count))
+    (get-items (derive c top-type) items-count))
 
   (get-items [c]
-    (get-items (trim (derive c top-type))))
-
-  (trim-const [c]
-    (let [[params others] (reduce (.constraints c) [[] []]
-                                  (fn [[params others] inner]
-                                    (cond (instance? ParamConstraint inner)
-                                          [(conj params inner) others]
-
-                                          [params (conj others inner)])))]
-      (reduce params
-              (reduce others top-type intersect)
-              intersect)))
+    (get-items (derive c top-type)))
 
   (intersect [x y] 
     (cond (or (=* x y)
@@ -2439,8 +2459,7 @@
                              new-args (conj reqd (list-c var))
                              reified (elgot skip-protoimpls
                                             (fn [c]
-                                              (trim-const
-                                               (reify-const c arity-id new-args)))
+                                              (reify-const c arity-id new-args))
                                             ;; by reifying the entire arity, including
                                             ;; the params, dependencies between args are
                                             ;; checked.
