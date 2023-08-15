@@ -482,7 +482,7 @@
    (seq-c items tail VectorType)))
 
 (deftype fn-arity [arity-id param-consts result-const]
-  (assert (instance? OptionalSym arity-id))
+  (assert (instance? TaggedSymbol arity-id))
   ;; (assert (instance? SeqConstraint param-consts))
 
   Stringable
@@ -1149,25 +1149,25 @@
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol ""))
 (def fn-constraint (FnConstraint []
-                                 {variadic (fn-arity no-symbol list-constraint top-type)
-                                  0 (fn-arity no-symbol empty-list-constraint top-type)
-                                  1 (fn-arity no-symbol (list-c (repeat 1 top-type))
+                                 {variadic (fn-arity (tag "") list-constraint top-type)
+                                  0 (fn-arity (tag "") empty-list-constraint top-type)
+                                  1 (fn-arity (tag "") (list-c (repeat 1 top-type))
                                               top-type)
-                                  2 (fn-arity no-symbol (list-c (repeat 2 top-type))
+                                  2 (fn-arity (tag "") (list-c (repeat 2 top-type))
                                               top-type)
-                                  3 (fn-arity no-symbol (list-c (repeat 3 top-type))
+                                  3 (fn-arity (tag "") (list-c (repeat 3 top-type))
                                               top-type)
-                                  4 (fn-arity no-symbol (list-c (repeat 4 top-type))
+                                  4 (fn-arity (tag "") (list-c (repeat 4 top-type))
                                               top-type)
-                                  5 (fn-arity no-symbol (list-c (repeat 5 top-type))
+                                  5 (fn-arity (tag "") (list-c (repeat 5 top-type))
                                               top-type)
-                                  6 (fn-arity no-symbol (list-c (repeat 6 top-type))
+                                  6 (fn-arity (tag "") (list-c (repeat 6 top-type))
                                               top-type)
-                                  7 (fn-arity no-symbol (list-c (repeat 7 top-type))
+                                  7 (fn-arity (tag "") (list-c (repeat 7 top-type))
                                               top-type)
-                                  8 (fn-arity no-symbol (list-c (repeat 8 top-type))
+                                  8 (fn-arity (tag "") (list-c (repeat 8 top-type))
                                               top-type)
-                                  9 (fn-arity no-symbol (list-c (repeat 9 top-type))
+                                  9 (fn-arity (tag "") (list-c (repeat 9 top-type))
                                               top-type)}
                                  empty-list no-symbol ""))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
@@ -1293,8 +1293,10 @@
     (NoValues [c not-container]))
 
   ;; replace any ParamConstraints for 'arity' with their corresponding values
-  (reify-const [c arity args]
-    c)
+  (reify-const [c arity-id arg-cs]
+    (assert (instance? TaggedSymbol arity-id))
+    ;; (assert (instance? (vector-of SymbolConstraints) arg-cs))
+    )
 
   (found-constraint [c]
     nothing)
@@ -1345,7 +1347,11 @@
   (cond (instance? SeqConstraint c)
         (.tail c (set-seq-tail (.tail c) new-tail))
 
-        new-tail))
+        (cond (and (instance? SeqConstraint new-tail)
+                   (= no-tail (.item new-tail)))
+              (.tail new-tail)
+
+              new-tail)))
 
 (defn format-path* [header path desired-len]
   (assert (instance? String header))
@@ -1461,26 +1467,8 @@
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
-  ;; TODO: this is an attempt to not descend into ParamConstraint values
-  ;; (update-path (elgot (fn [c]
-  ;;                       ;; (cond (instance? ParamConstraint c)
-  ;;                       ;;       (RecurseFinal (reify-const c arity-id arg-cs)))
-
-  ;;                       (skip-protoimpls c))
-  ;;                     (fn [c]
-  ;;                       (cond (instance? ParamConstraint c)
-  ;;                             c
-
-  ;;                             (reify-const c arity-id
-  ;;                                          arg-cs)))
-  ;;                     arity)
-  ;;              loc)
-  (update-path (elgot skip-protoimpls
-                      (fn [c]
-                        (reify-const c arity-id
-                                     arg-cs))
-                      arity)
-               loc))
+  (-> (reify-const arity arity-id arg-cs)
+      (update-path loc)))
 
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
@@ -1517,8 +1505,21 @@
                            (maybe (SumConstraint alts empty-list no-symbol ""))))))
             top-type)))
 
+(extend-type Integer
+  Constraint
+  (reify-const [s arity-id arg-cs]
+    s))
+
+(extend-type String
+  Constraint
+  (reify-const [s arity-id arg-cs]
+    s))
+
 (extend-type TaggedSymbol
   Constraint
+  (reify-const [s arity-id arg-cs]
+    s)
+
   (show-full [x]
     (list (str x))))
 
@@ -1543,6 +1544,9 @@
 
 (extend-type NoContents
   Constraint
+  (reify-const [s arity-id arg-cs]
+    s)
+
   (assertion-path [_] empty-list)
 
   (format-path [_ n]
@@ -1562,6 +1566,9 @@
 
 (extend-type NoTail
   Constraint
+  (reify-const [c arity-id arg-cs]
+    c)
+
   (intersect [x y]
     (cond (= bottom-type y)
           y
@@ -1588,8 +1595,21 @@
   (show-full [c]
     (list "c/no-tail")))
 
+(extend-type NoSymbol
+  Constraint
+  (reify-const [c arity-id arg-cs]
+    c))
+
+(extend-type NoString
+  Constraint
+  (reify-const [c arity-id arg-cs]
+    c))
+
 (extend-type AllValues
   Constraint
+  (reify-const [c arity-id arg-cs]
+    c)
+
   (do-call-value [base args loc]
     [base args])
 
@@ -1610,6 +1630,9 @@
 
 (extend-type NoValues
   Constraint
+  (reify-const [c arity-id arg-cs]
+    c)
+
   (format-path [c n]
     (let [max-len (-> (trim c)
                       .constraints
@@ -1640,6 +1663,11 @@
                               (flat-map .constraints)))))
 
   (intersect [x _] x))
+
+(extend-type NoInt
+  Constraint
+  (reify-const [c arity-id arg-cs]
+    c))
 
 (defn str-inner [sc]
   (either (map (get-in sc [.fields static-value])
@@ -1712,6 +1740,15 @@
           no-symbol))
 
   (assertion-path [c] (.path c))
+
+  (reify-const [c arity-id arg-cs]
+    (let [new-item (reify-const (.item c) arity-id arg-cs)
+          new-tail (reify-const (.tail c) arity-id arg-cs)]
+      (either (or (= bottom-type new-item)
+                  (= bottom-type new-tail))
+              (-> c
+                  (.tail new-tail)
+                  (.item new-item)))))
 
   (format-path [c desired-len]
     (format-path* (cond (= (.type-num c) ListType)
@@ -1995,13 +2032,14 @@
   (reify-const [c arity args]
     (let [new-cs (reduce (.alts c) []
                          (fn [new-alts alt]
-                           (cond (= empty-reified alt)
-                                 new-alts
+                           (let [new-alt (reify-const alt arity args)]
+                             (cond (= empty-reified new-alt)
+                                   new-alts
 
-                                 (instance? SumConstraint alt)
-                                 (comp new-alts (.alts alt))
+                                   (instance? SumConstraint new-alt)
+                                   (comp new-alts (.alts new-alt))
 
-                                 (conj new-alts alt))))]
+                                   (conj new-alts new-alt)))))]
       (cond (empty? new-cs)
             empty-reified
 
@@ -2065,6 +2103,11 @@
 
 (extend-type CollectionOf
   Constraint
+  (reify-const [x arity-id arg-cs]
+    (let [reified (reify-const (.ctnts-c x) arity-id arg-cs)]
+      (either (= bottom-type reified)
+              (.ctnts-c x reified))))
+
   (get-tail [c] c)
 
   (assertion-path [c] (.path c))
@@ -2136,13 +2179,14 @@
   (reify-const [c arity args]
     (let [[params others] (reduce (.constraints c) [[] []]
                                   (fn [[params others] inner]
-                                    (cond (= empty-reified inner)
-                                          [params others]
+                                    (let [new-c (reify-const inner arity args)]
+                                      (cond (= empty-reified new-c)
+                                            [params others]
 
-                                          (instance? ParamConstraint inner)
-                                          [(conj params inner) others]
+                                            (instance? ParamConstraint new-c)
+                                            [(conj params new-c) others]
 
-                                          [params (conj others inner)])))]
+                                            [params (conj others new-c)]))))]
       (reduce params
               (reduce others top-type intersect)
               intersect)))
@@ -2287,6 +2331,15 @@
   ;;         ["--result--"]
   ;;         (map (.result-const c) (partial str "  "))))
 
+  (reify-const [x arity-id arg-cs]
+    (let [new-params (reify-const (.param-consts x) arity-id arg-cs)
+          new-result (reify-const (.result-const x) arity-id arg-cs)]
+      (either (or (= bottom-type new-params)
+                  (= bottom-type new-result))
+              (-> x
+                  (.param-consts new-params)
+                  (.result-const new-result)))))
+
   (derive-const [op]
     (fn [c]
       (map op (fn [ctnts-c]
@@ -2301,7 +2354,7 @@
 
     (let [param-cs (intersect (.param-consts ar1) (.param-consts ar2))
           result-c (intersect (.result-const ar1) (.result-const ar2))
-          arity-id (cond (= no-symbol (.arity-id ar1))
+          arity-id (cond (= "" (str (.arity-id ar1)))
                          (.arity-id ar2)
 
                          (.arity-id ar1))]
@@ -2421,6 +2474,15 @@
               flatten
               (map (partial str "  ")))))
 
+  (reify-const [f arity-id arg-cs]
+    (let [new-arities (map (vec (.arities f))
+                           (fn [[rank arity]]
+                             [rank (reify-const arity arity-id arg-cs)]))]
+      (either (some new-arities (fn [[_ arity-c]]
+                                  (= bottom-type arity-c)))
+              (.arities f (reduce new-arities {} (fn [m [k v]]
+                                                   (assoc m k v)))))))
+
   (derive-const [op]
     (fn [c]
       (let [derived (map op (fn [ctnts-c]
@@ -2457,14 +2519,10 @@
                              fixed-count (-> arity .param-consts seq-items count)
                              [reqd var] (split args fixed-count)
                              new-args (conj reqd (list-c var))
-                             reified (elgot skip-protoimpls
-                                            (fn [c]
-                                              (reify-const c arity-id new-args))
-                                            ;; by reifying the entire arity, including
-                                            ;; the params, dependencies between args are
-                                            ;; checked.
-                                            arity)]
-                         (either (map (is-bottom reified)
+                             reified (reify-type-constraint arity arity-id new-args
+                                                            (either (first loc-path)
+                                                                    no-loc))]
+                         (either (map (= bottom-type reified)
                                       (fn [err-c]
                                         [err-c args]))
                                  ;; remove any remaining params of arity-id
@@ -2603,8 +2661,29 @@
                        "")))
           ""))
 
+(defn reify-fields [fld-map arity arg-cs]
+  (-> fld-map
+      vec
+      (reduce {} (fn [m [fld fld-c]]
+                   (assoc m fld (reify-const fld-c arity arg-cs))))))
+
 (extend-type ReifiedConstraint
   Constraint
+  (reify-const [c arity-id arg-cs]
+    (let [new-fields (map (vec (.fields c))
+                          (fn [[fld fld-c]]
+                            [fld (intersect (either (get (.field-consts c) fld)
+                                                    top-type)
+                                            (reify-const fld-c arity-id arg-cs))]))]
+      (either (some new-fields (fn [[_ fld-c]]
+                                 (= bottom-type fld-c)))
+              (-> c
+                  ;; TODO: could probably get a perf boost by adding a flag to FnConstraint
+                  ;; indicating whether it has any free vars in it
+                  (.invoke-fn (reify-const (.invoke-fn c) arity-id arg-cs))
+                  (.fields (reduce new-fields {} (fn [m [k v]]
+                                                   (assoc m k v))))))))
+
   (contents-constraint [c]
     (let [type-number (type-num c)]
       (either (or (map (or (= StringBufferType type-number)
@@ -2817,8 +2896,7 @@
                                 (fn [tail arg]
                                   (assert (instance? SeqConstraint arg))
 
-                                  (let [arg (set-seq-type arg result-type)
-                                        arg-tail (seq-tail arg)]
+                                  (let [arg-tail (seq-tail arg)]
                                     (cond (= arg-tail no-tail)
                                           (set-seq-tail arg tail)
 
@@ -2909,15 +2987,17 @@
                                           (let [arity (reify-type-constraint arity (.arity-id arity)
                                                                              (repeat num-args top-type)
                                                                              no-loc)]
-                                            (either (map (-> (.param-consts arity)
-                                                             (get-items num-args)
-                                                             (nth arg-pos))
-                                                         (partial conj arities))
+                                            (either (or (= bottom-type arity)
+                                                        (map (-> (.param-consts arity)
+                                                                 (get-items num-args)
+                                                                 (nth arg-pos))
+                                                             (partial conj arities)))
                                                     arities)))))]
-          (cond (empty? arity-args)
-                (NoValues [(TypeOp arg-of-op base arg-pos no-symbol empty-list) base])
+          (either (= bottom-type arity-args)
+                  (cond (empty? arity-args)
+                        (NoValues [(TypeOp arg-of-op base arg-pos no-symbol empty-list) base])
 
-                (sum-type arity-args)))
+                        (sum-type arity-args))))
 
         (instance? ReifiedConstraint base)
         (do-arg-of (.invoke-fn base)
@@ -3023,10 +3103,13 @@
                       list-from-op
                       vect-from-op)]
     (cond (instance? SeqConstraint base)
-          (-> base
-              (.tail (either (= no-tail (.tail base))
-                             (do-seq-from seq-type (.tail base) loc-path)))
-              (set-seq-type seq-type))
+          (cond (= (.type-num base) seq-type)
+                base
+
+                (-> base
+                    (.tail (either (= no-tail (.tail base))
+                                   (do-seq-from seq-type (.tail base) loc-path)))
+                    (set-seq-type seq-type)))
 
           (and (instance? ReifiedConstraint base)
                (or (= (.type-number base) StringBufferType)
@@ -3232,7 +3315,7 @@
     (type-num (trim (derive c top-type))))
 
   (trim-const [c]
-    (reify-const c no-symbol []))
+    (reify-const c (tag "") []))
 
   (contents-constraint [c]
     (TypeOp inner-type-of-op c no-args no-symbol empty-list))
@@ -3254,12 +3337,28 @@
         (intersect c op))))
 
   (reify-const [c arity-id arg-cs]
-    (let [base (.base c)]
+    (let [base (reify-const (.base c) arity-id arg-cs)]
       (cond (or (= top-type base)
                 (= bottom-type base))
             base
 
-            (type-op (.op-code c) base (.params c) (.path c)))))
+            (cond (= (.op-code c) set-to-op)
+                  (let [[path v] (.params c)
+                        new-path (map path (fn [c]
+                                             (reify-const c arity-id arg-cs)))
+                        new-v (reify-const v arity-id arg-cs)]
+                    (type-op (.op-code c) base [new-path new-v] (.path c)))
+
+                  (or (instance? Constraints (.params c))
+                      (instance? Vector (.params c)))
+                  (let [new-params (map (.params c) (fn [param]
+                                                      (cond (instance? Integer param)
+                                                            param
+
+                                                            (reify-const param arity-id arg-cs))))]
+                    (type-op (.op-code c) base new-params (.path c)))
+
+                  (type-op (.op-code c) base (.params c) (.path c))))))
 
   (assertion-path [c] (.path c))
 
@@ -3283,6 +3382,9 @@
 
 (extend-type Field
   Constraint
+  (reify-const [fld arity-id arg-cs]
+    fld)
+
   (show-full [c]
     (list "Field " (str (.sym c)))))
 
@@ -3304,6 +3406,9 @@
 
 (extend-type ProtoImpls
   Constraint
+  (reify-const [c arity arg-cs]
+    c)
+
   (skip-protoimpls [c]
     (RecurseFinal c))
 
