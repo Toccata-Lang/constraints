@@ -3126,13 +3126,18 @@
    (cond (instance? MultiConstraint base)
          (reduce (.constraints base) top-type
                  (fn [old-c inner]
-                   ;; TODO: shouldn't need these calls to reify-const
-                   (intersect old-c (type-op op-code inner params sym path))))
+                   (either (= bottom-type inner)
+                           (cond (= top-type inner)
+                                 old-c
+
+                                 (intersect old-c (type-op op-code inner params sym path))))))
 
          (instance? SumConstraint base)
          (-> (.alts base)
              (map (fn [alt]
-                    (type-op op-code alt params sym path)))
+                    (either (or (= bottom-type alt)
+                                (= top-type alt))
+                            (type-op op-code alt params sym path))))
              sum-type)
 
          (either (map (get type-op-fn op-code)
@@ -3230,26 +3235,12 @@
         (intersect c op))))
 
   (reify-const [c arity-id arg-cs]
-    (let [base (.base c)
-          op-code (.op-code c)]
+    (let [base (.base c)]
       (cond (or (= top-type base)
                 (= bottom-type base))
             base
 
-            (instance? MultiConstraint base)
-            (reduce (.constraints base) top-type
-                    (fn [old-c inner]
-                      ;; TODO: shouldn't need these calls to reify-const
-                      (intersect old-c (reify-const (.base c inner)
-                                                    arity-id arg-cs))))
-
-            (instance? SumConstraint base)
-            (-> (.alts base)
-                (map (fn [alt]
-                       (reify-const (.base c alt) arity-id arg-cs)))
-                sum-type)
-
-            (type-op op-code base (.params c) (.path c)))))
+            (type-op (.op-code c) base (.params c) (.path c)))))
 
   (assertion-path [c] (.path c))
 
