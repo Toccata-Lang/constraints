@@ -775,11 +775,6 @@
          (fn [new-cs]
            (.constraints x new-cs)))))
 
-(defn multi [cs]
-  (assert (instance? Vector cs))
-
-  (MultiConstraint cs empty-list no-symbol))
-
 (deftype ParamConstraint [arity param-path path sym var]
   (assert (instance? (vector-of Integer) param-path))
   (assert (instance? TaggedSymbol arity))
@@ -1954,8 +1949,29 @@
                         (.item new-item)
                         (.tail new-tail))))
 
-          (NoValues [x y])))
-  )
+          (NoValues [x y]))))
+
+(defn merge-cs [x y]
+  (assert (instance? Vector x))
+  (assert (instance? Vector y))
+
+  (reduce y x (fn [cs c]
+                (cond (instance? MultiConstraint c)
+                      (merge-cs cs (.constraints c))
+
+                      (some cs (fn [inner]
+                                 (or (identical inner c)
+                                     (= inner c))))
+                      cs
+
+                      (conj cs c)))))
+
+(defn multi [cs]
+  (assert (instance? Vector cs))
+
+  (either (some cs (partial = bottom-type))
+          (MultiConstraint (merge-cs [] cs)
+                           empty-list no-symbol)))
 
 (extend-type SumConstraint
   Constraint
@@ -2071,7 +2087,7 @@
                     (.alts x new-alts)))
 
           (instance? ParamConstraint y)
-          (MultiConstraint [x y] empty-list (.sym x))
+          (multi [x y])
 
           (instance? MultiConstraint y)
           (intersect y x)
@@ -2294,7 +2310,7 @@
               (instance? MultiConstraint y))
           (intersect y x)
 
-          (MultiConstraint [y x] empty-list (.sym x)))))
+          (multi [y x]))))
 
 (extend-type fn-arity
   Eq
