@@ -26,7 +26,7 @@
 
 (add-ns se (git-dependency "https://github.com/Toccata-Lang/state-error.git"
                            "state-error.toc"
-                           :sha "43bc6f4"))
+                           :sha "71dfbbe"))
 
 (def SymbolOrString (any-of Symbol
                             String))
