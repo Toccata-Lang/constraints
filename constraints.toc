@@ -488,7 +488,7 @@
   Stringable
   (string-list [_]
     (list "(c/fn-arity\n" (either (map (= arity-id no-symbol) str)
-                                  (str "(c/tag '" arity-id ")")) "\n"
+                                  (str "(c/tag \"" arity-id "\")")) "\n"
           (str param-consts) "\n;; returns\n" (str result-const) ")"))
 
   Container
@@ -782,7 +782,7 @@
 
   Stringable
   (string-list [_]
-    (list "(c/param " (str "(c/tag '" arity) ") " (either (map (first param-path) str)
+    (list "(c/param " (str "(c/tag \"" arity) "\") " (either (map (first param-path) str)
                                                           (str param-path)) ")"))
 
   Eq
@@ -2707,14 +2707,11 @@
                                      (fn [proto]
                                        (Field (.fn-sym proto)))))
                         field-check (get (.field-consts x) fld)
-                        curr-field (get (.fields x) fld)
-                        :let [new-field (set-to curr-field (rest fld-path) fld-c)
-                              final-field (intersect field-check new-field)]
-                        ;; TODO: this seems like a bug, but maybe not
-                        final-field (or (= bottom-type final-field)
-                                        (= final-field new-field))]
-                    (either (= bottom-type final-field)
-                            (.fields x (assoc (.fields x) fld final-field))))
+                        curr-field (get (.fields x) fld)]
+                    (let [new-field (set-to curr-field (rest fld-path) fld-c)
+                          final-field (intersect field-check new-field)]
+                      (either (= bottom-type final-field)
+                              (.fields x (assoc (.fields x) fld final-field)))))
                   (cant-set-contents x fld-path))))
 
   (get-from [c proto-impls]
