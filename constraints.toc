@@ -1294,10 +1294,9 @@
     (NoValues [c not-container]))
 
   ;; replace any ParamConstraints for 'arity' with their corresponding values
-  (reify-const [c arity-id arg-cs cache]
+  (reify-const [c arity-id arg-cs]
     (assert (instance? TaggedSymbol arity-id))
     ;; (assert (instance? (vector-of SymbolConstraints) arg-cs))
-    (assert-result r (instance? Vector r))
     )
 
   (find-param [c]
@@ -1423,7 +1422,7 @@
 
 (defn reify-type-constraint [arity arity-id arg-cs loc]
   (assert (instance? Vector arg-cs))
-  (let [[reified] (reify-const arity arity-id arg-cs {})]
+  (let [reified (reify-const arity arity-id arg-cs)]
     (update-path reified loc)))
 
 (defn sum-type [const-cs]
@@ -1470,18 +1469,18 @@
 
 (extend-type Integer
   Constraint
-  (reify-const [s arity-id arg-cs cache]
-    [s cache]))
+  (reify-const [s arity-id arg-cs]
+    s))
 
 (extend-type String
   Constraint
-  (reify-const [s arity-id arg-cs cache]
-    [s cache]))
+  (reify-const [s arity-id arg-cs]
+    s))
 
 (extend-type TaggedSymbol
   Constraint
-  (reify-const [s arity-id arg-cs cache]
-    [s cache])
+  (reify-const [s arity-id arg-cs]
+    s)
 
   (show-full [x]
     (list (str x))))
@@ -1508,8 +1507,8 @@
 
 (extend-type NoContents
   Constraint
-  (reify-const [s arity-id arg-cs cache]
-    [s cache])
+  (reify-const [s arity-id arg-cs]
+    s)
 
   (assertion-path [_] empty-list)
 
@@ -1530,8 +1529,8 @@
 
 (extend-type NoTail
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache])
+  (reify-const [c arity-id arg-cs]
+    c)
 
   (intersect [x y]
     (cond (= bottom-type y)
@@ -1561,18 +1560,18 @@
 
 (extend-type NoSymbol
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache]))
+  (reify-const [c arity-id arg-cs]
+    c))
 
 (extend-type NoString
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache]))
+  (reify-const [c arity-id arg-cs]
+    c))
 
 (extend-type AllValues
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache])
+  (reify-const [c arity-id arg-cs]
+    c)
 
   (do-call-value [base args loc]
     [base args])
@@ -1594,8 +1593,8 @@
 
 (extend-type NoValues
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache])
+  (reify-const [c arity-id arg-cs]
+    c)
 
   (format-path [c n]
     (let [max-len (-> c
@@ -1633,8 +1632,8 @@
 
 (extend-type NoInt
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    [c cache]))
+  (reify-const [c arity-id arg-cs]
+    c))
 
 (defn str-inner [sc]
   (either (map (get-in sc [.fields static-value])
@@ -1708,20 +1707,16 @@
 
   (assertion-path [c] (.path c))
 
-  (reify-const [c arity-id arg-cs cache]
-    (either (map (get cache (address-of c))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[new-item new-cache] (reify-const (.item c) arity-id arg-cs cache)
-                  [new-tail new-cache] (reify-const (.tail c) arity-id arg-cs new-cache)]
-              (either (map (or (= bottom-type new-item)
-                               (= bottom-type new-tail))
-                           (fn [new-c]
-                             [new-c (assoc new-cache (address-of c) new-c)]))
-                      (let [new-c (-> c
-                                      (.tail new-tail)
-                                      (.item new-item))]
-                        [new-c (assoc new-cache (address-of c) new-c)])))))
+  (reify-const [c arity-id arg-cs]
+    (let [new-item (reify-const (.item c) arity-id arg-cs)
+          new-tail (reify-const (.tail c) arity-id arg-cs)]
+      (either (map (or (= bottom-type new-item)
+                       (= bottom-type new-tail))
+                   (fn [new-c]
+                     new-c))
+              (-> c
+                  (.tail new-tail)
+                  (.item new-item)))))
 
   (format-path [c desired-len]
     (format-path* (cond (= (.type-num c) ListType)
@@ -2019,31 +2014,26 @@
                 (.sym (.sym c)))
             new-c)))
 
-  (reify-const [c arity args cache]
-    (either (map (get cache (address-of c))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[new-cs new-cache] (reduce (.alts c) [[] cache]
-                                             (fn [[new-alts cache] alt]
-                                               (let [[new-alt new-cache] (reify-const alt arity
-                                                                                      args cache)]
-                                                 (cond (= empty-reified new-alt)
-                                                       [new-alts new-cache]
+  (reify-const [c arity args]
+    (let [new-cs (reduce (.alts c) []
+                         (fn [new-alts alt]
+                           (let [new-alt (reify-const alt arity args)]
+                             (cond (= empty-reified new-alt)
+                                   new-alts
 
-                                                       (instance? SumConstraint new-alt)
-                                                       [(comp new-alts (.alts new-alt)) new-cache]
+                                   (instance? SumConstraint new-alt)
+                                   (comp new-alts (.alts new-alt))
 
-                                                       [(conj new-alts new-alt) new-cache]))))]
-              (cond (empty? new-cs)
-                    [empty-reified (assoc new-cache (address-of c) empty-reified)]
+                                   (conj new-alts new-alt)))))]
+      (cond (empty? new-cs)
+            empty-reified
 
-                    (let [new-c (sum-type new-cs)
-                          result (cond (instance? SymbolConstraints new-c)
-                                       (-> new-c
-                                           (.path (.path c))
-                                           (.sym (.sym c)))
-                                       new-c)]
-                      [result (assoc new-cache (address-of c) result)])))))
+            (let [new-c (sum-type new-cs)]
+              (cond (instance? SymbolConstraints new-c)
+                    (-> new-c
+                        (.path (.path c))
+                        (.sym (.sym c)))
+                    new-c)))))
 
   (intersect [x y]
     (cond (= x y)
@@ -2098,14 +2088,11 @@
 
 (extend-type CollectionOf
   Constraint
-  (reify-const [x arity-id arg-cs cache]
-    (either (map (get cache (address-of x))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[reified new-cache] (reify-const (.ctnts-c x) arity-id arg-cs cache)
-                  new-c (either (= bottom-type reified)
-                                (.ctnts-c x reified))]
-              [new-c (assoc new-cache (address-of x) new-c)])))
+  (reify-const [x arity-id arg-cs]
+    (let [reified (reify-const (.ctnts-c x) arity-id arg-cs)
+          new-c (either (= bottom-type reified)
+                        (.ctnts-c x reified))]
+      new-c))
 
   (get-tail [c] c)
 
@@ -2172,26 +2159,20 @@
               (reduce others top-type intersect)
               intersect)))
 
-  (reify-const [c arity args cache]
-    (either (map (get cache (address-of c))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[params others new-cache] (reduce (.constraints c) [[] [] cache]
-                                                    (fn [[params others cache] inner]
-                                                      (let [[new-c new-cache] (reify-const inner arity
-                                                                                           args cache)]
-                                                        (cond (= empty-reified new-c)
-                                                              [params others new-cache]
+  (reify-const [c arity args]
+    (let [[params others] (reduce (.constraints c) [[] []]
+                                  (fn [[params others] inner]
+                                    (let [new-c (reify-const inner arity args)]
+                                      (cond (= empty-reified new-c)
+                                            [params others]
 
-                                                              (instance? ParamConstraint new-c)
-                                                              [(conj params new-c) others new-cache]
+                                            (instance? ParamConstraint new-c)
+                                            [(conj params new-c) others]
 
-                                                              [params (conj others new-c)
-                                                               new-cache]))))
-                  result (reduce params
-                                 (reduce others top-type intersect)
-                                 intersect)]
-              [result (assoc new-cache (address-of c) result)])))
+                                            [params (conj others new-c)]))))]
+      (reduce params
+              (reduce others top-type intersect)
+              intersect)))
 
   (type-num [c]
     (either (-> (.constraints c)
@@ -2263,19 +2244,18 @@
   (contents-constraint [c]
     (TypeOp inner-type-of-op c no-args no-symbol empty-list))
 
-  (reify-const [c arity-id args cache]
+  (reify-const [c arity-id args]
     (let [param-path (.param-path c)]
       (cond (= (.arity c) arity-id)
             (either (for [arg-idx (first param-path)
                           new-args (get args arg-idx)]
                       (let [rst (rest param-path)]
                         (cond (empty? rst)
-                              [new-args cache]
+                              new-args
 
-                              (reify-const (.param-path c rst)
-                                           arity-id new-args cache))))
-                    [top-type cache])
-            [c cache])))
+                              (reify-const (.param-path c rst) arity-id new-args))))
+                    top-type)
+            c)))
 
   (derive-const [op]
     (fn [c]
@@ -2330,15 +2310,14 @@
   ;;         ["--result--"]
   ;;         (map (.result-const c) (partial str "  "))))
 
-  (reify-const [x arity-id arg-cs cache]
-    (let [[new-params new-cache] (reify-const (.param-consts x) arity-id arg-cs cache)
-          [new-result new-cache] (reify-const (.result-const x) arity-id arg-cs cache)
-          new-c (either (or (= bottom-type new-params)
-                            (= bottom-type new-result))
-                        (-> x
-                            (.param-consts new-params)
-                            (.result-const new-result)))]
-      [new-c (assoc new-cache (address-of x) new-c)]))
+  (reify-const [x arity-id arg-cs]
+    (let [new-params (reify-const (.param-consts x) arity-id arg-cs)
+          new-result (reify-const (.result-const x) arity-id arg-cs)]
+      (either (or (= bottom-type new-params)
+                  (= bottom-type new-result))
+              (-> x
+                  (.param-consts new-params)
+                  (.result-const new-result)))))
 
   (derive-const [op]
     (fn [c]
@@ -2470,22 +2449,15 @@
               flatten
               (map (partial str "  ")))))
 
-  (reify-const [f arity-id arg-cs cache]
-    (either (map (get cache (address-of f))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[new-arities new-cache]
-                  (reduce (vec (.arities f)) [[] cache]
-                          (fn [[arities cache] [rank arity]]
-                            (let [[new-arity new-cache] (reify-const arity arity-id
-                                                                     arg-cs cache)]
-                              [(conj arities [rank new-arity])
-                               new-cache])))
-                  new-f (either (some new-arities (fn [[_ arity-c]]
-                                                    (= bottom-type arity-c)))
-                                (.arities f (reduce new-arities {} (fn [m [k v]]
-                                                                     (assoc m k v)))))]
-              [new-f (assoc new-cache (address-of f) new-f)])))
+  (reify-const [f arity-id arg-cs]
+    (let [new-arities (reduce (vec (.arities f)) []
+                              (fn [arities [rank arity]]
+                                (let [new-arity (reify-const arity arity-id arg-cs)]
+                                  (conj arities [rank new-arity]))))]
+      (either (some new-arities (fn [[_ arity-c]]
+                                  (= bottom-type arity-c)))
+              (.arities f (reduce new-arities {} (fn [m [k v]]
+                                                   (assoc m k v)))))))
 
   (derive-const [op]
     (fn [c]
@@ -2664,32 +2636,23 @@
 
 (extend-type ReifiedConstraint
   Constraint
-  (reify-const [c arity-id arg-cs cache]
-    (either (map (get cache (address-of c))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[new-fields new-cache]
-                  (reduce (vec (.fields c)) [[] cache]
-                          (fn [[new-fields cache] [fld fld-c]]
-                            (let [[new-field new-cache] (reify-const fld-c arity-id
-                                                                     arg-cs cache)]
-                              [(conj new-fields
-                                     [fld (intersect (either (get (.field-consts c) fld)
-                                                             top-type)
-                                                     new-field)])
-                               new-cache])))]
-              (either (map (some new-fields (fn [[_ fld-c]]
-                                              (= bottom-type fld-c)))
-                           (fn [new-c]
-                             [new-c (assoc new-cache (address-of c) new-c)]))
-                      (let [[reified new-cache] (reify-const (.invoke-fn c) arity-id arg-cs new-cache)
-                            result (-> c
-                                       ;; TODO: could probably get a perf boost by adding a flag
-                                       ;; to FnConstraint indicating whether it has any free vars in it
-                                       (.invoke-fn reified)
-                                       (.fields (reduce new-fields {} (fn [m [k v]]
-                                                                        (assoc m k v)))))]
-                        [result (assoc new-cache (address-of c) result)])))))
+  (reify-const [c arity-id arg-cs]
+    (let [new-fields (reduce (vec (.fields c)) []
+                             (fn [new-fields [fld fld-c]]
+                               (let [new-field (reify-const fld-c arity-id arg-cs)]
+                                 (conj new-fields
+                                       [fld (intersect (either (get (.field-consts c) fld)
+                                                               top-type)
+                                                       new-field)]))))]
+      (either (some new-fields (fn [[_ fld-c]]
+                                 (= bottom-type fld-c)))
+              (let [reified (reify-const (.invoke-fn c) arity-id arg-cs)]
+                (-> c
+                    ;; TODO: could probably get a perf boost by adding a flag
+                    ;; to FnConstraint indicating whether it has any free vars in it
+                    (.invoke-fn reified)
+                    (.fields (reduce new-fields {} (fn [m [k v]]
+                                                     (assoc m k v)))))))))
 
   (contents-constraint [c]
     (let [type-number (type-num c)]
@@ -3311,8 +3274,7 @@
     (type-num (trim (derive c top-type))))
 
   (trim-const [c]
-    (let [[reified] (reify-const c (tag "") [] {})]
-      reified))
+    (reify-const c (tag "") []))
 
   (contents-constraint [c]
     (TypeOp inner-type-of-op c no-args no-symbol empty-list))
@@ -3323,49 +3285,34 @@
                          (f top-type)))]
         (intersect c op))))
 
-  (reify-const [c arity-id arg-cs cache]
-    (either (map (get cache (address-of c))
-                 (fn [cached]
-                   [cached cache]))
-            (let [[base new-cache] (reify-const (.base c) arity-id arg-cs cache)]
-              (cond (or (= top-type base)
-                        (= bottom-type base))
-                    [base (assoc new-cache (address-of c) base)]
+  (reify-const [c arity-id arg-cs]
+    (let [base (reify-const (.base c) arity-id arg-cs)]
+      (cond (or (= top-type base)
+                (= bottom-type base))
+            base
 
-                    (cond (= (.op-code c) set-to-op)
-                          (let [[path v] (.params c)
-                                [new-path new-cache] (reduce path [[] new-cache]
-                                                             (fn [[new-path cache] c]
-                                                               (let [[new-c new-cache]
-                                                                     (reify-const c arity-id
-                                                                                  arg-cs
-                                                                                  new-cache)]
-                                                                 [(conj new-path new-c) new-cache])))
-                                [new-v new-cache] (reify-const v arity-id arg-cs new-cache)
-                                result (type-op (.op-code c) base [new-path new-v] (.path c))]
-                            [result (assoc new-cache (address-of c) result)])
+            (cond (= (.op-code c) set-to-op)
+                  (let [[path v] (.params c)
+                        new-path (reduce path [] (fn [new-path c]
+                                                   (conj new-path
+                                                         (reify-const c arity-id arg-cs))))
+                        new-v (reify-const v arity-id arg-cs)]
+                    (type-op (.op-code c) base [new-path new-v] (.path c)))
 
-                          (instance? Constraints (.params c))
-                          (let [[new-params new-cache] (reify-const (.params c) arity-id arg-cs
-                                                                    new-cache)
-                                result (type-op (.op-code c) base new-params (.path c))]
-                            [result (assoc new-cache (address-of c) result)])
+                  (instance? Constraints (.params c))
+                  (let [new-params (reify-const (.params c) arity-id arg-cs)]
+                    (type-op (.op-code c) base new-params (.path c)))
 
-                          (instance? Vector (.params c))
-                          (let [[new-params new-cache]
-                                (reduce (.params c) [[] new-cache]
-                                        (fn [[new-params cache] param]
-                                          (cond (instance? Integer param)
-                                                [param cache]
+                  (instance? Vector (.params c))
+                  (let [new-params (reduce (.params c) []
+                                           (fn [new-params param]
+                                             (either (instance? Integer param)
 
-                                                (let [[new-param new-cache] (reify-const param arity-id
-                                                                                         arg-cs new-cache)]
-                                                  [(conj new-params new-param) new-cache]))))
-                                result (type-op (.op-code c) base new-params (.path c))]
-                            [result (assoc new-cache (address-of c) result)])
+                                                     (conj new-params
+                                                           (reify-const param arity-id arg-cs)))))]
+                    (type-op (.op-code c) base new-params (.path c)))
 
-                          (let [result (type-op (.op-code c) base (.params c) (.path c))]
-                            [result (assoc new-cache (address-of c) result)]))))))
+                  (type-op (.op-code c) base (.params c) (.path c))))))
 
   (assertion-path [c] (.path c))
 
@@ -3389,8 +3336,8 @@
 
 (extend-type Field
   Constraint
-  (reify-const [fld arity-id arg-cs cache]
-    [fld cache])
+  (reify-const [fld arity-id arg-cs]
+    fld)
 
   (show-full [c]
     (list "Field " (str (.sym c)))))
@@ -3413,8 +3360,8 @@
 
 (extend-type ProtoImpls
   Constraint
-  (reify-const [c arity arg-cs cache]
-    [c cache])
+  (reify-const [c arity arg-cs]
+    c)
 
   (skip-protoimpls [c]
     (RecurseFinal c))
