@@ -400,7 +400,8 @@
   (map [x f embed]
     (-> (.ctnts-c x)
         f
-        (map (partial .ctnts-c x)))))
+        (map (fn [a]
+               (.ctnts-c x a))))))
 
 (defn coll-of-c
   ([ctnts-c]
@@ -516,7 +517,8 @@
     (and (instance? FnConstraint y)
          (= (count required-arities) (count (.required-arities y)))
          (every (.required-arities y) (fn [arity-rank]
-                                        (some required-arities (partial = arity-rank))))
+                                        (some required-arities (fn [a]
+                                                                 (= arity-rank a)))))
          (=* arities (.arities y))
          (maybe x)))
 
@@ -559,7 +561,8 @@
                                                             (str k " " v "\n"))))
                           "}\n" (str invoke-fn) "\n"
                           ;; (str (interpose (cons 'list path) " "))
-                          " empty-list" (either (map (= no-symbol) (partial str " "))
+                          " empty-list" (either (map (= no-symbol) (fn [a]
+                                                                     (str " " a)))
                                                 (sym-str sym))
                           " \"" (str var) "\")" )]
       (cond (and (= type-number UnknownType)
@@ -729,7 +732,8 @@
     (and (instance? SumConstraint y)
          (= (count alts) (count (.alts y)))
          (every (.alts y) (fn [c]
-                            (some alts (partial =* c))))
+                            (some alts (fn [a]
+                                         (=* c a)))))
          (maybe x)))
 
   Container
@@ -739,7 +743,8 @@
   (map [x f embed]
     (-> (.alts x)
         (map f embed)
-        (map (partial .alts x)))))
+        (map (fn [a]
+               (.alts x a))))))
 
 (defn sum-c
   ([alts]
@@ -763,7 +768,8 @@
     (and (instance? MultiConstraint y)
          (= (count constraints) (count (.constraints y)))
          (every constraints (fn [inner]
-                              (some (.constraints y) (partial = inner))))
+                              (some (.constraints y) (fn [a]
+                                                       (= inner a)))))
          (maybe x)))
 
   Container
@@ -1352,16 +1358,19 @@
   (assert (instance? Integer desired-len))
 
   (let [path (-> (rest path)
-                 (remove (partial = no-loc))
+                 (remove (fn [a]
+                           (= no-loc a)))
                  (map (fn [loc]
                         (let [file (str (.file loc))]
                           (str (either (-> file
                                            str
-                                           (split-string (partial = "/"))
+                                           (split-string (fn [a]
+                                                           (= "/" a)))
                                            last
                                            (map (fn [file]
                                                   (either (and (flat-map (first file)
-                                                                         (partial = "/"))
+                                                                         (fn [a]
+                                                                           (= "/" a)))
                                                                (maybe file))
                                                           file))))
                                        file)
@@ -1420,8 +1429,8 @@
 (defn sum-type [const-cs]
   (assert (instance? Vector const-cs))
 
-  ;; TODO: calling 'is-bottom' for each alt is bad. Only do when needed
-  (let [alts (remove const-cs (partial = bottom-type))]
+  (let [alts (remove const-cs (fn [a]
+                                (= bottom-type a)))]
     (either (or (for [_ (empty? alts)
                       first-c (first const-cs)
                       bot-c (= bottom-type first-c)]
@@ -1432,7 +1441,8 @@
                                          (cond (instance? SumConstraint c)
                                                (comp (.alts c) cs)
 
-                                               (some cs (partial = c))
+                                               (some cs (fn [a]
+                                                          (= c a)))
                                                cs
 
                                                (conj cs c)))))]
@@ -1440,9 +1450,15 @@
                            (first alts))
                       (and (empty? alts)
                            (maybe top-type))
-                      (some alts (partial = top-type))
-                      (apply = alts)
-                      (and (every alts (partial instance? CollectionOf))
+                      (some alts (fn [a]
+                                   (= top-type a)))
+                      (flat-map (first alts)
+                                (fn [alt]
+                                  (reduce alts alt =)))
+                      ;; TODO: doesn't type check
+                      ;; (apply = alts)
+                      (and (every alts (fn [a]
+                                         (instance? CollectionOf a)))
                            (-> alts
                                (map .ctnts-c)
                                sum-type
@@ -1474,7 +1490,8 @@
   Constraint
   (add-to-path [c loc]
     (cond (or (= loc no-loc)
-              (some (.path c) (partial = loc)))
+              (some (.path c) (fn [a]
+                                (= loc a))))
           c
           (.path c (cons loc (.path c))))))
 
@@ -1598,15 +1615,18 @@
 
   (show-full [c]
     (comp (list "Conflicting types")
-          (map (.constraints c) (partial str "  "))))
+          (map (.constraints c) (fn [a]
+                                  (str "  " a)))))
 
   (contents-constraint [c]
     c)
 
   (trim-const [c]
-    (.constraints c (comp (remove (.constraints c) (partial instance? NoValues))
+    (.constraints c (comp (remove (.constraints c) (fn [a]
+                                                     (instance? NoValues a)))
                           (-> (.constraints c)
-                              (filter (partial instance? NoValues))
+                              (filter (fn [a]
+                                        (instance? NoValues a)))
                               (flat-map .constraints)))))
 
   (intersect [x _] x))
@@ -1816,7 +1836,8 @@
               (comp (cond (= no-tail (.tail c))
                           []
                           [(contents-constraint (seq-tail c))]))
-              (remove (partial = top-type))
+              (remove (fn [a]
+                        (= top-type a)))
               sum-type)))
 
   (derive-const [op]
@@ -1923,7 +1944,8 @@
 (defn multi [cs]
   (assert (instance? Vector cs))
 
-  (either (some cs (partial = bottom-type))
+  (either (some cs (fn [a]
+                     (= bottom-type a)))
           (MultiConstraint (merge-cs [] cs)
                            empty-list no-symbol)))
 
@@ -1945,7 +1967,8 @@
           (-> (.alts c)
               (interpose ["----"])
               (flat-map (fn [alt-strs]
-                          (map alt-strs (partial str "  ")))))))
+                          (map alt-strs (fn [a]
+                                          (str "  " a))))))))
 
   (contents-constraint [c]
     (-> (.alts c)
