@@ -2687,6 +2687,16 @@
     (cond (empty? fld-path)
           fld-c
 
+          (= UnknownType (.type-number x))
+          (either (for [f (first fld-path)
+                        :when (and (= 1 (count fld-path))
+                                   (instance? Field f))
+                        new-x (update x .fields (fn [flds]
+                                                  (assoc flds f fld-c)))]
+                    new-x)
+
+                  x)
+
           (either (for [fld (first fld-path)
                         fld (or (instance? Field fld)
                                 (map (instance? ProtoImpls fld)
@@ -2915,8 +2925,7 @@
             (instance? TypeOp base))
         (TypeOp get-from-op base path no-symbol empty-list)
 
-        (or (instance? SeqConstraint base)
-            (instance? ReifiedConstraint base))
+        (instance? SeqConstraint base)
         (either (map (first path)
                      (fn [fld]
                        (do-get-from (get-from base fld)
@@ -2924,6 +2933,18 @@
                                     loc-path)))
 
                 base)
+
+        (instance? ReifiedConstraint base)
+        (cond (= UnknownType (.type-number base))
+              top-type
+
+              (either (map (first path)
+                           (fn [fld]
+                             (do-get-from (get-from base fld)
+                                          (rest path)
+                                          loc-path)))
+
+                      base))
 
         (or (instance? SumConstraint base)
             (instance? MultiConstraint base))
@@ -3344,6 +3365,9 @@
 
 (extend-type TypeOfConstraint
   Constraint
+  (reify-const [s arity-id arg-cs]
+    s)
+
   (contents-constraint [c]
     (TypeOp inner-type-of-op c no-args no-symbol empty-list))
 

@@ -263,6 +263,26 @@
                        (.required-arities c/fn-constraint [1])])
              _FILE_ _LINE_))
 
+(def _ (test (c/type-op c/get-from-op
+                        (c/ReifiedConstraint 0 (c/tag "field 'param-consts' required") {}
+                                             {(c/Field (c/tag ".param-consts")) c/top-type}
+                                             (c/fn-c [] {}) empty-list c/no-symbol "")
+                        [(c/Field (c/tag ".result-const"))])
+             c/top-type
+             _FILE_ _LINE_))
+
+(def _ (test (c/type-op c/set-to-op
+                        (c/ReifiedConstraint 0 (c/tag "field 'param-consts' required") {}
+                                             {(c/Field (c/tag ".param-consts")) c/top-type}
+                                             (c/fn-c [] {}) empty-list c/no-symbol "")
+                        [[(c/Field (c/tag ".result-const"))]
+                         c/int-constraint])
+             (c/ReifiedConstraint 0 (c/tag "field 'param-consts' required") {}
+                                  {(c/Field (c/tag ".result-const")) c/int-constraint
+                                   (c/Field (c/tag ".param-consts")) c/top-type}
+                                  (c/fn-c [] {}) empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
 ;; (def _ (test
 ;;         (reify-c
 ;;          (c/fn-arity (c/tag 'fn-arity263
