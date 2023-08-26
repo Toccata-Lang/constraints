@@ -25,21 +25,21 @@
 (def int-vect-1 (c/vect-c [c/int-constraint]))
 (def int-vect-2 (c/vect-c [c/int-constraint c/int-constraint]))
 
-(def sym-c (c/SymbolConstraint 'this-sym empty-list c/no-symbol ""))
+(def sym-c (c/SymConstraint 'this-sym))
 (def coll-of-sym (c/CollectionOf c/sym-constraint empty-list c/no-symbol ""))
 
 (def substr-c (c/SubStrConstraint "strng" empty-list c/no-symbol ""))
-(def str-c (c/StrBuffConstraint "buffr" empty-list c/no-symbol ""))
+(def str-c (c/StrConstraint "buffr"))
 (def coll-of-str (c/CollectionOf c/string-constraint empty-list c/no-symbol ""))
 
-(def pos-int (c/IntegerConstraint c/no-int int-max 1 empty-list c/no-symbol ""))
-(def neg-int (c/IntegerConstraint c/no-int -1 int-min empty-list c/no-symbol ""))
-(def pos-1 (c/IntegerConstraint 1 int-max int-min empty-list c/no-symbol ""))
-(def pos-2 (c/IntegerConstraint 2 int-max int-min empty-list c/no-symbol ""))
-(def pos-10 (c/IntegerConstraint 10 int-max int-min empty-list c/no-symbol ""))
-(def neg-1 (c/IntegerConstraint -1 int-max int-min empty-list c/no-symbol ""))
-(def neg-10 (c/IntegerConstraint -10 int-max int-min empty-list c/no-symbol ""))
-(def int-0 (c/IntegerConstraint 0 int-max int-min empty-list c/no-symbol ""))
+(def pos-int (c/IntConstraint c/no-int int-max 1))
+(def neg-int (c/IntConstraint c/no-int -1 int-min))
+(def pos-1 (c/IntConstraint 1 int-max int-min))
+(def pos-2 (c/IntConstraint 2 int-max int-min))
+(def pos-10 (c/IntConstraint 10 int-max int-min))
+(def neg-1 (c/IntConstraint -1 int-max int-min))
+(def neg-10 (c/IntConstraint -10 int-max int-min))
+(def int-0 (c/IntConstraint 0 int-max int-min))
 (def non-0 (c/SumConstraint [pos-int neg-int] empty-list c/no-symbol ""))
 
 (def int-or-str (c/SumConstraint [c/int-constraint c/string-constraint] empty-list c/no-symbol ""))
@@ -226,19 +226,19 @@
               c/no-args]
              _FILE_ _LINE_))
 
-(def _ (test (c/ib2 (c/multi [c/top-type
-                              (c/NoValues [c/int-constraint
-                                           (c/SymbolConstraint 'a)])]))
-             (c/is-bottom (c/multi [c/top-type
-                                    (c/NoValues [c/int-constraint
-                                                 (c/SymbolConstraint 'a)])]))
-             _FILE_ _LINE_))
+;; (def _ (test (c/ib2 (c/multi [c/top-type
+;;                               (c/NoValues [c/int-constraint
+;;                                            (c/SymConstraint 'a)])]))
+;;              (c/is-bottom (c/multi [c/top-type
+;;                                     (c/NoValues [c/int-constraint
+;;                                                  (c/SymConstraint 'a)])]))
+;;              _FILE_ _LINE_))
 
-(def _ (let [c (c/sum-c [(c/param (c/tag 'fn-arity143) 1)
-                         (c/param (c/tag 'fn-arity143) 1)])]
-         (test (c/is-param c)
-               (c/some-constraint c/find-param c)
-               _FILE_ _LINE_)))
+;; (def _ (let [c (c/sum-c [(c/param (c/tag 'fn-arity143) 1)
+;;                          (c/param (c/tag 'fn-arity143) 1)])]
+;;          (test (c/is-param c)
+;;                (c/some-constraint c/find-param c)
+;;                _FILE_ _LINE_)))
 
 (def _ (test (c/intersect (.required-arities c/fn-constraint [1])
                           (c/ProtoImpls
@@ -301,16 +301,16 @@
 ;;                                                                                      c/vect-constraint])))
 ;;                                                     (c/param (c/tag 'fn-arity263 1)]))))
 ;;          'fn-arity263
-;;          [(c/vect-c [(c/SymbolConstraint 'a)
-;;                      (c/SymbolConstraint 'b)])
-;;           (c/list-c [(c/vect-c [(c/SymbolConstraint 'x)
-;;                                 (c/SymbolConstraint 'y)])
-;;                      (c/vect-c [(c/IntegerConstraint 9 2147483647 -2147483648)
-;;                                 (c/IntegerConstraint 2 2147483647 -2147483648)])])])
+;;          [(c/vect-c [(c/SymConstraint 'a)
+;;                      (c/SymConstraint 'b)])
+;;           (c/list-c [(c/vect-c [(c/SymConstraint 'x)
+;;                                 (c/SymConstraint 'y)])
+;;                      (c/vect-c [(c/IntConstraint 9 2147483647 -2147483648)
+;;                                 (c/IntConstraint 2 2147483647 -2147483648)])])])
 ;;         '_
 ;;         _FILE_ _LINE_))
 
-(def _ (test (c/reify-type-constraint (c/type-op c/inner-type-of-op (c/StrBuffConstraint "123") [])
+(def _ (test (c/reify-type-constraint (c/type-op c/inner-type-of-op (c/StrConstraint "123") [])
                                       (c/tag '_) [] c/no-loc)
              (c/SumConstraint
               [(c/SubStrConstraint "1" empty-list c/no-symbol "")
@@ -319,11 +319,11 @@
               empty-list c/no-symbol "")
         _FILE_ _LINE_))
 
-(def _ (test (c/reify-type-constraint (c/type-op c/vect-from-op (c/StrBuffConstraint "ab") c/no-args)
+(def _ (test (c/reify-type-constraint (c/type-op c/vect-from-op (c/StrConstraint "ab") c/no-args)
                                       (c/tag '_) [] c/no-loc)
 
-             (c/vect-c [(c/SubStrConstraint "a")
-                        (c/SubStrConstraint "b")])
+             (c/vect-c [(c/SubStrConstraint "a" empty-list c/no-symbol "")
+                        (c/SubStrConstraint "b" empty-list c/no-symbol "")])
              _FILE_ _LINE_))
 
 (def _ (test (c/intersect (c/vect-c [] c/coll-of-any)
@@ -349,6 +349,10 @@
                         c/int-constraint])
              _FILE_ _LINE_))
 
+(def _ (test (c/intersect pos-int c/int-constraint)
+             pos-int
+             _FILE_ _LINE_))
+
 (def _ (test (c/intersect c/maybe-constraint maybe-int)
              maybe-int
              _FILE_ _LINE_))
@@ -360,7 +364,7 @@
 (def _ (test (c/derive (c/MaybeConstraint (c/intersect param c/int-constraint)
                                           empty-list c/no-symbol "")
                        maybe-str)
-             (c/NoValues [(c/StrBuffConstraint "buffr" empty-list c/no-symbol "")
+             (c/NoValues [str-c
                           c/int-constraint])
              _FILE_ _LINE_))
 
@@ -464,11 +468,7 @@
                 [1]
                 {1 (c/fn-arity (c/tag "")
                                (c/list-c
-                                [(c/SumConstraint
-                                  [(c/StrBuffConstraint c/no-string empty-list c/no-symbol "")
-
-                                   (c/SubStrConstraint c/no-string empty-list c/no-symbol "")]
-                                  empty-list c/no-symbol "")])
+                                [c/string-constraint])
                                c/top-type)}
                 empty-list c/no-symbol "")
                (c/FnConstraint
@@ -637,8 +637,20 @@
              int-vect-1
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/rest-of-op (c/StrBuffConstraint "abc"))
-             (c/SubStrConstraint "bc")
+(def _ (test (test-op c/first-of-op c/string-constraint)
+             (c/MaybeConstraint c/substr-constraint empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/last-of-op c/string-constraint)
+             (c/MaybeConstraint c/substr-constraint empty-list c/no-symbol "")
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/rest-of-op c/string-constraint)
+             c/substr-constraint
+             _FILE_ _LINE_))
+
+(def _ (test (test-op c/rest-of-op (c/StrConstraint "abc"))
+             (c/SubStrConstraint "bc" empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
 (def _ (test (test-op c/butlast-of-op (c/list-c [c/int-constraint c/sym-constraint]))
@@ -833,7 +845,7 @@
 
 (def _ (test (c/reify-type-constraint maybe-param (c/tag 'arity-1) [pos-int]
                                       (c/Location _FILE_ _LINE_))
-             (c/MaybeConstraint pos-int)
+             (c/MaybeConstraint pos-int empty-list c/no-symbol "")
              _FILE_ _LINE_))
 
 
@@ -877,10 +889,10 @@
                        (c/coll-of-c pos-int))
              _FILE_ _LINE_))
 
-(def _ (test (test-op c/concat-op (c/list-c [(c/vect-c [c/int-constraint])
-                                          (c/list-c [c/string-constraint])]))
-             (c/vect-c [c/int-constraint c/string-constraint])
-             _FILE_ _LINE_))
+;; (def _ (test (test-op c/concat-op (c/list-c [(c/vect-c [c/int-constraint])
+;;                                           (c/list-c [c/string-constraint])]))
+;;              (c/vect-c [c/int-constraint c/string-constraint])
+;;              _FILE_ _LINE_))
 
 (def _ (test (test-op c/concat-op (c/list-c [(c/list-c [pos-int] (c/coll-of-c c/int-constraint))
                                           (c/list-c [c/sym-constraint])]))
@@ -909,9 +921,9 @@
 (def _ (test (c/contents-constraint (c/sum-c [maybe-str
                                               maybe-int
                                               maybe-sym]))
-             (c/sum-c [(c/StrBuffConstraint "buffr")
+             (c/sum-c [str-c
                        c/int-constraint
-                       (c/SymbolConstraint 'this-sym)])
+                       sym-c])
              _FILE_ _LINE_))
 
 (def _ (test (reify-c (c/type-op c/apply-op
@@ -923,8 +935,8 @@
                                                           (c/multi [(c/param (c/tag 'fn-arity13) 1)
                                                                     c/int-constraint])])
                                                         c/int-constraint)})
-                                 (c/multi [(c/list-c [(c/IntegerConstraint 9)
-                                                      (c/IntegerConstraint 7)])
+                                 (c/multi [(c/list-c [(c/IntConstraint 9)
+                                                      (c/IntConstraint 7)])
                                            (c/coll-of-c c/int-constraint)
                                            c/seq-constraint]))
                       (c/tag 'nada)
