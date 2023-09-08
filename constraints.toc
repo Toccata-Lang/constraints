@@ -61,11 +61,12 @@
     (print-err 'blewie-sym _LINE_ x f)
     (abort)))
 
-(deftype TaggedSymbol [ns base sym loc constraint]
+(deftype TaggedSymbol [ns base sym loc var constraint]
   (assert (instance? Location loc))
   (assert (instance? (any-of Symbol NoSymbol) ns))
   (assert (instance? Symbol sym))
   (assert (instance? Symbol base))
+  (assert (instance? String var))
 
   Container
   (map [x f]
@@ -293,9 +294,7 @@
                          Contents))
 
 ;; universal types
-(deftype AllValues [path var]
-  (assert (instance? String var))
-
+(deftype AllValues [path]
   Stringable
   (string-list [_]
     (list "c/top-type"))
@@ -312,7 +311,7 @@
   (map [x f embed]
     (embed x)))
 
-(def top-type (AllValues empty-list ""))
+(def top-type (AllValues empty-list))
 
 (deftype NoValues [constraints]
   Stringable
@@ -335,10 +334,9 @@
 (def bottom-type (NoValues []))
 
 ;; container types
-(deftype CollectionOf [ctnts-c path sym var]
+(deftype CollectionOf [ctnts-c path sym]
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -362,9 +360,9 @@
 
 (defn coll-of-c
   ([ctnts-c]
-   (CollectionOf ctnts-c empty-list no-symbol ""))
-  ([ctnts-c path sym var]
-   (CollectionOf ctnts-c path sym var)))
+   (CollectionOf ctnts-c empty-list no-symbol))
+  ([ctnts-c path sym]
+   (CollectionOf ctnts-c path sym)))
 
 (defn sym-str [s]
   (assert (instance? OptionalSym s))
@@ -375,14 +373,13 @@
 
         (str "(c/tag \"" s "\")")))
 
-(deftype SeqConstraint [type-num item tail path sym var]
+(deftype SeqConstraint [type-num item tail path sym]
   ;; can only be ListType, VectorType, UnknownType
   (assert (instance? Integer type-num))
   ;; ! item SymbolConstraints or NoTail
   ;; (assert (instance? (any-of SeqConstraint CollectionOf NoTail) tail))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Eq
   (=* [x y]
@@ -413,11 +410,11 @@
   ([items tail seq-type]
    (cond (empty? items)
          (SeqConstraint seq-type no-tail tail
-                        empty-list no-symbol "")
+                        empty-list no-symbol)
 
          (reduce (reverse items) tail
                  (fn [tail item]
-                   (SeqConstraint seq-type item tail empty-list no-symbol ""))))))
+                   (SeqConstraint seq-type item tail empty-list no-symbol))))))
 
 (defn empty-seq? [c]
   (and (= no-tail (.item c))
@@ -462,12 +459,11 @@
           (.param-consts new-params)
           (.result-const new-result)))))
 
-(deftype FnConstraint [required-arities arities path sym var]
+(deftype FnConstraint [required-arities arities path sym]
   ;; (assert (instance? (map-of ArityRank fn-arity) arities))
   (assert (instance? (vector-of Integer) required-arities))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Eq
   (=* [x y]
@@ -490,17 +486,16 @@
 
 (defn fn-c
   ([required arities]
-   (FnConstraint required arities empty-list no-symbol ""))
-  ([required arities path sym var]
-   (FnConstraint required arities path sym var)))
+   (FnConstraint required arities empty-list no-symbol))
+  ([required arities path sym]
+   (FnConstraint required arities path sym)))
 
-(deftype IntegerConstraint [static max min path sym var]
+(deftype IntegerConstraint [static max min path sym]
   (assert (instance? OptionalInt static))
   (assert (instance? Integer max))
   (assert (instance? Integer min))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -527,11 +522,10 @@
   (map [c f embed]
     (embed c)))
 
-(deftype SymbolConstraint [static path sym var]
+(deftype SymbolConstraint [static path sym]
   (assert (instance? OptionalSym static))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -553,11 +547,10 @@
   (map [c f embed]
     (embed c)))
 
-(deftype StrBuffConstraint [static path sym var]
+(deftype StrBuffConstraint [static path sym]
   (assert (instance? OptionalStr static))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -579,11 +572,10 @@
   (map [c f embed]
     (embed c)))
 
-(deftype SubStrConstraint [static path sym var]
+(deftype SubStrConstraint [static path sym]
   (assert (instance? OptionalStr static))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -608,10 +600,9 @@
 (def StringConstraint (any-of StrBuffConstraint
                               SubStrConstraint))
 
-(deftype MaybeConstraint [ctnts-c path sym var]
+(deftype MaybeConstraint [ctnts-c path sym]
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -640,7 +631,7 @@
            (.ctnts-c tc new-ctnts)))))
 
 ;; product type
-(deftype ReifiedConstraint [type-number type-symbol field-consts fields invoke-fn path sym var]
+(deftype ReifiedConstraint [type-number type-symbol field-consts fields invoke-fn path sym]
   (assert (instance? Integer type-number))
   ;; TODO: put this in
   ;; (assert (instance? (min-value 1) type-num))
@@ -649,7 +640,6 @@
   (assert (instance? HashMap fields))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -665,8 +655,7 @@
                           ;; (str (interpose (cons 'list path) " "))
                           " empty-list" (either (map (= no-symbol) (fn [a]
                                                                      (str " " a)))
-                                                (sym-str sym))
-                          " \"" (str var) "\")" )]
+                                                (sym-str sym)) ")" )]
       (cond (and (= type-number UnknownType)
                  (= type-symbol no-symbol)
                  (empty? field-consts)
@@ -769,12 +758,11 @@
 
 ;; type attributes
 ;; sum type
-(deftype SumConstraint [alts path sym var]
+(deftype SumConstraint [alts path sym]
   (assert (instance? Vector alts))
   (assert (instance? (min-count 1) alts))
   (assert (instance? OptionalSym sym))
   (assert (instance? (list-of Location) path))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
@@ -801,9 +789,9 @@
 
 (defn sum-c
   ([alts]
-   (SumConstraint alts empty-list no-symbol ""))
-  ([alts path sym var]
-   (SumConstraint alts path sym var)))
+   (SumConstraint alts empty-list no-symbol))
+  ([alts path sym]
+   (SumConstraint alts path sym)))
 
 ;; multiple constraint
 (deftype MultiConstraint [constraints path sym]
@@ -834,7 +822,7 @@
          (fn [new-cs]
            (.constraints x new-cs)))))
 
-(deftype ParamConstraint [arity param-path path sym var]
+(deftype ParamConstraint [arity param-path path sym]
   (assert (instance? (vector-of Integer) param-path))
   (assert (instance? TaggedSymbol arity))
   (assert (instance? OptionalSym sym))
@@ -860,21 +848,20 @@
     (embed x)))
 
 (defn param [arity param-index]
-  (ParamConstraint arity [param-index] empty-list no-symbol ""))
+  (ParamConstraint arity [param-index] empty-list no-symbol))
 
 ;; Get's replaced with the constraint of the param-sym, so not many implementations for it
-(deftype TypeOfConstraint [param-sym path sym var]
+(deftype TypeOfConstraint [param-sym path sym]
   (assert (instance? OptionalSym param-sym))
   (assert (instance? (list-of Location) path))
   (assert (instance? OptionalSym sym))
-  (assert (instance? String var))
 
   Stringable
   (string-list [_]
     (list "(c/TypeOfConstraint " (sym-str param-sym)
           " empty-list"
           ;; (str (cons 'list path))
-          (sym-str sym) " \"" (str var) "\")" ))
+          (sym-str sym) ")" ))
 
   Eq
   (=* [x y]
@@ -1120,7 +1107,7 @@
                          ProtoImpls
                          NoValues))
 
-(def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol ""))
+(def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol))
 
 (defn tag
   ([s]
@@ -1139,7 +1126,7 @@
          s
 
          (let [s (symbol (str s))]
-           (TaggedSymbol no-symbol s s loc top-type)))))
+           (TaggedSymbol no-symbol s s loc ""  top-type)))))
 
 (def Integer-sym (tag 'Integer))
 (def StringBuffer-sym (tag 'StringBuffer))
@@ -1163,12 +1150,12 @@
 
 (defn IntConstraint
   ([static-val]
-   (IntegerConstraint static-val 2147483647 -2147483648 empty-list no-symbol ""))
+   (IntegerConstraint static-val 2147483647 -2147483648 empty-list no-symbol))
   ([static-val max-val min-val]
-   (IntegerConstraint static-val max-val min-val empty-list no-symbol ""))
-  ([static-val max-val min-val path sym var]
+   (IntegerConstraint static-val max-val min-val empty-list no-symbol))
+  ([static-val max-val min-val path sym]
    ;; TODO: make min-key-val' and max-key-val' be constraints as well as integers
-   (IntegerConstraint static-val max-val min-val path sym var)))
+   (IntegerConstraint static-val max-val min-val path sym)))
 
 (def hashmap-names {BitmapIndexedType BitmapIndexedNode-sym
                     ArrayNodeType ArrayNode-sym
@@ -1178,50 +1165,50 @@
   (ReifiedConstraint type-num (either (get hashmap-names type-num)
                                       HashMap-sym)
                      {} {contents top-type}
-                     empty-fn-constraint empty-list no-symbol ""))
+                     empty-fn-constraint empty-list no-symbol))
 
 (defn OpaqueConstraint
   ([]
-   (OpaqueConstraint empty-list no-symbol ""))
-  ([path sym var]
-   (ReifiedConstraint OpaqueType Opaque-sym {} {} empty-fn-constraint path sym var)))
+   (OpaqueConstraint empty-list no-symbol))
+  ([path sym]
+   (ReifiedConstraint OpaqueType Opaque-sym {} {} empty-fn-constraint path sym)))
 
 (defn FutureConstraint
   ([]
-   (FutureConstraint empty-list no-symbol ""))
-  ([path sym var]
-   (ReifiedConstraint FutureType Future-sym {} {} empty-fn-constraint path sym var)))
+   (FutureConstraint empty-list no-symbol))
+  ([path sym]
+   (ReifiedConstraint FutureType Future-sym {} {} empty-fn-constraint path sym)))
 
 (defn PromiseConstraint
   ([]
-   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint empty-list no-symbol ""))
-  ([path sym var]
-   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint path sym var)))
+   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint empty-list no-symbol))
+  ([path sym]
+   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint path sym)))
 
 (defn AgentConstraint
   ([]
-   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint empty-list no-symbol ""))
-  ([path sym var]
-   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint path sym var)))
+   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint empty-list no-symbol))
+  ([path sym]
+   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint path sym)))
 
 (defn StrConstraint
   ([static-val]
-   (StrBuffConstraint static-val empty-list no-symbol ""))
-  ([static-val path sym var]
-   (StrBuffConstraint static-val path sym var)))
+   (StrBuffConstraint static-val empty-list no-symbol))
+  ([static-val path sym]
+   (StrBuffConstraint static-val path sym)))
 
 (def empty-reified (ReifiedConstraint UnknownType no-symbol {} {}
                                       empty-fn-constraint
-                                      empty-list  no-symbol ""))
+                                      empty-list  no-symbol))
 (def not-container (.type-symbol empty-reified (tag "Can not contain other values")))
-(def coll-of-any (CollectionOf top-type empty-list no-symbol ""))
+(def coll-of-any (CollectionOf top-type empty-list no-symbol))
 (def list-constraint (list-c [] coll-of-any))
 (def vect-constraint (vect-c [] coll-of-any))
 (def seq-constraint (seq-c [] coll-of-any))
-(def substr-constraint (SubStrConstraint no-string empty-list no-symbol ""))
-(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol ""))
+(def substr-constraint (SubStrConstraint no-string empty-list no-symbol))
+(def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
-                                      empty-list no-symbol ""))
+                                      empty-list no-symbol))
 (def fn-constraint (FnConstraint []
                                  {variadic (fn-arity (tag "") list-constraint top-type)
                                   0 (fn-arity (tag "") empty-list-constraint top-type)
@@ -1243,46 +1230,46 @@
                                               top-type)
                                   9 (fn-arity (tag "") (list-c (repeat 9 top-type))
                                               top-type)}
-                                 empty-list no-symbol ""))
-(def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol ""))
-(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol ""))
+                                 empty-list no-symbol))
+(def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol))
+(def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol))
 (def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
-                                            empty-list no-symbol ""))
+                                            empty-list no-symbol))
 (def hash-coll-constraint (hashmap-c HashCollisionNodeType))
 (def array-constraint (hashmap-c ArrayNodeType))
 (def bitmap-constraint (hashmap-c BitmapIndexedType))
 (def hashmap-constraint (SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
-                                         empty-list no-symbol ""))
-(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol ""))
-(def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol ""))
-(def nothing-constraint  (MaybeConstraint no-contents empty-list no-symbol ""))
+                                         empty-list no-symbol))
+(def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol))
+(def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol))
+(def nothing-constraint  (MaybeConstraint no-contents empty-list no-symbol))
 (def set-constraint (ReifiedConstraint HashSetType HashSet-sym
                                          {(Field (tag ".set-map")) hashmap-constraint}
                                          {(Field (tag ".set-map")) hashmap-constraint}
-                                         (.arities fn-constraint {}) empty-list no-symbol ""))
+                                         (.arities fn-constraint {}) empty-list no-symbol))
 (def agent-constraint (AgentConstraint))
 (def promise-constraint (PromiseConstraint))
-(def future-constraint (FutureConstraint empty-list no-symbol ""))
-(def opaque-constraint (OpaqueConstraint empty-list no-symbol ""))
+(def future-constraint (FutureConstraint empty-list no-symbol))
+(def opaque-constraint (OpaqueConstraint empty-list no-symbol))
 (def arity-constraint (ReifiedConstraint FnArityType FnArity-sym {} {}
                                          (.arities fn-constraint {})
-                                         empty-list no-symbol ""))
+                                         empty-list no-symbol))
 
 (defn SymConstraint
   ([static-val]
    (cond (= no-symbol static-val)
          sym-constraint
 
-         (SymConstraint static-val empty-list no-symbol "")))
-  ([static-val path sym var]
+         (SymConstraint static-val empty-list no-symbol)))
+  ([static-val path sym]
    (SymbolConstraint (either (map (instance? Symbol static-val) tag)
                              static-val)
-                     path sym var)))
+                     path sym)))
 
 (defn missing-field [fld]
   (ReifiedConstraint UnknownType (tag (str "Field/index '" fld "' required"))
                      {} {} empty-fn-constraint
-                     empty-list no-symbol ""))
+                     empty-list no-symbol))
 
 (defn cant-set-contents [x fld-path]
   (either (map (first fld-path)
@@ -1290,7 +1277,7 @@
                  (NoValues [x (missing-field fld)])))
           (NoValues [x (ReifiedConstraint UnknownType (tag "Unable to set contents")
                                           {} {} empty-fn-constraint
-                                          empty-list no-symbol "")])))
+                                          empty-list no-symbol)])))
 
 (defn is-param [c]
   (or (instance? ParamConstraint c)
@@ -1545,10 +1532,10 @@
                            (-> alts
                                (map .ctnts-c)
                                sum-type
-                               (CollectionOf empty-list no-symbol "")
+                               (CollectionOf empty-list no-symbol)
                                maybe))
                       (and (< 1 (count alts))
-                           (maybe (SumConstraint alts empty-list no-symbol ""))))))
+                           (maybe (SumConstraint alts empty-list no-symbol))))))
             top-type)))
 
 (extend-type Integer
@@ -2769,7 +2756,7 @@
         (-> (.static c)
             vec
             (map (fn [c]
-                   (SubStrConstraint c empty-list no-symbol "")))
+                   (SubStrConstraint c empty-list no-symbol)))
             sum-type)))
 
 (extend-type StringConstraint
@@ -3300,10 +3287,10 @@
               nothing-constraint
 
               (= (.tail base) no-tail)
-              (MaybeConstraint (.item base) empty-list no-symbol "")
+              (MaybeConstraint (.item base) empty-list no-symbol)
 
               (instance? CollectionOf (.tail base))
-              (MaybeConstraint (contents-constraint (.tail base)) empty-list no-symbol "")
+              (MaybeConstraint (contents-constraint (.tail base)) empty-list no-symbol)
 
               (get-last (.tail base) params loc-path))
 
@@ -3312,8 +3299,8 @@
                          (last (.static base)))
                      (fn [last-char]
                        (MaybeConstraint (SubStrConstraint last-char
-                                                          empty-list no-symbol "")
-                                        empty-list no-symbol "")))
+                                                          empty-list no-symbol)
+                                        empty-list no-symbol)))
                 nothing-constraint)
 
         (and (instance? ReifiedConstraint base)
@@ -3321,7 +3308,7 @@
         maybe-constraint
 
         (instance? CollectionOf base)
-        (MaybeConstraint (.ctnts-c base) empty-list no-symbol "")
+        (MaybeConstraint (.ctnts-c base) empty-list no-symbol)
 
         (cond (is-param base)
               (TypeOp last-of-op base params no-symbol loc-path)
@@ -3339,7 +3326,7 @@
         (instance? StringConstraint base)
         (-> (.static base)
             rest
-            (SubStrConstraint empty-list no-symbol ""))
+            (SubStrConstraint empty-list no-symbol))
 
         (and (instance? ReifiedConstraint base)
              (= (.type-number base) UnknownType))
@@ -3394,7 +3381,7 @@
                                (cond (instance? SeqConstraint base)
                                      (either (map (first (get-items base 1))
                                                   (fn [c]
-                                                    (MaybeConstraint c empty-list no-symbol "")))
+                                                    (MaybeConstraint c empty-list no-symbol)))
                                              nothing-constraint)
                                      
                                      (instance? StringConstraint base)
@@ -3403,8 +3390,8 @@
                                                   (fn [first-char]
                                                     (MaybeConstraint
                                                      (SubStrConstraint first-char
-                                                                       empty-list no-symbol "")
-                                                     empty-list no-symbol "")))
+                                                                       empty-list no-symbol)
+                                                     empty-list no-symbol)))
                                              nothing-constraint)
 
                                      (and (instance? ReifiedConstraint base)
@@ -3412,7 +3399,7 @@
                                      maybe-constraint
 
                                      (instance? CollectionOf base)
-                                     (MaybeConstraint (.ctnts-c base) empty-list no-symbol "")
+                                     (MaybeConstraint (.ctnts-c base) empty-list no-symbol)
 
                                      (cond (is-param base)
                                            (TypeOp first-of-op base params no-symbol loc-path)
@@ -3432,7 +3419,7 @@
                                        (instance? StringConstraint base)
                                        (-> (.static base)
                                            butlast 
-                                           (SubStrConstraint empty-list no-symbol ""))
+                                           (SubStrConstraint empty-list no-symbol))
 
                                        (and (instance? ReifiedConstraint base)
                                             (= (.type-number base) UnknownType))
