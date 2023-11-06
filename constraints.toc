@@ -61,11 +61,12 @@
     (print-err 'blewie-sym _LINE_ x f)
     (abort)))
 
-(deftype TaggedSymbol [ns base sym loc var constraint]
-  (assert (instance? Location loc))
+(deftype TaggedSymbol [ns base sym loc arity-id var constraint]
   (assert (instance? (any-of Symbol NoSymbol) ns))
-  (assert (instance? Symbol sym))
   (assert (instance? Symbol base))
+  (assert (instance? Symbol sym))
+  (assert (instance? Location loc))
+  (assert (instance? (any-of NoSymbol TaggedSymbol) arity-id))
   (assert (instance? String var))
 
   Container
@@ -1126,7 +1127,7 @@
          s
 
          (let [s (symbol (str s))]
-           (TaggedSymbol no-symbol s s loc ""  top-type)))))
+           (TaggedSymbol no-symbol s s loc no-symbol "" top-type)))))
 
 (def Integer-sym (tag 'Integer))
 (def StringBuffer-sym (tag 'StringBuffer))
