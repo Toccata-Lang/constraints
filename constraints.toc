@@ -4,6 +4,10 @@
   (string-list [_]
     (list "core"))
 
+  Container
+  (map [x _]
+    x)
+
   Eq
   (=* [x y]
     (identical x y)))
