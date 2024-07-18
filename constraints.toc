@@ -441,7 +441,7 @@
   ([items tail]
    (seq-c items tail VectorType)))
 
-(deftype fn-arity [arity-id param-consts result-const]
+(deftype fn-arity [arity-id param-consts result-const path sym]
   (assert (instance? TaggedSymbol arity-id))
   ;; (assert (instance? SeqConstraint param-consts))
 
@@ -463,6 +463,12 @@
       (-> x
           (.param-consts new-params)
           (.result-const new-result)))))
+
+(defn arity
+  ([arity-id param-consts result-const]
+   (fn-arity arity-id param-consts result-const empty-list no-symbol))
+  ([arity-id param-consts result-const path sym]
+   (fn-arity arity-id param-consts result-const path sym)))
 
 (deftype FnConstraint [required-arities arities path sym]
   ;; (assert (instance? (map-of ArityRank fn-arity) arities))
@@ -1098,6 +1104,7 @@
                                MaybeConstraint
                                SeqConstraint
                                FnConstraint
+                               fn-arity
                                CollectionOf
                                SumConstraint
                                TypeOfConstraint
@@ -1215,26 +1222,26 @@
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol))
 (def fn-constraint (FnConstraint []
-                                 {variadic (fn-arity (tag "") list-constraint top-type)
-                                  0 (fn-arity (tag "") empty-list-constraint top-type)
-                                  1 (fn-arity (tag "") (list-c (repeat 1 top-type))
-                                              top-type)
-                                  2 (fn-arity (tag "") (list-c (repeat 2 top-type))
-                                              top-type)
-                                  3 (fn-arity (tag "") (list-c (repeat 3 top-type))
-                                              top-type)
-                                  4 (fn-arity (tag "") (list-c (repeat 4 top-type))
-                                              top-type)
-                                  5 (fn-arity (tag "") (list-c (repeat 5 top-type))
-                                              top-type)
-                                  6 (fn-arity (tag "") (list-c (repeat 6 top-type))
-                                              top-type)
-                                  7 (fn-arity (tag "") (list-c (repeat 7 top-type))
-                                              top-type)
-                                  8 (fn-arity (tag "") (list-c (repeat 8 top-type))
-                                              top-type)
-                                  9 (fn-arity (tag "") (list-c (repeat 9 top-type))
-                                              top-type)}
+                                 {variadic (arity (tag "") list-constraint top-type)
+                                  0 (arity (tag "") empty-list-constraint top-type)
+                                  1 (arity (tag "") (list-c (repeat 1 top-type))
+                                           top-type)
+                                  2 (arity (tag "") (list-c (repeat 2 top-type))
+                                           top-type)
+                                  3 (arity (tag "") (list-c (repeat 3 top-type))
+                                           top-type)
+                                  4 (arity (tag "") (list-c (repeat 4 top-type))
+                                           top-type)
+                                  5 (arity (tag "") (list-c (repeat 5 top-type))
+                                           top-type)
+                                  6 (arity (tag "") (list-c (repeat 6 top-type))
+                                           top-type)
+                                  7 (arity (tag "") (list-c (repeat 7 top-type))
+                                           top-type)
+                                  8 (arity (tag "") (list-c (repeat 8 top-type))
+                                           top-type)
+                                  9 (arity (tag "") (list-c (repeat 9 top-type))
+                                           top-type)}
                                  empty-list no-symbol))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol))
