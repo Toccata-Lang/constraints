@@ -2377,6 +2377,11 @@
   ;;         ["--result--"]
   ;;         (map (.result-const c) (partial str "  "))))
 
+  (assertion-path [c] (.path c))
+
+  (format-path [x desired-len]
+    (format-path* "Function from" (.path x) desired-len))
+
   (reify-const [x arity-id arg-cs]
     (let [new-params (reify-const (.param-consts x) arity-id arg-cs)
           new-result (reify-const (.result-const x) arity-id arg-cs)]
@@ -2406,7 +2411,32 @@
               (-> ar1
                   (.arity-id arity-id)
                   (.param-consts param-cs)
-                  (.result-const result-c))))))
+                  (.result-const result-c)))))
+
+  (do-call-value [arity args loc-path]
+    (let [arity-id (.arity-id arity)
+          fixed-count (-> arity .param-consts seq-items count)
+          [reqd var] (split args fixed-count)
+          new-args (conj reqd (list-c var))
+          reified (reify-type-constraint arity arity-id new-args
+                                         (either (first loc-path)
+                                                 no-loc))]
+      (either (map (= bottom-type reified)
+                   (fn [err-c]
+                     [err-c args]))
+              ;; remove any remaining params of arity-id
+              (elgot (fn [c]
+                       (either (for [ar-c (instance? fn-arity c)
+                                     :when (= (.arity-id ar-c) arity-id)]
+                                 (RecurseFinal ar-c))
+                               (skip-protoimpls c)))
+                     (fn [c]
+                       (either (for [param-c (instance? ParamConstraint c)
+                                     :when (= (.arity param-c) arity-id)]
+                                 top-type)
+                               c))
+                     [(.result-const reified)
+                      (get-items (.param-consts reified) (count args))])))))
 
 (defn intersect-fns [y x]
   (either (or (=* x y)
