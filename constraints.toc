@@ -642,7 +642,7 @@
            (.ctnts-c tc new-ctnts)))))
 
 ;; product type
-(deftype ReifiedConstraint [type-number type-symbol field-consts fields invoke-fn path sym]
+(deftype ReifiedConstraint [type-number type-symbol field-consts fields path sym]
   (assert (instance? Integer type-number))
   ;; TODO: put this in
   ;; (assert (instance? (min-value 1) type-num))
@@ -662,7 +662,7 @@
                                                                  (str k " " v "\n"))))
                           "}\n{" (to-str (map (vec fields) (fn [[k v]]
                                                             (str k " " v "\n"))))
-                          "}\n" (str invoke-fn) "\n"
+                          "}\n"
                           ;; (str (interpose (cons 'list path) " "))
                           " empty-list" (either (map (= no-symbol) (fn [a]
                                                                      (str " " a)))
@@ -670,8 +670,7 @@
       (cond (and (= type-number UnknownType)
                  (= type-symbol no-symbol)
                  (empty? field-consts)
-                 (empty? fields)
-                 (= invoke-fn (fn-c [] {})))
+                 (empty? fields))
             (list "c/empty-reified")
 
             (= type-number PromiseType)
@@ -731,8 +730,7 @@
                                          (instance? OptionalInt fld-c))
                                      (f fld-c))]))
                      (reduce {} (fn [m [k v]]
-                                  (assoc m k v)))))
-        (.invoke-fn (f (.invoke-fn tc)))))
+                                  (assoc m k v)))))))
 
   (map [tc f embed]
     ;; TODO: not even sure this is right. Too tired to step through it
@@ -760,12 +758,10 @@
                               embed)
                          (map (fn [new-flds]
                                 (reduce new-flds {} (fn [m [k v]]
-                                                      (assoc m k v))))))
-          new-invoke (f (.invoke-fn tc))]
+                                                      (assoc m k v))))))]
       (-> tc
           (.field-consts new-field-cs)
-          (.fields new-fields)
-          (.invoke-fn new-invoke)))))
+          (.fields new-fields)))))
 
 ;; type attributes
 ;; sum type
@@ -1119,8 +1115,6 @@
                          ProtoImpls
                          NoValues))
 
-(def empty-fn-constraint (FnConstraint [] {} empty-list no-symbol))
-
 (defn tag
   ([s]
    (tag s no-loc))
@@ -1176,32 +1170,31 @@
 (defn hashmap-c [type-num]
   (ReifiedConstraint type-num (either (get hashmap-names type-num)
                                       HashMap-sym)
-                     {} {contents top-type}
-                     empty-fn-constraint empty-list no-symbol))
+                     {} {contents top-type} empty-list no-symbol))
 
 (defn OpaqueConstraint
   ([]
    (OpaqueConstraint empty-list no-symbol))
   ([path sym]
-   (ReifiedConstraint OpaqueType Opaque-sym {} {} empty-fn-constraint path sym)))
+   (ReifiedConstraint OpaqueType Opaque-sym {} {} path sym)))
 
 (defn FutureConstraint
   ([]
    (FutureConstraint empty-list no-symbol))
   ([path sym]
-   (ReifiedConstraint FutureType Future-sym {} {} empty-fn-constraint path sym)))
+   (ReifiedConstraint FutureType Future-sym {} {} path sym)))
 
 (defn PromiseConstraint
   ([]
-   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint empty-list no-symbol))
+   (ReifiedConstraint PromiseType Promise-sym {} {} empty-list no-symbol))
   ([path sym]
-   (ReifiedConstraint PromiseType Promise-sym {} {} empty-fn-constraint path sym)))
+   (ReifiedConstraint PromiseType Promise-sym {} {} path sym)))
 
 (defn AgentConstraint
   ([]
-   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint empty-list no-symbol))
+   (ReifiedConstraint AgentType Agent-sym {} {} empty-list no-symbol))
   ([path sym]
-   (ReifiedConstraint AgentType Agent-sym {} {} empty-fn-constraint path sym)))
+   (ReifiedConstraint AgentType Agent-sym {} {} path sym)))
 
 (defn StrConstraint
   ([static-val]
@@ -1210,7 +1203,6 @@
    (StrBuffConstraint static-val path sym)))
 
 (def empty-reified (ReifiedConstraint UnknownType no-symbol {} {}
-                                      empty-fn-constraint
                                       empty-list  no-symbol))
 (def not-container (.type-symbol empty-reified (tag "Can not contain other values")))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol))
@@ -1258,13 +1250,12 @@
 (def set-constraint (ReifiedConstraint HashSetType HashSet-sym
                                          {(Field (tag ".set-map")) hashmap-constraint}
                                          {(Field (tag ".set-map")) hashmap-constraint}
-                                         (.arities fn-constraint {}) empty-list no-symbol))
+                                          empty-list no-symbol))
 (def agent-constraint (AgentConstraint))
 (def promise-constraint (PromiseConstraint))
 (def future-constraint (FutureConstraint empty-list no-symbol))
 (def opaque-constraint (OpaqueConstraint empty-list no-symbol))
 (def arity-constraint (ReifiedConstraint FnArityType FnArity-sym {} {}
-                                         (.arities fn-constraint {})
                                          empty-list no-symbol))
 
 (defn SymConstraint
@@ -1280,16 +1271,14 @@
 
 (defn missing-field [fld]
   (ReifiedConstraint UnknownType (tag (str "Field/index '" fld "' required"))
-                     {} {} empty-fn-constraint
-                     empty-list no-symbol))
+                     {} {} empty-list no-symbol))
 
 (defn cant-set-contents [x fld-path]
   (either (map (first fld-path)
                (fn [fld]
                  (NoValues [x (missing-field fld)])))
           (NoValues [x (ReifiedConstraint UnknownType (tag "Unable to set contents")
-                                          {} {} empty-fn-constraint
-                                          empty-list no-symbol)])))
+                                          {} {} empty-list no-symbol)])))
 
 (defn is-param [c]
   (or (instance? ParamConstraint c)
@@ -2966,13 +2955,11 @@
                                                        new-field)]))))]
       (either (some new-fields (fn [[_ fld-c]]
                                  (= bottom-type fld-c)))
-              (let [reified (reify-const (.invoke-fn c) arity-id arg-cs)]
-                (-> c
-                    ;; TODO: could probably get a perf boost by adding a flag
-                    ;; to FnConstraint indicating whether it has any free vars in it
-                    (.invoke-fn reified)
-                    (.fields (reduce new-fields {} (fn [m [k v]]
-                                                     (assoc m k v)))))))))
+              (-> c
+                  ;; TODO: could probably get a perf boost by adding a flag
+                  ;; to FnConstraint indicating whether it has any free vars in it
+                  (.fields (reduce new-fields {} (fn [m [k v]]
+                                                   (assoc m k v))))))))
 
   (contents-constraint [c]
     (let [type-number (type-num c)]
@@ -3042,14 +3029,6 @@
                            (ctnts-c top-type)))
                  c)))
 
-  (do-call-value [base args loc-path]
-    (let [[result-c arg-cs] (do-call-value (.invoke-fn base)
-                                           (either (instance? NoArgs args)
-                                                   (comp [base] args))
-                                           loc-path)]
-      [result-c (either (instance? NoArgs args)
-                        (rest arg-cs))]))
-
   (intersect [x y]
     (let [type-number (type-num x)]
       (cond (=* x y)
@@ -3092,28 +3071,6 @@
 
                     (NoValues [x y]))
 
-            (instance? FnConstraint y)
-            (let [new-arities (-> (.arities y)
-                                  seq
-                                  (reduce {}
-                                          (fn [arities [rank arity]]
-                                            (assoc arities (cond (= variadic rank)
-                                                                 rank
-                                                                 (inc rank))
-                                                   (either (update-in arity [.param-consts]
-                                                                      (partial seq-c [top-type]))
-                                                           ;; should never happen
-                                                           (do
-                                                             (print-err "Invalid c/fn-arity" _LINE_
-                                                                        lflf arity)
-                                                             (abort)))))))
-                  new-invoke (intersect-fns (.invoke-fn x)
-                                            (-> y
-                                                (.arities new-arities)
-                                                (.required-arities (map (.required-arities y) inc))))]
-              (either (= bottom-type new-invoke)
-                      (.invoke-fn x new-invoke)))
-
             (instance? ReifiedConstraint y)
             (cond (= type-number (type-num y))
                   (intersect-reified x y)
@@ -3122,12 +3079,7 @@
                   (intersect y x)
 
                   (= UnknownType type-number)
-                  (let [new-invoke (cond (= empty-fn-constraint (.invoke-fn x))
-                                         (.invoke-fn y)
-
-                                         (intersect-fns (.invoke-fn x)
-                                                        (.invoke-fn y)))
-                        [new-fields fail]
+                  (let [[new-fields fail]
                         (-> (.fields x)
                             vec
                             (reduce [{} top-type]
@@ -3141,11 +3093,9 @@
                                                              [(assoc new-fields fld new-c)
                                                               new-c])))
                                                     [new-fields (NoValues [x y])])))))]
-                    (either (or (= bottom-type new-invoke)
-                                (= bottom-type fail))
+                    (either (= bottom-type fail)
                             (-> y
-                                (.fields (comp (.fields y) new-fields))
-                                (.invoke-fn new-invoke))))
+                                (.fields (comp (.fields y) new-fields)))))
 
                   (NoValues [x y]))
 
@@ -3290,11 +3240,6 @@
                         (NoValues [(TypeOp arg-of-op base arg-pos no-symbol empty-list) base])
 
                         (sum-type arity-args))))
-
-        (instance? ReifiedConstraint base)
-        (do-arg-of (.invoke-fn base)
-                   (inc arg-pos)
-                   loc-path)
 
         (instance? ProtoImpls base)
         (do-arg-of (.default-impl base) arg-pos loc-path)
