@@ -470,37 +470,6 @@
   ([arity-id param-consts result-const path sym]
    (fn-arity arity-id param-consts result-const path sym)))
 
-(deftype FnConstraint [required-arities arities path sym]
-  ;; (assert (instance? (map-of ArityRank fn-arity) arities))
-  (assert (instance? (vector-of Integer) required-arities))
-  (assert (instance? (list-of Location) path))
-  (assert (instance? OptionalSym sym))
-
-  Eq
-  (=* [x y]
-    (and (instance? FnConstraint y)
-         (= (count required-arities) (count (.required-arities y)))
-         (every (.required-arities y) (fn [arity-rank]
-                                        (some required-arities (fn [a]
-                                                                 (= arity-rank a)))))
-         (=* arities (.arities y))
-         (maybe x)))
-
-  Container
-  (map [x f]
-    (.arities x (map-vals arities f)))
-
-  (map [x f embed]
-    (map (contextual-map-vals arities f embed)
-         (fn [a]
-           (.arities x a)))))
-
-(defn fn-c
-  ([required arities]
-   (FnConstraint required arities empty-list no-symbol))
-  ([required arities path sym]
-   (FnConstraint required arities path sym)))
-
 (deftype IntegerConstraint [static max min path sym]
   (assert (instance? OptionalInt static))
   (assert (instance? Integer max))
@@ -924,8 +893,8 @@
 
 (deftype ProtoImpls [fn-sym default-impl impl-fns]
   (assert (instance? TaggedSymbol fn-sym))
-  (assert (instance? FnConstraint default-impl))
-  (assert (instance? (map-of Integer FnConstraint) impl-fns))
+  (assert (instance? fn-arity default-impl))
+  (assert (instance? (map-of Integer fn-arity) impl-fns))
 
   Stringable
   (string-list [_]
@@ -1099,7 +1068,6 @@
                                StringConstraint
                                MaybeConstraint
                                SeqConstraint
-                               FnConstraint
                                fn-arity
                                CollectionOf
                                SumConstraint
@@ -1213,28 +1181,6 @@
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
                                       empty-list no-symbol))
-(def fn-constraint (FnConstraint []
-                                 {variadic (arity (tag "") list-constraint top-type)
-                                  0 (arity (tag "") empty-list-constraint top-type)
-                                  1 (arity (tag "") (list-c (repeat 1 top-type))
-                                           top-type)
-                                  2 (arity (tag "") (list-c (repeat 2 top-type))
-                                           top-type)
-                                  3 (arity (tag "") (list-c (repeat 3 top-type))
-                                           top-type)
-                                  4 (arity (tag "") (list-c (repeat 4 top-type))
-                                           top-type)
-                                  5 (arity (tag "") (list-c (repeat 5 top-type))
-                                           top-type)
-                                  6 (arity (tag "") (list-c (repeat 6 top-type))
-                                           top-type)
-                                  7 (arity (tag "") (list-c (repeat 7 top-type))
-                                           top-type)
-                                  8 (arity (tag "") (list-c (repeat 8 top-type))
-                                           top-type)
-                                  9 (arity (tag "") (list-c (repeat 9 top-type))
-                                           top-type)}
-                                 empty-list no-symbol))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol))
 (def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
@@ -1284,7 +1230,7 @@
   (or (instance? ParamConstraint c)
       (instance? TypeOfConstraint c)
       (cond (or (instance? ProtoImpls c)
-                (instance? FnConstraint c))
+                (instance? fn-arity c))
             nothing
 
             (instance? HashMap c)
@@ -1609,7 +1555,7 @@
           y
 
           (or (instance? MultiConstraint y)
-              (instance? FnConstraint y)
+              (instance? fn-arity y)
               (instance? ReifiedConstraint y)
               (instance? IntegerConstraint y)
               (instance? SymbolConstraint y)
@@ -2427,216 +2373,6 @@
                      [(.result-const reified)
                       (get-items (.param-consts reified) (count args))])))))
 
-(defn intersect-fns [y x]
-  (either (or (=* x y)
-              (and (or (empty? (.arities x))
-                       (empty? (.arities y)))
-                   (maybe (NoValues [x y]))))
-          (let [new-required (reduce (.required-arities x) (.required-arities y)
-                                     (fn [new-reqd arity-rank]
-                                       (cond (some new-reqd (partial = arity-rank))
-                                             new-reqd
-
-                                             (conj new-reqd arity-rank))))
-                new-arities (reduce (for [[x-idx x-arity] (vec (.arities x))
-                                          [y-idx y-arity] (vec (.arities y))
-                                          :when (= x-idx y-idx)
-                                          :let [new-arity (intersect x-arity y-arity)]
-                                          :when-not (= bottom-type new-arity)]
-                                      [x-idx new-arity])
-                                    {} (fn [arities [idx arity]]
-                                         (assoc arities idx arity)))
-                min-variadic-arity (map (get new-arities variadic)
-                                        (fn [var-arity]
-                                          (-> var-arity .param-consts seq-items count)))
-                new-arities (cond (empty? new-arities)
-                                  (either (or (map (get-in x [.arities variadic])
-                                                      (fn [x-var]
-                                                        (reduce (vec (.arities y)) {}
-                                                                (fn [arities [rank arity]]
-                                                                  (let [new-arity (intersect x-var
-                                                                                             arity)]
-                                                                    (cond (= bottom-type new-arity)
-                                                                          arities
-                                                                          (assoc arities
-                                                                            rank new-arity)))))))
-                                                 (map (get-in y [.arities variadic])
-                                                      (fn [y-var]
-                                                        (reduce (vec (.arities x)) {}
-                                                                (fn [arities [rank arity]]
-                                                                  (let [new-arity (intersect y-var
-                                                                                             arity)]
-                                                                    (cond (= bottom-type new-arity)
-                                                                          arities
-                                                                          (assoc arities
-                                                                            rank new-arity))))))))
-                                          {})
-                                  new-arities)]
-            (cond (empty? new-arities)
-                  (NoValues [x y])
-
-                  (every new-required (fn [required]
-                                        (or (get new-arities required)
-                                            (flat-map min-variadic-arity (fn [min-var]
-                                                                           (<= min-var required))))))
-                  (-> x
-                      (.required-arities new-required)
-                      (.arities new-arities))
-
-                  (NoValues [x y])))))
-
-(extend-type FnConstraint
-  Stringable
-  (string-list [c]
-    (let [long-form (list "(c/fn-c [" (to-str (interpose (.required-arities c) " ")) "]"
-                          "\n" (str (.arities c)) ")")]
-      (cond (= c fn-constraint)
-            (list "c/fn-constraint")
-
-            (= (.arities c) (.arities fn-constraint))
-            (list "(.required-arities c/fn-constraint " (str (.required-arities c) ")"))
-
-            (and (every (vals (.arities c)) (partial instance? fn-arity))
-                 (= (count (.arities c)) (count (.arities fn-constraint))))
-            (let [fn-str (cond (empty? (.required-arities c))
-                               "c/fn-constraint"
-                               (str "(.required-arities c/fn-constraint " (.required-arities c) ")"))
-                  results (-> (.arities c)
-                              vals
-                              (map .result-const))]
-              (either (flat-map (first results)
-                                (fn [result]
-                                  (or (and (= result top-type)
-                                           (maybe (list fn-str)))
-
-                                      (and (every results (partial = result))
-                                           (maybe (list "(c/intersect " fn-str "\n(c/coll-of-c "
-                                                        (str result) "))"))))))
-                      long-form))
-
-            long-form)))
-
-  Constraint
-  (type-num [c] FunctionType)
-
-  (type-sym [_] Fn-sym)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [x desired-len]
-    (format-path* "Function from" (.path x) desired-len))
-
-  (show-full [c]
-    (comp (format-path c 0)
-          ["---------"]
-          (-> (.arities c)
-              vals
-              (interpose ["----"])
-              flatten
-              (map (partial str "  ")))))
-
-  (reify-const [f arity-id arg-cs]
-    (let [new-arities (reduce (vec (.arities f)) []
-                              (fn [arities [rank arity]]
-                                (let [new-arity (reify-const arity arity-id arg-cs)]
-                                  (conj arities [rank new-arity]))))]
-      (either (some new-arities (fn [[_ arity-c]]
-                                  (= bottom-type arity-c)))
-              (.arities f (reduce new-arities {} (fn [m [k v]]
-                                                   (assoc m k v)))))))
-
-  (derive-const [op]
-    (fn [c]
-      (let [derived (map op (fn [ctnts-c]
-                              (ctnts-c top-type)))]
-        (intersect derived c))))
-
-  (find-param [c]
-    (RecurseFinal nothing))
-
-  (do-call-value [base args loc-path]
-    (either (or (map (= no-args args)
-                     (fn [_]
-                       ;; get the sum type of the results of all the arities
-                       (-> (.arities base)
-                           vals
-                           (reduce [] (fn [arities arity]
-                                        (assert (instance? fn-arity arity))
-                                        (conj arities (derive (.result-const arity) top-type))))
-                           sum-type
-                           (vector args))))
-                ;; get the arity
-                (map (or (get-in base [.arities (count args)])
-                         (for [arity (get-in base [.arities variadic])
-                               :when (<= (-> arity .param-consts seq-items count)
-                                         (count args))]
-                           arity))
-                     (fn [arity]
-                       (assert (instance? fn-arity arity))
-
-                       (let [arity-id (.arity-id arity)
-                             fixed-count (-> arity .param-consts seq-items count)
-                             [reqd var] (split args fixed-count)
-                             new-args (conj reqd (list-c var))
-                             reified (reify-type-constraint arity arity-id new-args
-                                                            (either (first loc-path)
-                                                                    no-loc))]
-                         (either (map (= bottom-type reified)
-                                      (fn [err-c]
-                                        [err-c args]))
-                                 ;; remove any remaining params of arity-id
-                                 (elgot (fn [c]
-                                          (either (for [ar-c (instance? fn-arity c)
-                                                        :when (= (.arity-id ar-c) arity-id)]
-                                                    (RecurseFinal ar-c))
-                                                  (skip-protoimpls c)))
-                                        (fn [c]
-                                          (either (for [param-c (instance? ParamConstraint c)
-                                                        :when (= (.arity param-c) arity-id)]
-                                                    top-type)
-                                                  c))
-                                        [(.result-const reified)
-                                         (get-items (.param-consts reified) (count args))]))))))
-            [(NoValues [base (-> empty-reified
-                                 (replace-path loc-path)
-                                 (.type-symbol (tag "No arity found")))])
-             args]))
-
-  (intersect [x y]
-    (cond (=* x y)
-          x
-
-          (or (instance? ParamConstraint y)
-              (instance? AllValues y)
-              (instance? NoValues y)
-              (instance? MultiConstraint y)
-              (instance? SumConstraint y)
-              (instance? ReifiedConstraint y)
-              (instance? ProtoImpls y)
-              (instance? TypeOp y)
-              (and (instance? ReifiedConstraint y)
-                   (= UnknownType (.type-number y))))
-          (intersect y x)
-
-          (instance? CollectionOf y)
-          (let [new-result (.ctnts-c y)
-                new-arities (-> (.arities x)
-                                vec
-                                (reduce {} (fn [arities [arity-idx arity]]
-                                             (let [arity-r (intersect (.result-const arity)
-                                                                      new-result)]
-                                               (either (or (= arities bottom-type)
-                                                           (= arity-r bottom-type))
-                                                       (assoc arities
-                                                         arity-idx (.result-const arity arity-r)))))))]
-            (either (= new-arities bottom-type)
-                    (.arities x new-arities)))
-
-          (instance? FnConstraint y)
-          (intersect-fns x y)
-
-          (NoValues [x y]))))
-
 (defn intersect-static [x y]
   (either (let [sv-x (.static x)
                 sv-y (.static y)]
@@ -2955,11 +2691,8 @@
                                                        new-field)]))))]
       (either (some new-fields (fn [[_ fld-c]]
                                  (= bottom-type fld-c)))
-              (-> c
-                  ;; TODO: could probably get a perf boost by adding a flag
-                  ;; to FnConstraint indicating whether it has any free vars in it
-                  (.fields (reduce new-fields {} (fn [m [k v]]
-                                                   (assoc m k v))))))))
+              (.fields c (reduce new-fields {} (fn [m [k v]]
+                                                 (assoc m k v)))))))
 
   (contents-constraint [c]
     (let [type-number (type-num c)]
@@ -3144,8 +2877,7 @@
   (cond (is-param args)
         [(TypeOp apply-op base args no-symbol loc-path) args]
 
-        (or (instance? FnConstraint base)
-            (instance? ReifiedConstraint base))
+        (instance? fn-arity base)
         (do-call-value base (get-items args) loc-path)
 
         (cond (is-param base)
@@ -3219,27 +2951,10 @@
         (NoValues [(TypeOp get-from-op base path no-symbol empty-list) base])))
 
 (defn do-arg-of [base arg-pos loc-path]
-  (cond (instance? FnConstraint base)
-        (let [num-args (inc arg-pos)
-              arity-args (-> (.arities base)
-                             vals
-                             (reduce [] (fn [arities arity]
-                                          (assert (instance? fn-arity arity))
-
-                                          (let [arity (reify-type-constraint arity (.arity-id arity)
-                                                                             (repeat num-args top-type)
-                                                                             no-loc)]
-                                            (either (or (= bottom-type arity)
-                                                        (map (-> (.param-consts arity)
-                                                                 (get-items num-args)
-                                                                 (nth arg-pos))
-                                                             (partial conj arities)))
-                                                    arities)))))]
-          (either (= bottom-type arity-args)
-                  (cond (empty? arity-args)
-                        (NoValues [(TypeOp arg-of-op base arg-pos no-symbol empty-list) base])
-
-                        (sum-type arity-args))))
+  (cond (instance? fn-arity base)
+        (-> (.param-consts base)
+            (get-items (inc arg-pos))
+            (nth arg-pos))
 
         (instance? ProtoImpls base)
         (do-arg-of (.default-impl base) arg-pos loc-path)
@@ -3712,7 +3427,6 @@
                             BitmapIndexedNode-sym bitmap-constraint
                             ArrayNode-sym array-constraint
                             HashCollisionNode-sym hash-coll-constraint
-                            Fn-sym fn-constraint
                             List-sym list-constraint
                             Maybe-sym maybe-constraint
                             Vector-sym vect-constraint
