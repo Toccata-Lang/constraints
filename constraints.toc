@@ -891,14 +891,14 @@
            to-str)
        "}"))
 
-(deftype ProtoImpls [fn-sym default-impl impl-fns]
+(deftype ProtoImpls [fn-sym constraint impl-fns]
   (assert (instance? TaggedSymbol fn-sym))
-  (assert (instance? fn-arity default-impl))
+  (assert (instance? fn-arity constraint))
   (assert (instance? (map-of Integer fn-arity) impl-fns))
 
   Stringable
   (string-list [_]
-    (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n" (str default-impl) "\n\n"
+    (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n" (str constraint) "\n\n"
           (impl-fns-str impl-fns) ")"))
 
   ;; TODO: could probably gain perf by doing a custom =* and sha1 that don'w
@@ -907,7 +907,7 @@
   ;; (sha1-update [x ctxt]
   ;;   (sha1-update-type x ctxt)
   ;;   (sha1-update fn-sym ctxt)
-  ;;   (sha1-update default-impl ctxt))
+  ;;   (sha1-update constraint ctxt))
 
   ;; (sha1 [x]
   ;;   (let [ctxt (sha1-init)]
@@ -919,7 +919,7 @@
   ;; (=* [x y]
   ;;   (and (instance? ProtoImpls y)
   ;;        (= fn-sym (.fn-sym y))
-  ;;        (= default-impl (.default-impl y))
+  ;;        (= constraint (.constraint y))
   ;;        (cond (or (= impl-fns (.impl-fns y))
   ;;                  (and (empty? impl-fns)
   ;;                       (empty? (.impl-fns y))))
@@ -935,11 +935,11 @@
   Container
   (map [x f]
     (ProtoImpls fn-sym
-                (map default-impl f)
+                (map constraint f)
                 (map-vals impl-fns f)))
 
   (map [x f embed]
-    (for [def-impl (map default-impl f embed)
+    (for [def-impl (map constraint f embed)
           impl-fns (contextual-map-vals impl-fns f embed)]
       (ProtoImpls fn-sym def-impl impl-fns))))
 
@@ -2957,7 +2957,7 @@
             (nth arg-pos))
 
         (instance? ProtoImpls base)
-        (do-arg-of (.default-impl base) arg-pos loc-path)
+        (do-arg-of (.constraint base) arg-pos loc-path)
 
         (cond (is-param base)
               (TypeOp arg-of-op base arg-pos no-symbol loc-path)
@@ -3356,25 +3356,25 @@
 
   (derive-const [op]
     (fn [c]
-      (let [derived (map (.default-impl op) (fn [f]
+      (let [derived (map (.constraint op) (fn [f]
                                               (f top-type)))]
         (intersect c derived))))
 
   (show-full [c]
     (comp (list (str "prototype " (.fn-sym c)))
-          (show-full (.default-impl c))
+          (show-full (.constraint c))
           (list (str (map-vals (.impl-fns c) (fn [x]
                                                (to-str (interpose x "\n"))))))))
 
   (format-path [x n]
-    (format-path (.default-impl x) n))
+    (format-path (.constraint x) n))
 
   (assertion-path [x]
-    (assertion-path (.default-impl x)))
+    (assertion-path (.constraint x)))
 
   (do-call-value [base args loc-path]
     (either (or (and (= args no-args)
-                     (maybe (do-call-value (.default-impl base) args loc-path)))
+                     (maybe (do-call-value (.constraint base) args loc-path)))
                 (map (first args)
                      (fn [disp-arg]
                        (let [arg-count (count args)]
@@ -3390,7 +3390,7 @@
                                        [(TypeOp call-value-op base args no-symbol loc-path)
                                         (repeat (count args) top-type)]
                                        
-                                       (let [[res new-args] (do-call-value (.default-impl base)
+                                       (let [[res new-args] (do-call-value (.constraint base)
                                                                            args loc-path)]
                                          (cond (is-param res)
                                                [(TypeOp call-value-op (.impl-fns base {}) args
@@ -3410,7 +3410,7 @@
           (instance? MultiConstraint y)
           (intersect y x)
 
-          (either (= bottom-type (intersect (.default-impl x) y))
+          (either (= bottom-type (intersect (.constraint x) y))
 
                   (cond (= top-type y)
                         x
