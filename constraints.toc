@@ -1247,6 +1247,7 @@
     (assert (instance? Constraints base))
     (assert-result r (instance? Vector r))
 
+    ;; why this cond? Why not use the normal dispatch?
     (cond (or (is-param base)
               (and (= nothing (= args no-args))
                    (some args is-param)))
@@ -2429,7 +2430,7 @@
     (format-path* (str "Integer " (cond (= no-int (.static c))
                                         ""
                                         (.static c))
-                       "from:")
+                       " from:")
                   (.path c) desired-len))
 
   (set-to [x fld-path fld-c]
@@ -2483,7 +2484,7 @@
     (format-path* (str "Symbol " (cond (= no-symbol (.static c))
                                         ""
                                         (.static c))
-                       "from:")
+                       " from:")
                   (.path c) desired-len))
 
   (set-to [x fld-path fld-c]
@@ -2544,7 +2545,7 @@
     (format-path* (str "String " (cond (= no-string (.static c))
                                         ""
                                         (.static c))
-                       "from:")
+                       " from:")
                   (.path c) desired-len))
 
   (set-to [x fld-path fld-c]
@@ -2713,7 +2714,7 @@
   (assertion-path [c] (.path c))
 
   (format-path [c desired-len]
-    (format-path* (str (type-sym c) "from:")
+    (format-path* (str (type-sym c) " from:")
                   (.path c) desired-len))
 
   (show-full [c]
@@ -3428,7 +3429,6 @@
                             ArrayNode-sym array-constraint
                             HashCollisionNode-sym hash-coll-constraint
                             List-sym list-constraint
-                            Maybe-sym maybe-constraint
                             Vector-sym vect-constraint
                             Symbol-sym sym-constraint
                             HashMap-sym hashmap-constraint
