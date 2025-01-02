@@ -106,6 +106,9 @@
 
 ;; TODO: remove unused types
 (def UnknownType (inline C Integer "(Value *)&(Integer){IntegerType, -2, UnknownType};"))
+(def NoneType (inline C Integer "(Value *)&(Integer){IntegerType, -2, NoneType};"))
+(def SomeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SomeType};"))
+
 (def IntegerType (inline C Integer "(Value *)&(Integer){IntegerType, -2, IntegerType};"))
 (def StringBufferType (inline C Integer "(Value *)&(Integer){IntegerType, -2, StringBufferType};"))
 (def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
