@@ -894,14 +894,13 @@
            to-str)
        "}"))
 
-(deftype ProtoImpls [fn-sym constraint impl-fns]
+(deftype ProtoImpls [fn-sym impl-fns]
   (assert (instance? TaggedSymbol fn-sym))
-  (assert (instance? fn-arity constraint))
   (assert (instance? (map-of Integer fn-arity) impl-fns))
 
   Stringable
   (string-list [_]
-    (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n" (str constraint) "\n\n"
+    (list "(c/ProtoImpls\n" (sym-str fn-sym) "\n"
           (impl-fns-str impl-fns) ")"))
 
   ;; TODO: could probably gain perf by doing a custom =* and sha1 that don'w
@@ -937,14 +936,11 @@
 
   Container
   (map [x f]
-    (ProtoImpls fn-sym
-                (map constraint f)
-                (map-vals impl-fns f)))
+    (ProtoImpls fn-sym (map-vals impl-fns f)))
 
   (map [x f embed]
-    (for [def-impl (map constraint f embed)
-          impl-fns (contextual-map-vals impl-fns f embed)]
-      (ProtoImpls fn-sym def-impl impl-fns))))
+    (for [impl-fns (contextual-map-vals impl-fns f embed)]
+      (ProtoImpls fn-sym impl-fns))))
 
 (deftype InnerTypeOf []
   Stringable
@@ -3360,48 +3356,63 @@
 
   (derive-const [op]
     (fn [c]
-      (let [derived (map (.constraint op) (fn [f]
-                                              (f top-type)))]
-        (intersect c derived))))
+      (print-err 'boomer-constraints _LINE_)
+      (abort)
+      ;; (let [derived (map (.constraint op) (fn [f]
+      ;;                                         (f top-type)))]
+      ;;   (intersect c derived))
+      ))
 
   (show-full [c]
     (comp (list (str "prototype " (.fn-sym c)))
-          (show-full (.constraint c))
           (list (str (map-vals (.impl-fns c) (fn [x]
                                                (to-str (interpose x "\n"))))))))
 
   (format-path [x n]
-    (format-path (.constraint x) n))
+    (either (map (get-in x [.impl-fns UnknownType])
+                 (fn [c]
+                   (format-path c n)))
+            (do
+              (print-err 'boomer-constraints _LINE_)
+              (abort)
+              empty-list)))
 
   (assertion-path [x]
-    (assertion-path (.constraint x)))
+    (either (map (get-in x [.impl-fns UnknownType])
+                 (fn [c]
+                   (assertion-path c)))
+            (do
+              (print-err 'boomer-constraints _LINE_)
+              (abort)
+              empty-list)))
 
   (do-call-value [base args loc-path]
     (either (or (and (= args no-args)
-                     (maybe (do-call-value (.constraint base) args loc-path)))
-                (map (first args)
-                     (fn [disp-arg]
-                       (let [arg-count (count args)]
-                         (either (map (get-in base [.impl-fns (type-num disp-arg)])
-                                      (fn [f]
-                                        (let [[res new-args] (do-call-value f args loc-path)]
-                                          (cond (is-param res)
-                                                [(type-op call-value-op f args)
-                                                 new-args]
+                     (map (get-in base [.impl-fns UnknownType])
+                          (fn [default-c]
+                            (do-call-value default-c args loc-path))))
+                (for [disp-arg (first args)
+                      default-c (get-in base [.impl-fns UnknownType])]
+                  (let [arg-count (count args)]
+                    (either (map (get-in base [.impl-fns (type-num disp-arg)])
+                                 (fn [f]
+                                   (let [[res new-args] (do-call-value f args loc-path)]
+                                     (cond (is-param res)
+                                           [(type-op call-value-op f args)
+                                            new-args]
 
-                                                [res new-args]))))
-                                 (cond (is-param disp-arg)
-                                       [(TypeOp call-value-op base args no-symbol loc-path)
-                                        (repeat (count args) top-type)]
-                                       
-                                       (let [[res new-args] (do-call-value (.constraint base)
-                                                                           args loc-path)]
-                                         (cond (is-param res)
-                                               [(TypeOp call-value-op (.impl-fns base {}) args
-                                                        no-symbol loc-path)
-                                                new-args]
+                                           [res new-args]))))
+                            (cond (is-param disp-arg)
+                                  [(TypeOp call-value-op base args no-symbol loc-path)
+                                   (repeat (count args) top-type)]
+                                  
+                                  (let [[res new-args] (do-call-value default-c args loc-path)]
+                                    (cond (is-param res)
+                                          [(TypeOp call-value-op (.impl-fns base {}) args
+                                                   no-symbol loc-path)
+                                           new-args]
 
-                                               [res new-args]))))))))
+                                          [res new-args])))))))
             [(NoValues [base (-> empty-reified
                                  (replace-path loc-path)
                                  (.type-symbol (tag "Insufficient number of arguments.")))])
@@ -3414,7 +3425,9 @@
           (instance? MultiConstraint y)
           (intersect y x)
 
-          (either (= bottom-type (intersect (.constraint x) y))
+          (either (flat-map (get-in x [.impl-fns UnknownType])
+                            (fn [default-c]
+                              (= bottom-type (intersect default-c y))))
 
                   (cond (= top-type y)
                         x
