@@ -114,7 +114,6 @@
 (def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
 (def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
 (def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
-(def MaybeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, MaybeType};"))
 (def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
 (def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
 (def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
@@ -583,36 +582,6 @@
 (def StringConstraint (any-of StrBuffConstraint
                               SubStrConstraint))
 
-(deftype MaybeConstraint [ctnts-c path sym]
-  (assert (instance? (list-of Location) path))
-  (assert (instance? OptionalSym sym))
-
-  Stringable
-  (string-list [_]
-    (cond (instance? AllValues ctnts-c)
-          (list "c/maybe-constraint")
-
-          (= no-contents ctnts-c)
-          (list "c/nothing-constraint")
-
-          (list "(c/MaybeConstraint " (str ctnts-c) " empty-list c/no-symbol \"\")")))
-
-  Eq
-  (=* [x y]
-    (and (instance? MaybeConstraint  y)
-         (= ctnts-c (.ctnts-c y))
-         (maybe x)))
-
-  Container
-  (map [tc f]
-    (-> tc
-        (.ctnts-c (map ctnts-c f))))
-
-  (map [tc f embed]
-    (map (f ctnts-c)
-         (fn [new-ctnts]
-           (.ctnts-c tc new-ctnts)))))
-
 ;; product type
 (deftype ReifiedConstraint [type-number type-symbol field-consts fields path sym]
   (assert (instance? Integer type-number))
@@ -861,7 +830,6 @@
                         SubStringType "c/SubStringType"
                         FnArityType "c/FnArityType"
                         FunctionType "c/FunctionType"
-                        MaybeType "c/MaybeType"
                         ListType "c/ListType"
                         VectorType "c/VectorType"
                         VectorNodeType "c/VectorNodeType"
@@ -1065,7 +1033,6 @@
                                IntegerConstraint
                                SymbolConstraint
                                StringConstraint
-                               MaybeConstraint
                                SeqConstraint
                                fn-arity
                                CollectionOf
@@ -1108,7 +1075,6 @@
 (def FnArity-sym (tag 'FnArity))
 (def Fn-sym (tag 'Fn))
 (def List-sym (tag 'List))
-(def Maybe-sym (tag 'Maybe))
 (def Vector-sym (tag 'Vector))
 (def Symbol-sym (tag 'Symbol))
 (def HashMap-sym (tag 'HashMap))
@@ -1190,8 +1156,6 @@
 (def hashmap-constraint (SumConstraint [bitmap-constraint array-constraint hash-coll-constraint]
                                          empty-list no-symbol))
 (def int-constraint (IntegerConstraint no-int int-max int-min empty-list no-symbol))
-(def maybe-constraint  (MaybeConstraint top-type empty-list no-symbol))
-(def nothing-constraint  (MaybeConstraint no-contents empty-list no-symbol))
 (def set-constraint (ReifiedConstraint HashSetType HashSet-sym
                                          {(Field (tag ".set-map")) hashmap-constraint}
                                          {(Field (tag ".set-map")) hashmap-constraint}
@@ -1560,7 +1524,6 @@
               (instance? IntegerConstraint y)
               (instance? SymbolConstraint y)
               (instance? StringConstraint y)
-              (instance? MaybeConstraint y)
               (instance? SumConstraint y)
               (instance? ProtoImpls y)
               (instance? ParamConstraint y))
@@ -2610,61 +2573,6 @@
 
           (NoValues [x y])))
 
-(extend-type MaybeConstraint
-  Constraint
-  (reify-const [c arity-id arg-cs]
-    (let [new-contents (reify-const (.ctnts-c c) arity-id arg-cs)]
-      (either (= bottom-type new-contents)
-              (-> c
-                  (.ctnts-c new-contents)))))
-
-  (contents-constraint [c]
-    (.ctnts-c c))
-
-  (type-sym [c]
-    (tag 'Maybe))
-
-  (type-num [c]
-    MaybeType)
-
-  (assertion-path [c] (.path c))
-
-  (format-path [c desired-len]
-    (format-path* (str"Maybe from:") (.path c) desired-len))
-
-  (set-to [x fld-path fld-c]
-    (cant-set-contents x fld-path))
-
-  (get-from [c proto-impls]
-    (NoValues [c (missing-field proto-impls)]))
-
-  (derive-const [op]
-    (fn [c]
-      (intersect (map op (fn [ctnts-c]
-                           (ctnts-c top-type)))
-                 c)))
-
-  (intersect [x y]
-    (let [type-number (type-num x)]
-      (cond (=* x y)
-            x
-
-            (or (instance? ParamConstraint y)
-                (instance? AllValues y)
-                (instance? NoValues y)
-                (instance? MultiConstraint y)
-                (instance? SumConstraint y)
-                (instance? TypeOp y))
-            (intersect y x)
-
-            (or (instance? CollectionOf y)
-                (instance? MaybeConstraint y))
-            (let [new-contents (intersect (.ctnts-c x) (.ctnts-c y))]
-              (either (= bottom-type new-contents)
-                      (.ctnts-c x new-contents)))
-
-            (NoValues [x y])))))
-
 (def intersectors {OpaqueType (fn [x y] (NoValues [x y]))
                    FutureType (fn [x y] (NoValues [x y]))
                    PromiseType (fn [x _] x)
@@ -2776,7 +2684,6 @@
                 (instance? IntegerConstraint y)
                 (instance? SymbolConstraint y)
                 (instance? StringConstraint y)
-                (instance? MaybeConstraint y)
                 (instance? TypeOp y))
             (intersect y x)
 
@@ -2979,44 +2886,6 @@
   ;; TODO: unfinished
   coll-of-any)
 
-(defn get-last [base params loc-path]
-  ;; (assert-result r (instance? (any-of MaybeConstraint
-  ;;                                     TypeOp
-  ;;                                     NoValues)
-  ;;                             r))
-  (cond (instance? SeqConstraint base)
-        (cond (empty-seq? base)
-              nothing-constraint
-
-              (= (.tail base) no-tail)
-              (MaybeConstraint (.item base) empty-list no-symbol)
-
-              (instance? CollectionOf (.tail base))
-              (MaybeConstraint (contents-constraint (.tail base)) empty-list no-symbol)
-
-              (get-last (.tail base) params loc-path))
-
-        (instance? StringConstraint base)
-        (either (map (or (= no-string (.static base))
-                         (last (.static base)))
-                     (fn [last-char]
-                       (MaybeConstraint (SubStrConstraint last-char
-                                                          empty-list no-symbol)
-                                        empty-list no-symbol)))
-                nothing-constraint)
-
-        (and (instance? ReifiedConstraint base)
-             (= (.type-number base) UnknownType))
-        maybe-constraint
-
-        (instance? CollectionOf base)
-        (MaybeConstraint (.ctnts-c base) empty-list no-symbol)
-
-        (cond (is-param base)
-              (TypeOp last-of-op base params no-symbol loc-path)
-
-              (NoValues [(TypeOp last-of-op base params no-symbol loc-path) base]))))
-
 (defn get-rest [base params loc-path]
   (cond (instance? SeqConstraint base)
         (cond (or (= no-tail (.tail base))
@@ -3079,36 +2948,6 @@
 
 (def type-op-fn {inner-type-of-op (fn [base _ loc-path]
                                     (contents-constraint base))
-                 first-of-op (fn [base params loc-path]
-                               (cond (instance? SeqConstraint base)
-                                     (either (map (first (get-items base 1))
-                                                  (fn [c]
-                                                    (MaybeConstraint c empty-list no-symbol)))
-                                             nothing-constraint)
-                                     
-                                     (instance? StringConstraint base)
-                                     (either (map (or (= no-string (.static base))
-                                                      (first (.static base)))
-                                                  (fn [first-char]
-                                                    (MaybeConstraint
-                                                     (SubStrConstraint first-char
-                                                                       empty-list no-symbol)
-                                                     empty-list no-symbol)))
-                                             nothing-constraint)
-
-                                     (and (instance? ReifiedConstraint base)
-                                          (= (.type-number base) UnknownType))
-                                     maybe-constraint
-
-                                     (instance? CollectionOf base)
-                                     (MaybeConstraint (.ctnts-c base) empty-list no-symbol)
-
-                                     (cond (is-param base)
-                                           (TypeOp first-of-op base params no-symbol loc-path)
-
-                                           (NoValues [(TypeOp first-of-op base params no-symbol loc-path)
-                                                      base]))))
-                 last-of-op get-last
                  rest-of-op get-rest
                  butlast-of-op (fn [base params loc-path]
                                  (cond (instance? SeqConstraint base)
