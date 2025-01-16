@@ -3283,7 +3283,6 @@
                             BitmapIndexedNode-sym bitmap-constraint
                             ArrayNode-sym array-constraint
                             HashCollisionNode-sym hash-coll-constraint
-                            List-sym list-constraint
                             Vector-sym vect-constraint
                             Symbol-sym sym-constraint
                             HashMap-sym hashmap-constraint
