@@ -114,7 +114,6 @@
 (def SubStringType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SubStringType};"))
 (def FnArityType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FnArityType};"))
 (def FunctionType (inline C Integer "(Value *)&(Integer){IntegerType, -2, FunctionType};"))
-(def ListType (inline C Integer "(Value *)&(Integer){IntegerType, -2, ListType};"))
 (def VectorType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorType};"))
 (def VectorNodeType (inline C Integer "(Value *)&(Integer){IntegerType, -2, VectorNodeType};"))
 (def SymbolType (inline C Integer "(Value *)&(Integer){IntegerType, -2, SymbolType};"))
@@ -381,7 +380,7 @@
         (str "(c/tag \"" s "\")")))
 
 (deftype SeqConstraint [type-num item tail path sym]
-  ;; can only be ListType, VectorType, UnknownType
+  ;; can only be VectorType, UnknownType
   (assert (instance? Integer type-num))
   ;; ! item SymbolConstraints or NoTail
   ;; (assert (instance? (any-of SeqConstraint CollectionOf NoTail) tail))
@@ -428,14 +427,7 @@
        (= no-tail (.tail c))))
 
 (def empty-seq (seq-c [no-tail]))
-(def empty-list-constraint (.type-num empty-seq ListType))
 (def empty-vect-constraint (.type-num empty-seq VectorType))
-
-(defn list-c
-  ([items]
-   (seq-c items no-tail ListType))
-  ([items tail]
-   (seq-c items tail ListType)))
 
 (defn vect-c
   ([items]
@@ -539,7 +531,7 @@
     (cond (= no-string static)
           (list "c/strbuff-constraint")
 
-          (list "(c/StrBuffConstraint " (str static) "empty-list c/no-symbol \"\")")))
+          (list "(c/StrBuffConstraint " (str static) " empty-list c/no-symbol \"\")")))
 
   Eq
   (=* [x y]
@@ -830,7 +822,6 @@
                         SubStringType "c/SubStringType"
                         FnArityType "c/FnArityType"
                         FunctionType "c/FunctionType"
-                        ListType "c/ListType"
                         VectorType "c/VectorType"
                         VectorNodeType "c/VectorNodeType"
                         SymbolType "c/SymbolType"
@@ -1139,7 +1130,6 @@
                                       empty-list  no-symbol))
 (def not-container (.type-symbol empty-reified (tag "Can not contain other values")))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol))
-(def list-constraint (list-c [] coll-of-any))
 (def vect-constraint (vect-c [] coll-of-any))
 (def seq-constraint (seq-c [] coll-of-any))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol))
@@ -1148,7 +1138,7 @@
                                       empty-list no-symbol))
 (def type-of-constraint (TypeOfConstraint no-symbol empty-list no-symbol))
 (def sym-constraint (SymbolConstraint no-symbol empty-list no-symbol))
-(def seq-or-str-constraint (SumConstraint [vect-constraint list-constraint strbuff-constraint substr-constraint]
+(def seq-or-str-constraint (SumConstraint [vect-constraint strbuff-constraint substr-constraint]
                                             empty-list no-symbol))
 (def hash-coll-constraint (hashmap-c HashCollisionNodeType))
 (def array-constraint (hashmap-c ArrayNodeType))
@@ -1656,9 +1646,6 @@
     (let [seq-str (cond (= (.type-num c) VectorType)
                         "c/vect-c"
 
-                        (= (.type-num c) ListType)
-                        "c/list-c"
-
                         "c/seq-c")]
       (cond (= no-tail (.item c))
             (list (str "(" seq-str " [] " (seq-tail c) ")"))
@@ -1669,10 +1656,7 @@
   (type-num [c] (.type-num c))
 
   (type-sym [c]
-    (cond (= (.type-num c) ListType)
-          List-sym
-
-          (= (.type-num c) VectorType)
+    (cond (= (.type-num c) VectorType)
           Vector-sym
 
           no-symbol))
@@ -1691,12 +1675,7 @@
                   (.item new-item)))))
 
   (format-path [c desired-len]
-    (format-path* (cond (= (.type-num c) ListType)
-                        (cond (empty-seq? c)
-                              "Empty list from:"
-                              "List from:")
-
-                        (= (.type-num c) VectorType)
+    (format-path* (cond (= (.type-num c) VectorType)
                         (cond (empty-seq? c)
                               "Empty vector from:"
                               "Vector from:")
@@ -2315,8 +2294,7 @@
     (let [arity-id (.arity-id arity)
           fixed-count (-> arity .param-consts seq-items count)
           [reqd var] (split args fixed-count)
-          new-args (conj reqd (list-c var))
-          reified (reify-type-constraint arity arity-id new-args
+          reified (reify-type-constraint arity arity-id reqd
                                          (either (first loc-path)
                                                  no-loc))]
       (either (map (= bottom-type reified)
@@ -2912,9 +2890,7 @@
               (NoValues [(TypeOp rest-of-op base params no-symbol empty-list) base]))))
 
 (defn do-seq-from [seq-type base loc-path]
-  (let [op-code (cond (= ListType seq-type)
-                      list-from-op
-                      vect-from-op)]
+  (let [op-code vect-from-op]
     (cond (instance? SeqConstraint base)
           (cond (= (.type-num base) seq-type)
                 base
@@ -2926,13 +2902,6 @@
 
           (instance? StringConstraint base)
           (seq-from-str base seq-type)
-
-          (and (instance? ReifiedConstraint base)
-               (or (= (.type-number base) BitmapIndexedType)
-                   (= (.type-number base) ArrayNodeType)
-                   (= (.type-number base) HashCollisionNodeType)))
-          (-> (seq-from-hashmap base empty-list-constraint)
-              (.path (.path base)))
 
           (and (instance? ReifiedConstraint base)
                (= (.type-number base) UnknownType))
@@ -2974,8 +2943,6 @@
 
                                              (NoValues [(TypeOp butlast-of-op base params no-symbol empty-list)
                                                         base]))))
-                 list-from-op (fn [base params loc-path]
-                                (do-seq-from ListType base loc-path))
                  vect-from-op (fn [base params loc-path]
                                 (do-seq-from VectorType base loc-path))
                  arg-of-op do-arg-of
@@ -3029,7 +2996,6 @@
                   last-of-op (constantly "Last value of seq")
                   rest-of-op (constantly "Rest of seq")
                   butlast-of-op (constantly "All but the last value of seq")
-                  list-from-op (constantly "List from value")
                   vect-from-op (constantly "Vector from value")
                   ;; TODO: make these fns that take a parameter
                   arg-of-op (constantly (str "Argument ?? of"))
