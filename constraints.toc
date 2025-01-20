@@ -1131,7 +1131,6 @@
 (def not-container (.type-symbol empty-reified (tag "Can not contain other values")))
 (def coll-of-any (CollectionOf top-type empty-list no-symbol))
 (def vect-constraint (vect-c [] coll-of-any))
-(def seq-constraint (seq-c [] coll-of-any))
 (def substr-constraint (SubStrConstraint no-string empty-list no-symbol))
 (def strbuff-constraint (StrBuffConstraint no-string empty-list no-symbol))
 (def string-constraint (SumConstraint [strbuff-constraint substr-constraint]
@@ -2730,8 +2729,7 @@
   (cond (is-param base)
         (TypeOp concat-op base no-args no-symbol loc-path)
 
-        (let [new-base (intersect base (coll-of-c (sum-c [string-constraint
-                                                          seq-constraint])))]
+        (let [new-base (intersect base (coll-of-c string-constraint))]
           (either (= bottom-type new-base)
                   (let [tail-seq (either (= no-tail (get-tail new-base))
                                          (coll-of-c (-> (get-tail new-base)
