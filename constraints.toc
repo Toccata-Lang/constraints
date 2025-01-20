@@ -3278,17 +3278,15 @@
 
 (def core-type-constraints {Integer-sym int-constraint
                             StringBuffer-sym strbuff-constraint
-                            SubString-sym substr-constraint
+                            ;; SubString-sym substr-constraint
                             FnArity-sym arity-constraint
                             BitmapIndexedNode-sym bitmap-constraint
                             ArrayNode-sym array-constraint
                             HashCollisionNode-sym hash-coll-constraint
                             Vector-sym vect-constraint
-                            Symbol-sym sym-constraint
+                            ;; Symbol-sym sym-constraint
                             HashMap-sym hashmap-constraint
-                            Promise-sym promise-constraint
-                            Future-sym future-constraint
-                            Agent-sym agent-constraint
+                            ;; Agent-sym agent-constraint
                             Opaque-sym opaque-constraint})
 
 ;; combine two constraints to produce a new constraint
