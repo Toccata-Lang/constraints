@@ -267,15 +267,6 @@
 
 (def no-args (NoArgs))
 
-(deftype Variadic []
-  Stringable
-  (string-list [_] (list "c/variadic")))
-
-(def variadic (Variadic))
-
-(def ArityRank (any-of Integer
-                       Variadic))
-
 (deftype Field [sym]
   (assert (instance? TaggedSymbol sym))
 
